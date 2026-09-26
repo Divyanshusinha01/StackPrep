@@ -1,0 +1,27 @@
+---
+description: Always ask the user before any GitHub operations
+alwaysApply: true
+---
+
+# Ask Before GitHub Operations
+
+Never run GitHub operations without explicit user approval in the current conversation.
+
+## Requires asking first
+
+- Creating, updating, merging, or closing pull requests (`gh pr ...`)
+- Pushing to remote (`git push`, including `-u`)
+- Creating/deleting branches on remote
+- Creating, editing, or closing GitHub issues
+- Creating or modifying GitHub releases
+- Changing repo settings, secrets, or collaborators via `gh`
+- Forking, starring, or other GitHub API / `gh` mutations
+
+## How to ask
+
+Before any of the above, stop and ask clearly what you intend to do (e.g. "Push this branch and open a PR?"). Wait for an affirmative reply. Do not assume prior consent from another chat or from user rules that describe *how* to do GitHub work.
+
+## Allowed without asking
+
+- Read-only inspection: `gh pr view`, `gh pr list`, `gh issue list`, `git status`, `git log`, `git diff`, fetching remote status
+- Local-only git that does not touch GitHub (commit only when the user asked to commit)

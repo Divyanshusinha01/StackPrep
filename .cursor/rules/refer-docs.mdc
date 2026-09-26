@@ -1,0 +1,24 @@
+---
+description: Always read project docs before planning or implementing
+alwaysApply: true
+---
+
+# Always Refer to Project Docs
+
+Before planning, designing, or implementing anything, read the relevant project docs and treat them as the source of truth.
+
+## Canonical docs
+
+| Doc | Use for |
+|---|---|
+| `PRD.md` | Product goals, flows, features, UX, acceptance criteria |
+| `architecture (2).md` | System design, services, data flow, boundaries |
+| `techstack.md` | Allowed technologies and hosting choices |
+
+## Rules
+
+- Prefer these docs over assumptions or generic defaults.
+- If a request conflicts with the docs, call out the conflict and ask before changing direction.
+- When adding or changing features, align with the PRD flow and architecture boundaries.
+- Do not introduce stack choices that contradict `techstack.md` unless the user explicitly approves.
+- If docs are missing detail for the task, say what is missing instead of inventing a parallel design.
