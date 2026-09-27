@@ -4,7 +4,10 @@ export const alt = "StackPrep — Turn your codebase into an interview";
 export const size = { width: 1200, height: 630 };
 export const contentType = "image/png";
 
-const BRAND = "#a99cf5";
+const BRAND = "#C5A059";
+const BACKGROUND = "#0D1117";
+const FOREGROUND = "#F0F6FC";
+const NAVY_MARK = "#0D1117";
 
 export default function OpengraphImage() {
   return new ImageResponse(
@@ -17,10 +20,10 @@ export default function OpengraphImage() {
           flexDirection: "column",
           justifyContent: "space-between",
           padding: 72,
-          background: "#111113",
+          background: BACKGROUND,
           backgroundImage:
-            "radial-gradient(ellipse 70% 60% at 50% 0%, rgba(124, 104, 230, 0.38), transparent 70%)",
-          color: "#f6f6f8",
+            "radial-gradient(ellipse 70% 60% at 50% 0%, rgba(197, 160, 89, 0.32), transparent 70%)",
+          color: FOREGROUND,
         }}
       >
         <div style={{ display: "flex", alignItems: "center", gap: 14, fontSize: 30, fontWeight: 600 }}>
@@ -33,7 +36,7 @@ export default function OpengraphImage() {
               justifyContent: "center",
               borderRadius: 10,
               background: BRAND,
-              color: "#1a1530",
+              color: NAVY_MARK,
               fontSize: 20,
               fontWeight: 700,
             }}
@@ -57,7 +60,7 @@ export default function OpengraphImage() {
             <span style={{ marginRight: 20 }}>Turn your codebase into</span>
             <span
               style={{
-                backgroundImage: `linear-gradient(100deg, #f6f6f8 5%, ${BRAND} 95%)`,
+                backgroundImage: `linear-gradient(100deg, ${FOREGROUND} 5%, ${BRAND} 95%)`,
                 backgroundClip: "text",
                 color: "transparent",
               }}
@@ -65,7 +68,7 @@ export default function OpengraphImage() {
               an interview.
             </span>
           </div>
-          <div style={{ marginTop: 28, fontSize: 30, color: "#a8a8b3", maxWidth: 900, lineHeight: 1.4 }}>
+          <div style={{ marginTop: 28, fontSize: 30, color: "#8B949E", maxWidth: 900, lineHeight: 1.4 }}>
             Get interviewed by an AI that has read your code, then get a report built on evidence.
           </div>
         </div>
@@ -78,8 +81,8 @@ export default function OpengraphImage() {
                 display: "flex",
                 padding: "8px 16px",
                 borderRadius: 10,
-                border: "1px solid rgba(169, 156, 245, 0.35)",
-                background: "rgba(169, 156, 245, 0.12)",
+                border: "1px solid rgba(197, 160, 89, 0.35)",
+                background: "rgba(197, 160, 89, 0.12)",
                 color: BRAND,
                 fontSize: 22,
               }}

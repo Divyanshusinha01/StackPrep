@@ -9,7 +9,7 @@ const EASE = [0.22, 1, 0.36, 1] as const;
 const WAVE = [35, 60, 90, 50, 100, 70, 40, 80, 55, 95, 45, 65, 30];
 
 const CORE = {
-  ai: "radial-gradient(circle at 35% 30%, oklch(0.93 0.05 285), var(--brand) 45%, oklch(0.32 0.1 285) 100%)",
+  ai: "radial-gradient(circle at 35% 30%, oklch(0.93 0.06 88), var(--brand) 45%, oklch(0.32 0.08 88) 100%)",
   user: "radial-gradient(circle at 35% 30%, oklch(0.95 0.05 160), var(--success) 45%, oklch(0.34 0.08 160) 100%)",
 };
 
