@@ -91,11 +91,11 @@ export function RepositoryAnalysis() {
     >
       <div
         aria-hidden
-        className="pointer-events-none absolute inset-y-0 left-0 w-full bg-dots mask-fade-y opacity-80 lg:w-1/2"
+        className="pointer-events-none absolute inset-0 bg-scanlines opacity-40"
       />
       <div
         aria-hidden
-        className="glow-brand pointer-events-none absolute top-1/2 left-1/4 h-[32rem] w-[40rem] -translate-x-1/2 -translate-y-1/2 opacity-50"
+        className="pointer-events-none absolute inset-y-0 left-0 w-full bg-dots mask-fade-y opacity-60 lg:w-1/2"
       />
       <div className="relative mx-auto grid max-w-6xl grid-cols-1 items-center gap-14 px-6 lg:grid-cols-2 lg:gap-20">
         <div ref={treeRef} className="order-2 lg:order-1">

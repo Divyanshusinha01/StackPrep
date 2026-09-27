@@ -17,9 +17,9 @@ export function FinalCta() {
         <p className="font-mono text-xs uppercase tracking-[0.18em] text-brand">Ready when you are</p>
         <h2
           id="cta-heading"
-          className="mt-5 font-display text-4xl font-semibold tracking-[-0.04em] text-balance sm:text-6xl lg:leading-[1.05]"
+          className="mt-5 font-display text-3xl font-semibold tracking-[-0.03em] text-balance sm:text-4xl lg:leading-[1.1]"
         >
-          Your code. <span className="text-gradient-brand">Your interview.</span>
+          Your code. Your interview.
         </h2>
         <p className="mx-auto mt-6 max-w-xl text-base leading-relaxed text-pretty text-muted-foreground sm:text-lg">
           Connect a repository and find out how well you can explain what you built, before

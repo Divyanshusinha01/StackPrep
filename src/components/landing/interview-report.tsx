@@ -33,19 +33,27 @@ export function InterviewReport() {
     <section
       id="report"
       aria-labelledby="report-heading"
-      className="relative scroll-mt-20 overflow-hidden border-t py-24 sm:py-32"
+      className="section-elevated relative scroll-mt-20 overflow-hidden border-t py-24 sm:py-32"
     >
-      <div
-        aria-hidden
-        className="glow-brand pointer-events-none absolute inset-x-0 bottom-0 mx-auto h-[40rem] w-[64rem] max-w-[160vw] translate-y-1/3 opacity-70"
-      />
       <div className="relative mx-auto max-w-6xl px-6">
         <ScrollReveal>
-          <SectionHeading id="report-heading" eyebrow="05 — Report" title="A report built on evidence, not a score." align="center">
-            Right after the interview, get a written evaluation of each area: strengths,
-            knowledge gaps, and where to dig in next, tied back to your answers and your
-            repository. No overall score. No ranking.
-          </SectionHeading>
+          <div className="grid gap-8 lg:grid-cols-2 lg:items-start lg:gap-12">
+            <SectionHeading
+              id="report-heading"
+              eyebrow="05 — Report"
+              title="A report built on evidence, not a score."
+              align="left"
+              className="max-w-none lg:max-w-xl"
+            >
+              Right after the interview, get a written evaluation of each area: strengths,
+              knowledge gaps, and where to dig in next, tied back to your answers and your
+              repository. No overall score. No ranking.
+            </SectionHeading>
+            <blockquote className="border-l-2 border-brand/40 pl-5 text-base leading-relaxed text-pretty text-muted-foreground italic lg:mt-8 lg:text-lg">
+              “Strong on the request lifecycle and auth design—the async failure paths are where
+              the next interview should press.”
+            </blockquote>
+          </div>
         </ScrollReveal>
 
         <div ref={stageRef} className="relative mt-16 lg:mt-20">
@@ -62,13 +70,13 @@ export function InterviewReport() {
 
           {handoff ? (
             <m.div
-              className="relative z-10 mx-auto max-w-3xl lg:pt-24"
+              className="relative z-10 mx-auto max-w-4xl lg:pt-24"
               style={{ scale: reportScale, y: reportY, opacity: reportOpacity }}
             >
               <ReportPanel glow />
             </m.div>
           ) : (
-            <ScrollReveal variant="scale" className="mx-auto max-w-3xl">
+            <ScrollReveal variant="scale" className="mx-auto max-w-4xl">
               <ReportPanel glow />
             </ScrollReveal>
           )}

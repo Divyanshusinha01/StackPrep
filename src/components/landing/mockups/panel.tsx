@@ -16,9 +16,9 @@ export function Panel({ title, meta, children, className, bodyClassName, glow }:
   return (
     <Spotlight
       className={cn(
-        "overflow-hidden rounded-xl border bg-panel text-left shadow-[0_24px_64px_-24px_rgb(0_0_0/0.7)]",
+        "overflow-hidden rounded-xl border border-white/5 bg-panel text-left shadow-[inset_0_1px_0_0_oklch(1_0_0/0.06),0_24px_64px_-24px_rgb(0_0_0/0.7)]",
         glow &&
-          "border-brand/25 shadow-[0_0_0_1px_var(--brand-muted),0_30px_90px_-30px_var(--brand-glow),0_24px_64px_-24px_rgb(0_0_0/0.7)]",
+          "border-brand/25 shadow-[inset_0_1px_0_0_oklch(1_0_0/0.08),0_0_0_1px_var(--brand-muted),0_30px_90px_-30px_var(--brand-glow),0_24px_64px_-24px_rgb(0_0_0/0.7)]",
         className,
       )}
     >

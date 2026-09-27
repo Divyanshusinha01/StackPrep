@@ -44,7 +44,11 @@ export function GitHubWorkspace() {
       aria-labelledby="workspace-heading"
       className="relative scroll-mt-20 py-24 sm:py-32"
     >
-      <div className="mx-auto max-w-6xl px-6">
+      <div
+        aria-hidden
+        className="pointer-events-none absolute inset-x-0 top-0 h-full max-h-[480px] bg-grid mask-radial opacity-50"
+      />
+      <div className="relative mx-auto max-w-6xl px-6">
         <ScrollReveal>
           <SectionHeading id="workspace-heading" eyebrow="01 — Connect" title="One repository. One workspace." align="center">
             Pick a repository and StackPrep opens a permanent workspace for it. Every interview

@@ -83,6 +83,7 @@
   --panel-raised: oklch(0.215 0.028 260);
   --grid: oklch(1 0 0 / 5%);
   --success: oklch(0.8 0.14 160);
+  --background-elevated: oklch(0.19 0.026 260);
 }
 
 @layer base {
@@ -148,6 +149,25 @@
 
 @utility mask-radial {
   mask-image: radial-gradient(ellipse at center, black 30%, transparent 75%);
+}
+
+@utility bg-scanlines {
+  background-image: repeating-linear-gradient(
+    to bottom,
+    oklch(1 0 0 / 4%) 0,
+    oklch(1 0 0 / 4%) 1px,
+    transparent 1px,
+    transparent 5px
+  );
+}
+
+@utility bg-waveform {
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='120' height='40' viewBox='0 0 120 40'%3E%3Cpath d='M0 20 Q15 8 30 20 T60 20 T90 20 T120 20' fill='none' stroke='white' stroke-opacity='0.08' stroke-width='1'/%3E%3Cpath d='M0 24 Q15 32 30 24 T60 24 T90 24 T120 24' fill='none' stroke='white' stroke-opacity='0.05' stroke-width='1'/%3E%3C/svg%3E");
+  background-size: 120px 40px;
+}
+
+@utility section-elevated {
+  background-color: var(--background-elevated);
 }
 
 @keyframes wave {
