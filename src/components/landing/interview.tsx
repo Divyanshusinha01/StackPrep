@@ -4,6 +4,7 @@ import { useRef, useState } from "react";
 import { useMotionValueEvent, useScroll } from "framer-motion";
 import { CornerDownRight, FileCode, Mic, Search, Waypoints } from "lucide-react";
 
+import { cn } from "@/lib/utils";
 import { Parallax } from "@/components/motion/parallax";
 import { ScrollReveal } from "@/components/motion/scroll-reveal";
 import { useReducedMotion } from "@/components/motion/use-reduced-motion";
@@ -85,7 +86,7 @@ export function Interview() {
     >
       <div
         aria-hidden
-        className="glow-brand pointer-events-none absolute bottom-0 left-0 h-[36rem] w-[48rem] -translate-x-1/3 translate-y-1/4 opacity-60"
+        className="pointer-events-none absolute inset-0 bg-waveform opacity-[0.35]"
       />
 
       <div className="relative mx-auto max-w-6xl px-6">
@@ -96,23 +97,44 @@ export function Interview() {
           </SectionHeading>
         </ScrollReveal>
 
-        <ul className="mt-10 grid gap-4 sm:grid-cols-3">
-          {FEATURES.map(({ icon: Icon, title, body, visual }, i) => (
-            <li key={title}>
-              <ScrollReveal delay={i * 0.08} className="h-full">
-                <Spotlight className="flex h-full flex-col rounded-xl border bg-panel/60 p-5 transition-[translate,border-color] duration-300 hover:-translate-y-0.5 hover:border-brand/30">
-                  <div aria-hidden className="flex h-12 items-center border-b border-dashed pb-4">
-                    {visual}
-                  </div>
-                  <span className="mt-4 flex items-center gap-2 text-sm font-medium text-foreground">
-                    <Icon className="size-4 text-brand" aria-hidden />
-                    {title}
-                  </span>
-                  <span className="mt-1.5 block text-sm leading-relaxed text-muted-foreground">{body}</span>
-                </Spotlight>
-              </ScrollReveal>
-            </li>
-          ))}
+        <ul className="mt-10 grid auto-rows-fr grid-cols-1 gap-4 md:grid-cols-3 md:grid-rows-[1fr_1fr_auto]">
+          {FEATURES.map(({ icon: Icon, title, body, visual }, i) => {
+            const bento =
+              i === 0
+                ? "md:col-span-2 md:row-span-2"
+                : i === 2
+                  ? "md:col-span-1 md:row-span-2 md:col-start-3 md:row-start-1"
+                  : "md:col-span-3 md:row-start-3";
+            return (
+              <li key={title} className={bento}>
+                <ScrollReveal delay={i * 0.08} className="h-full">
+                  <Spotlight
+                    className={cn(
+                      "flex h-full flex-col rounded-xl border bg-panel/60 p-5 transition-[translate,border-color] duration-300 hover:-translate-y-0.5 hover:border-brand/30",
+                      i === 0 && "md:min-h-[220px]",
+                    )}
+                  >
+                    <div
+                      aria-hidden
+                      className={cn(
+                        "flex items-center border-b border-dashed pb-4",
+                        i === 0 ? "h-20" : "h-12",
+                      )}
+                    >
+                      {visual}
+                    </div>
+                    <span className="mt-4 flex items-center gap-2 text-sm font-medium text-foreground">
+                      <Icon className="size-4 text-brand" aria-hidden />
+                      {title}
+                    </span>
+                    <span className="mt-1.5 block text-sm leading-relaxed text-muted-foreground">
+                      {body}
+                    </span>
+                  </Spotlight>
+                </ScrollReveal>
+              </li>
+            );
+          })}
         </ul>
 
         <div

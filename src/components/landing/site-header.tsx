@@ -6,47 +6,12 @@ import { m, useScroll, useSpring } from "framer-motion";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { useReducedMotion } from "@/components/motion/use-reduced-motion";
-import { CONNECT_GITHUB_HREF, SECTIONS } from "./constants";
+import { CONNECT_GITHUB_HREF, CTA_GLOW, SECTIONS } from "./constants";
 import { GitHubMark } from "./github-mark";
+import { useActiveSection } from "./use-active-section";
+import { Wordmark } from "./wordmark";
 
-export function Wordmark() {
-  return (
-    <span className="inline-flex items-center gap-2 font-semibold tracking-tight">
-      <span
-        aria-hidden
-        className="grid size-6 place-items-center rounded-md bg-brand font-mono text-[11px] font-bold text-primary-foreground"
-      >
-        {">_"}
-      </span>
-      StackPrep
-    </span>
-  );
-}
-
-function useActiveSection() {
-  const [active, setActive] = useState<string | null>(null);
-
-  useEffect(() => {
-    const visible = new Set<string>();
-    const observer = new IntersectionObserver(
-      (entries) => {
-        for (const entry of entries) {
-          if (entry.isIntersecting) visible.add(entry.target.id);
-          else visible.delete(entry.target.id);
-        }
-        setActive(SECTIONS.find((s) => visible.has(s.id))?.id ?? null);
-      },
-      { rootMargin: "-45% 0px -50% 0px" },
-    );
-    for (const { id } of SECTIONS) {
-      const el = document.getElementById(id);
-      if (el) observer.observe(el);
-    }
-    return () => observer.disconnect();
-  }, []);
-
-  return active;
-}
+export { Wordmark } from "./wordmark";
 
 export function SiteHeader() {
   const [scrolled, setScrolled] = useState(false);
@@ -54,6 +19,7 @@ export function SiteHeader() {
   const reduced = useReducedMotion();
   const { scrollYProgress } = useScroll();
   const progress = useSpring(scrollYProgress, { stiffness: 200, damping: 40, restDelta: 0.001 });
+  const interviewLive = active === "interview";
 
   useEffect(() => {
     const update = () => setScrolled(window.scrollY > 8);
@@ -77,7 +43,19 @@ export function SiteHeader() {
           className="rounded-md outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50"
           aria-label="StackPrep home"
         >
-          <Wordmark />
+          <span className="inline-flex items-center gap-2">
+            <Wordmark />
+            {interviewLive ? (
+              <span
+                className="relative flex size-4 items-center justify-center"
+                aria-hidden
+                title="Interview section"
+              >
+                <span className="absolute inset-0 rounded-full border border-brand/60 motion-safe:animate-ping" />
+                <span className="size-2 rounded-full bg-brand" />
+              </span>
+            ) : null}
+          </span>
         </a>
 
         <nav aria-label="Sections" className="mx-auto hidden md:block">
@@ -90,8 +68,10 @@ export function SiteHeader() {
                     href={`#${id}`}
                     aria-current={current ? "location" : undefined}
                     className={cn(
-                      "flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-[13px] outline-none transition-colors focus-visible:ring-[3px] focus-visible:ring-ring/50",
-                      current ? "text-foreground" : "text-muted-foreground hover:text-foreground",
+                      "flex items-center gap-1.5 rounded-md border-b-2 px-2.5 py-1.5 text-[13px] outline-none transition-colors focus-visible:ring-[3px] focus-visible:ring-ring/50",
+                      current
+                        ? "border-brand text-foreground"
+                        : "border-transparent text-muted-foreground hover:border-brand/30 hover:text-foreground",
                     )}
                   >
                     <span
@@ -110,7 +90,7 @@ export function SiteHeader() {
           </ul>
         </nav>
 
-        <Button asChild size="sm" className="ml-auto md:ml-0">
+        <Button asChild size="sm" className={cn("ml-auto md:ml-0", CTA_GLOW)}>
           <a href={CONNECT_GITHUB_HREF}>
             <GitHubMark className="size-3.5" />
             Connect GitHub

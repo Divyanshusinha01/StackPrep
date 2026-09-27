@@ -41,7 +41,7 @@ export function TechnicalDepth() {
     >
       <div aria-hidden className="pointer-events-none absolute inset-0 bg-dots mask-fade-y opacity-70" />
       <div className="relative mx-auto grid max-w-6xl grid-cols-1 gap-14 px-6 lg:grid-cols-2 lg:gap-20">
-        <ScrollReveal>
+        <ScrollReveal className="lg:sticky lg:top-24 lg:self-start">
           <SectionHeading id="depth-heading" eyebrow="04 — Depth" title="Beyond what it does. Into why.">
             Questions move from how the system fits together to the reasoning behind it, and
             then to where it could break. Surface-level answers get a follow-up.

@@ -46,11 +46,13 @@ type InterviewPanelProps = {
   className?: string;
   /** Index of the latest visible message. Defaults to showing the full conversation. */
   activeIndex?: number;
+  glow?: boolean;
 };
 
 export function InterviewPanel({
   className,
   activeIndex = INTERVIEW_MESSAGES.length - 1,
+  glow,
 }: InterviewPanelProps) {
   const reduced = useReducedMotion();
   const pair = Math.floor(activeIndex / 2);
@@ -62,6 +64,7 @@ export function InterviewPanel({
   return (
     <Panel
       className={className}
+      glow={glow}
       title="Interview 3 · acme/checkout-service"
       meta={
         <>

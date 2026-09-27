@@ -45,11 +45,11 @@ export function ReportPanel({ className, glow }: { className?: string; glow?: bo
       meta={<span>acme/checkout-service</span>}
       bodyClassName="space-y-5 p-4 sm:p-5"
     >
-      <div>
+      <div className="border-l-[3px] border-brand-muted pl-4 sm:pl-5">
         <p className="font-mono text-[11px] uppercase tracking-wider text-muted-foreground">
           Executive summary
         </p>
-        <p className="mt-2 text-sm leading-relaxed text-foreground/90">
+        <p className="mt-3 text-base leading-relaxed text-foreground/95 sm:text-lg">
           Strong command of the request lifecycle and auth design. Reasoning about failure
           handling in async jobs was less certain and is the clearest area to explore next.
         </p>
@@ -61,11 +61,11 @@ export function ReportPanel({ className, glow }: { className?: string; glow?: bo
         </p>
         <ul className="divide-y rounded-lg border">
           {CATEGORIES.map((c) => (
-            <li key={c.name} className="grid gap-1.5 p-3 sm:grid-cols-[9rem_1fr] sm:gap-4">
+            <li key={c.name} className="grid gap-2 p-3 sm:grid-cols-[10rem_1fr] sm:items-start sm:gap-5 sm:p-4">
               <span className="text-sm font-medium text-foreground">{c.name}</span>
-              <span className="space-y-1.5">
-                <span className="block text-sm text-foreground/75">{c.note}</span>
-                <FileChip>{c.evidence}</FileChip>
+              <span className="flex flex-col gap-2">
+                <span className="block text-sm leading-relaxed text-foreground/75">{c.note}</span>
+                <FileChip className="w-fit">{c.evidence}</FileChip>
               </span>
             </li>
           ))}
