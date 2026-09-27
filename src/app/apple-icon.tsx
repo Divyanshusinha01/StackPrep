@@ -3,6 +3,10 @@ import { ImageResponse } from "next/og";
 export const size = { width: 180, height: 180 };
 export const contentType = "image/png";
 
+const BRAND = "#C5A059";
+const BACKGROUND = "#0D1117";
+const NAVY_MARK = "#0D1117";
+
 export default function AppleIcon() {
   return new ImageResponse(
     (
@@ -13,7 +17,7 @@ export default function AppleIcon() {
           display: "flex",
           alignItems: "center",
           justifyContent: "center",
-          background: "#111113",
+          background: BACKGROUND,
         }}
       >
         <div
@@ -24,8 +28,8 @@ export default function AppleIcon() {
             alignItems: "center",
             justifyContent: "center",
             borderRadius: 30,
-            background: "#a99cf5",
-            color: "#1a1530",
+            background: BRAND,
+            color: NAVY_MARK,
             fontSize: 64,
             fontWeight: 700,
             letterSpacing: -4,

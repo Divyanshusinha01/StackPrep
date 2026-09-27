@@ -47,36 +47,40 @@
   color-scheme: dark;
   --radius: 0.625rem;
 
-  --background: oklch(0.145 0.004 285);
-  --foreground: oklch(0.97 0.003 285);
+  /* Midnight navy surfaces (~#0D1117–#161B22) */
+  --background: oklch(0.17 0.025 260);
+  --foreground: oklch(0.97 0.012 250);
 
-  --card: oklch(0.175 0.005 285);
+  --card: oklch(0.2 0.028 260);
   --card-foreground: var(--foreground);
-  --popover: oklch(0.175 0.005 285);
+  --popover: oklch(0.2 0.028 260);
   --popover-foreground: var(--foreground);
 
-  --primary: oklch(0.78 0.13 285);
-  --primary-foreground: oklch(0.17 0.03 285);
+  /* Champagne gold CTAs (~#C5A059–#D4AF37) */
+  --primary: oklch(0.76 0.11 88);
+  --primary-foreground: oklch(0.17 0.025 260);
 
-  --secondary: oklch(0.22 0.006 285);
+  /* Slate blue secondary (~#1F6FEB scaled for fills) */
+  --secondary: oklch(0.28 0.055 264);
   --secondary-foreground: var(--foreground);
 
-  --muted: oklch(0.22 0.006 285);
-  --muted-foreground: oklch(0.72 0.008 285);
+  --muted: oklch(0.24 0.03 260);
+  --muted-foreground: oklch(0.72 0.02 250);
 
-  --accent: oklch(0.24 0.008 285);
+  --accent: oklch(0.26 0.05 264);
   --accent-foreground: var(--foreground);
 
   --destructive: oklch(0.7 0.19 22);
-  --border: oklch(1 0 0 / 9%);
+  --border: oklch(0.76 0.11 88 / 10%);
   --input: oklch(1 0 0 / 14%);
-  --ring: oklch(0.78 0.13 285);
+  --ring: oklch(0.76 0.11 88);
 
-  --brand: oklch(0.78 0.13 285);
-  --brand-muted: oklch(0.78 0.13 285 / 14%);
-  --brand-glow: oklch(0.62 0.17 285 / 32%);
-  --panel: oklch(0.165 0.005 285);
-  --panel-raised: oklch(0.195 0.006 285);
+  --brand: oklch(0.76 0.11 88);
+  --brand-muted: oklch(0.76 0.11 88 / 14%);
+  --brand-glow: oklch(0.62 0.12 88 / 32%);
+  --spotlight: oklch(0.76 0.11 88 / 9%);
+  --panel: oklch(0.185 0.026 260);
+  --panel-raised: oklch(0.215 0.028 260);
   --grid: oklch(1 0 0 / 5%);
   --success: oklch(0.8 0.14 160);
 }
@@ -87,7 +91,7 @@
   }
   html {
     scroll-behavior: smooth;
-    scrollbar-color: oklch(0.32 0.012 285) var(--background);
+    scrollbar-color: oklch(0.32 0.04 260) var(--background);
   }
   body {
     @apply bg-background text-foreground font-sans antialiased;
@@ -121,7 +125,7 @@
 @utility spotlight-glow {
   background-image: radial-gradient(
     380px circle at var(--spot-x, 50%) var(--spot-y, 50%),
-    oklch(0.78 0.13 285 / 9%),
+    var(--spotlight),
     transparent 70%
   );
 }

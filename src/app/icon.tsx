@@ -3,6 +3,9 @@ import { ImageResponse } from "next/og";
 export const size = { width: 32, height: 32 };
 export const contentType = "image/png";
 
+const BRAND = "#C5A059";
+const NAVY_MARK = "#0D1117";
+
 export default function Icon() {
   return new ImageResponse(
     (
@@ -14,8 +17,8 @@ export default function Icon() {
           alignItems: "center",
           justifyContent: "center",
           borderRadius: 7,
-          background: "#a99cf5",
-          color: "#1a1530",
+          background: BRAND,
+          color: NAVY_MARK,
           fontSize: 15,
           fontWeight: 700,
           letterSpacing: -1,
