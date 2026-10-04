@@ -3,8 +3,28 @@ project_id = "stackprep"
 [db]
 major_version = 17
 
+[auth]
+enabled = true
+site_url = "http://localhost:3000"
+additional_redirect_urls = ["http://localhost:3000/auth/callback", "http://127.0.0.1:3000/auth/callback"]
+enable_signup = true
+
+# User sign-in only (Supabase Auth + a GitHub OAuth App). Repository access goes through the
+# separate GitHub App; no provider token from this login is used to read repositories.
+[auth.external.github]
+enabled = true
+client_id = "env(SUPABASE_AUTH_EXTERNAL_GITHUB_CLIENT_ID)"
+secret = "env(SUPABASE_AUTH_EXTERNAL_GITHUB_SECRET)"
+redirect_uri = ""
+
 [functions.health]
 enabled = true
 verify_jwt = false
 entrypoint = "./functions/health/index.ts"
+import_map = "./functions/deno.json"
+
+[functions.me]
+enabled = true
+verify_jwt = true
+entrypoint = "./functions/me/index.ts"
 import_map = "./functions/deno.json"

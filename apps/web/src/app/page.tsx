@@ -8,8 +8,10 @@ import { ScrollSpine } from "@/components/landing/scroll-spine";
 import { SiteHeader, Wordmark } from "@/components/landing/site-header";
 import { TechnicalDepth } from "@/components/landing/technical-depth";
 import { MotionProvider } from "@/components/motion/motion-provider";
+import { getUser } from "@/lib/auth";
 
-export default function Home() {
+export default async function Home() {
+  const signedIn = (await getUser()) !== null;
   return (
     <div id="top">
       <a
@@ -19,16 +21,16 @@ export default function Home() {
         Skip to content
       </a>
       <MotionProvider>
-        <SiteHeader />
+        <SiteHeader signedIn={signedIn} />
         <ScrollSpine />
         <main id="main" className="overflow-x-clip">
-          <Hero />
+          <Hero signedIn={signedIn} />
           <GitHubWorkspace />
           <RepositoryAnalysis />
           <Interview />
           <TechnicalDepth />
           <InterviewReport />
-          <FinalCta />
+          <FinalCta signedIn={signedIn} />
         </main>
       </MotionProvider>
       <footer className="border-t">
