@@ -2,7 +2,7 @@ begin;
 
 create extension if not exists pgtap with schema extensions;
 
-select plan(51);
+select plan(56);
 
 -- Fixtures (as postgres) ---------------------------------------------------------
 
@@ -114,10 +114,31 @@ select is(
   'profile is created even with sparse GitHub metadata'
 );
 
+-- workspaces.target_commit_sha ------------------------------------------------
+
+select col_type_is('public', 'workspaces', 'target_commit_sha', 'git_commit_sha', 'target_commit_sha uses the git_commit_sha domain');
+select col_is_null('public', 'workspaces', 'target_commit_sha', 'target_commit_sha is nullable');
+select throws_ok(
+  $$update public.workspaces set target_commit_sha = 'not-a-sha' where id = 'aaaaaaaa-0000-4000-8000-000000000004'$$,
+  '23514', null, 'target_commit_sha rejects a non-SHA value'
+);
+update public.workspaces set target_commit_sha = repeat('c', 40) where id = 'aaaaaaaa-0000-4000-8000-000000000004';
+select throws_ok(
+  $$insert into public.workspaces (user_id, repository_id, status, target_commit_sha, ready_at)
+    values ('aaaaaaaa-0000-4000-8000-000000000001', 'aaaaaaaa-0000-4000-8000-000000000003', 'ready', repeat('d', 40), now())$$,
+  '23514', null, 'a target commit alone does not make a workspace ready'
+);
+
 -- As Alice ------------------------------------------------------------------
 
 set local role authenticated;
 select set_config('request.jwt.claims', '{"sub": "aaaaaaaa-0000-4000-8000-000000000001", "role": "authenticated"}', true);
+
+select is(
+  (select target_commit_sha::text from public.workspaces where id = 'aaaaaaaa-0000-4000-8000-000000000004'),
+  repeat('c', 40),
+  'Alice can read her workspace target_commit_sha'
+);
 
 select is((select count(*) from public.profiles), 1::bigint, 'Alice sees only her profile');
 select is((select count(*) from public.github_connections), 1::bigint, 'Alice sees only her GitHub connection');

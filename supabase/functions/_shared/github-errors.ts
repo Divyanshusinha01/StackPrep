@@ -13,6 +13,8 @@ const ERROR_MESSAGES: Record<ApiErrorCode, string> = {
   unsupported_installation_account: "The GitHub App installation account type is not supported",
   installation_suspended: "The GitHub App installation is suspended",
   connection_not_found: "GitHub connection not found",
+  repository_not_accessible: "The repository is not accessible through this GitHub connection",
+  workspace_not_found: "Workspace not found",
   github_rate_limited: "GitHub rate limit exceeded",
   github_unavailable: "GitHub is unavailable",
   github_unexpected_response: "Unexpected response from GitHub",
@@ -30,6 +32,8 @@ const ERROR_STATUS: Record<ApiErrorCode, number> = {
   unsupported_installation_account: 422,
   installation_suspended: 409,
   connection_not_found: 404,
+  repository_not_accessible: 403,
+  workspace_not_found: 404,
   github_rate_limited: 503,
   github_unavailable: 502,
   github_unexpected_response: 502,
@@ -74,6 +78,7 @@ export interface LogContext {
   code?: ApiErrorCode;
   installation_id?: number;
   connection_id?: string;
+  workspace_id?: string;
 }
 
 /** One JSON line with an allow-listed set of keys; never headers, bodies, tokens, or messages. */
@@ -96,6 +101,9 @@ export function logGithubError(fn: string, err: unknown, ctx: LogContext = {}): 
   }
   if (ctx.connection_id !== undefined) {
     entry.connection_id = ctx.connection_id;
+  }
+  if (ctx.workspace_id !== undefined) {
+    entry.workspace_id = ctx.workspace_id;
   }
   console.error(JSON.stringify(entry));
 }

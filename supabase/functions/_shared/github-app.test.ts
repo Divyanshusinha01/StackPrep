@@ -440,6 +440,90 @@ Deno.test("403/404 from minting surface as typed errors, but from listing are un
   }
 });
 
+// Repository head ----------------------------------------------------------------
+
+const REPO = "GET /repos/alice/app";
+const SHA = "0123456789abcdef0123456789abcdef01234567";
+
+function headRoutes(clock: { now: number }, branch = "main"): Record<string, Route> {
+  return {
+    [MINT(7)]: (req, url) => mintOk(clock)(req, url),
+    [REPO]: (req) => {
+      assertEquals(req.headers.get("authorization"), "Bearer ghs_installation");
+      return json({ ...repo(1, "alice/app"), default_branch: branch });
+    },
+    [`GET /repos/alice/app/branches/${encodeURIComponent(branch)}`]: (req) => {
+      assertEquals(req.headers.get("authorization"), "Bearer ghs_installation");
+      return json({ name: branch, commit: { sha: SHA, url: "x" }, protected: false });
+    },
+  };
+}
+
+Deno.test("getRepositoryHead returns the default branch and its head commit", async () => {
+  const clock = { now: START };
+  const { app, calls } = setup(headRoutes(clock), { now: () => clock.now });
+  assertEquals(await app.getRepositoryHead(7, "alice", "app"), { defaultBranch: "main", commitSha: SHA });
+  assertEquals(calls.map((c) => c.key), [MINT(7), REPO, "GET /repos/alice/app/branches/main"]);
+});
+
+Deno.test("getRepositoryHead encodes branch names with slashes", async () => {
+  const clock = { now: START };
+  const { app } = setup(headRoutes(clock, "release/v1"), { now: () => clock.now });
+  assertEquals((await app.getRepositoryHead(7, "alice", "app")).defaultBranch, "release/v1");
+});
+
+Deno.test("getRepositoryHead rejects a malformed commit sha", async () => {
+  const clock = { now: START };
+  const { app } = setup(
+    {
+      ...headRoutes(clock),
+      "GET /repos/alice/app/branches/main": () => json({ name: "main", commit: { sha: "not-a-sha" } }),
+    },
+    { now: () => clock.now },
+  );
+  await assertRejects(() => app.getRepositoryHead(7, "alice", "app"), GithubUnexpectedResponseError);
+});
+
+Deno.test("getRepositoryHead: 403/404 from minting are typed, from reads are unexpected", async () => {
+  for (const status of [403, 404]) {
+    const mintFails = setup({ [MINT(7)]: () => json({}, { status }) });
+    await assertRejects(
+      () => mintFails.app.getRepositoryHead(7, "alice", "app"),
+      status === 403 ? GithubForbiddenError : GithubNotFoundError,
+    );
+    for (const failing of [REPO, "GET /repos/alice/app/branches/main"]) {
+      const clock = { now: START };
+      const { app } = setup({ ...headRoutes(clock), [failing]: () => json({}, { status }) }, { now: () => clock.now });
+      const err = await assertRejects(() => app.getRepositoryHead(7, "alice", "app"), GithubUnexpectedResponseError);
+      assertEquals(err.status, status);
+    }
+  }
+});
+
+Deno.test("getRepositoryHead maps rate limits and 5xx, and evicts the token on 401", async () => {
+  const clock = { now: START };
+  const limited = setup(
+    { ...headRoutes(clock), [REPO]: () => json({}, { status: 429, headers: { "retry-after": "12" } }) },
+    { now: () => clock.now },
+  );
+  const err = await assertRejects(() => limited.app.getRepositoryHead(7, "alice", "app"), GithubRateLimitedError);
+  assertEquals(err.retryAfterSeconds, 12);
+
+  const down = setup({ ...headRoutes(clock), [REPO]: () => json({}, { status: 502 }) }, { now: () => clock.now });
+  await assertRejects(() => down.app.getRepositoryHead(7, "alice", "app"), GithubUnavailableError);
+
+  let unauthorized = true;
+  const routes = headRoutes(clock);
+  const evicting = setup(
+    { ...routes, [REPO]: (req, url) => (unauthorized ? json({}, { status: 401 }) : routes[REPO](req, url)) },
+    { now: () => clock.now },
+  );
+  await assertRejects(() => evicting.app.getRepositoryHead(7, "alice", "app"), GithubUnexpectedResponseError);
+  unauthorized = false;
+  await evicting.app.getRepositoryHead(7, "alice", "app");
+  assertEquals(evicting.count(MINT(7)), 2);
+});
+
 Deno.test("a malformed repository entry is rejected", async () => {
   const { app, clock } = setup({
     [MINT(7)]: (req, url) => mintOk(clock)(req, url),

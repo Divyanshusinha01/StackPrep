@@ -13,6 +13,8 @@ export const apiErrorCodeSchema = z.enum([
   "unsupported_installation_account",
   "installation_suspended",
   "connection_not_found",
+  "repository_not_accessible",
+  "workspace_not_found",
   "github_rate_limited",
   "github_unavailable",
   "github_unexpected_response",

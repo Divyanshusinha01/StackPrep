@@ -234,13 +234,13 @@ isOneToOne: false
                   ]
                 },"workspaces": {
                   Row: {
-                    "created_at": string,"id": string,"indexed_commit_sha": string | null,"ready_at": string | null,"repository_id": string,"status": Database["public"]['Enums']["workspace_status"],"updated_at": string,"user_id": string
+                    "created_at": string,"id": string,"indexed_commit_sha": string | null,"ready_at": string | null,"repository_id": string,"status": Database["public"]['Enums']["workspace_status"],"target_commit_sha": string | null,"updated_at": string,"user_id": string
                   }
                   Insert: {
-                    "created_at"?: string,"id"?: string,"indexed_commit_sha"?: string | null,"ready_at"?: string | null,"repository_id": string,"status"?: Database["public"]['Enums']["workspace_status"],"updated_at"?: string,"user_id": string
+                    "created_at"?: string,"id"?: string,"indexed_commit_sha"?: string | null,"ready_at"?: string | null,"repository_id": string,"status"?: Database["public"]['Enums']["workspace_status"],"target_commit_sha"?: string | null,"updated_at"?: string,"user_id": string
                   }
                   Update: {
-                    "created_at"?: string,"id"?: string,"indexed_commit_sha"?: string | null,"ready_at"?: string | null,"repository_id"?: string,"status"?: Database["public"]['Enums']["workspace_status"],"updated_at"?: string,"user_id"?: string
+                    "created_at"?: string,"id"?: string,"indexed_commit_sha"?: string | null,"ready_at"?: string | null,"repository_id"?: string,"status"?: Database["public"]['Enums']["workspace_status"],"target_commit_sha"?: string | null,"updated_at"?: string,"user_id"?: string
                   }
                   Relationships: [
                     {
