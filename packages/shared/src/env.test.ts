@@ -103,13 +103,30 @@ describe("integration env schemas", () => {
       GITHUB_APP_ID: "123456",
       GITHUB_APP_CLIENT_ID: "Iv1.abc",
       GITHUB_APP_CLIENT_SECRET: "secret",
-      GITHUB_APP_PRIVATE_KEY: "-----BEGIN RSA PRIVATE KEY-----\n...",
+      GITHUB_APP_PRIVATE_KEY: "-----BEGIN PRIVATE KEY-----\\nMIIE...\\n-----END PRIVATE KEY-----\\n",
       GITHUB_APP_WEBHOOK_SECRET: "whsec",
     };
     expect(parseEnv("github app", githubAppEnvSchema, valid)).toEqual(valid);
     expect(() => parseEnv("github app", githubAppEnvSchema, { ...valid, GITHUB_APP_ID: "abc" })).toThrowError(
       /GITHUB_APP_ID/,
     );
+  });
+
+  it.each([
+    ["PKCS#1", "-----BEGIN RSA PRIVATE KEY-----\nMIIE...\n-----END RSA PRIVATE KEY-----\n"],
+    ["encrypted PKCS#8", "-----BEGIN ENCRYPTED PRIVATE KEY-----\nMIIE...\n-----END ENCRYPTED PRIVATE KEY-----\n"],
+    ["truncated PKCS#8", "-----BEGIN PRIVATE KEY-----\nMIIE..."],
+    ["empty", ""],
+  ])("rejects a %s GitHub App private key", (_label, key) => {
+    expect(() =>
+      parseEnv("github app", githubAppEnvSchema, {
+        GITHUB_APP_ID: "123456",
+        GITHUB_APP_CLIENT_ID: "Iv1.abc",
+        GITHUB_APP_CLIENT_SECRET: "secret",
+        GITHUB_APP_PRIVATE_KEY: key,
+        GITHUB_APP_WEBHOOK_SECRET: "whsec",
+      }),
+    ).toThrowError(/GITHUB_APP_PRIVATE_KEY/);
   });
 
   it("defaults the edge Sentry environment and rejects a non-url DSN", () => {
