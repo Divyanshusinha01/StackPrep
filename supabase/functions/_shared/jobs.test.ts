@@ -1,17 +1,34 @@
-import { assertEquals } from "@std/assert";
-import { createLoggingJobQueue } from "./jobs.ts";
+import { assertEquals, assertRejects } from "@std/assert";
+import { createInngestJobQueue, type EventSender } from "./jobs.ts";
 
-Deno.test("logging job queue records the event without the payload and returns no event id", async () => {
-  const lines: string[] = [];
-  const queue = createLoggingJobQueue((line) => lines.push(line));
-  const result = await queue.enqueue("repository.index", {
-    workspace_id: "cccccccc-0000-4000-8000-000000000003",
-    repository_id: "bbbbbbbb-0000-4000-8000-000000000002",
-    commit_sha: "a".repeat(40),
-    installation_id: 7,
+const payload = {
+  workspace_id: "cccccccc-0000-4000-8000-000000000003",
+  repository_id: "bbbbbbbb-0000-4000-8000-000000000002",
+  job_id: "dddddddd-0000-4000-8000-000000000004",
+  commit_sha: "a".repeat(40),
+  installation_id: 7,
+};
+
+Deno.test("Inngest job queue sends the event with a job-derived id and returns the event id", async () => {
+  const sent: Parameters<EventSender["send"]>[0][] = [];
+  const queue = createInngestJobQueue({
+    send(event) {
+      sent.push(event);
+      return Promise.resolve({ ids: ["01J0EVENT"] });
+    },
   });
-  assertEquals(result, { eventId: null });
-  assertEquals(lines.map((l) => JSON.parse(l)), [
-    { event: "job_enqueued", name: "repository.index", workspace_id: "cccccccc-0000-4000-8000-000000000003" },
-  ]);
+  assertEquals(await queue.enqueue("repository.analysis.requested", payload), { eventId: "01J0EVENT" });
+  assertEquals(sent, [{
+    id: `repository.analysis.requested:${payload.job_id}`,
+    name: "repository.analysis.requested",
+    data: payload,
+  }]);
+});
+
+Deno.test("Inngest job queue returns no event id when none is reported and propagates send errors", async () => {
+  const empty = createInngestJobQueue({ send: () => Promise.resolve({ ids: [] }) });
+  assertEquals(await empty.enqueue("repository.analysis.requested", payload), { eventId: null });
+
+  const failing = createInngestJobQueue({ send: () => Promise.reject(new Error("inngest down")) });
+  await assertRejects(() => failing.enqueue("repository.analysis.requested", payload), Error, "inngest down");
 });

@@ -28,6 +28,31 @@ export const workspaceRepositorySchema = z.object({
   html_url: z.url({ protocol: /^https$/ }),
 });
 
+// Repository analysis ------------------------------------------------------------
+// Derived from the latest `repository_indexing` job (the Inngest run's persisted projection).
+
+export const analysisStateSchema = z.enum(["queued", "running", "succeeded", "failed"]);
+
+export const analysisStageSchema = z.enum(["scanning", "analyzing", "preparing_context"]);
+
+/** Fixed failure codes recorded on the job; never raw error messages. */
+export const analysisErrorCodeSchema = z.enum([
+  "installation_unavailable",
+  "repository_unavailable",
+  "github_rate_limited",
+  "github_unavailable",
+  "github_unexpected_response",
+  "enqueue_failed",
+  "internal_error",
+]);
+
+export const workspaceAnalysisSchema = z.object({
+  state: analysisStateSchema,
+  stage: analysisStageSchema.nullable(),
+  error_code: analysisErrorCodeSchema.nullable(),
+  retryable: z.boolean(),
+});
+
 export const workspaceSchema = z.object({
   id: z.uuid(),
   status: workspaceStatusSchema,
@@ -36,6 +61,8 @@ export const workspaceSchema = z.object({
   indexed_commit_sha: gitCommitShaSchema.nullable(),
   created_at: timestampSchema,
   ready_at: timestampSchema.nullable(),
+  /** Null when no analysis has been queued for the workspace. */
+  analysis: workspaceAnalysisSchema.nullable(),
 });
 
 export const createWorkspaceResponseSchema = z.object({
@@ -66,12 +93,23 @@ export const workspaceDetailResponseSchema = z.object({
   interviews: z.array(interviewHistoryItemSchema),
 });
 
+// POST /workspaces/:id/analysis/retry ----------------------------------------------
+
+export const retryAnalysisResponseSchema = z.object({
+  workspace: workspaceSchema,
+});
+
 /** `repositories` has no html_url column; GitHub's canonical URL is derived from the full name. */
 export function repositoryHtmlUrl(fullName: string): string {
   return `https://github.com/${fullName.split("/").map(encodeURIComponent).join("/")}`;
 }
 
 export type WorkspaceStatus = z.infer<typeof workspaceStatusSchema>;
+export type AnalysisState = z.infer<typeof analysisStateSchema>;
+export type AnalysisStage = z.infer<typeof analysisStageSchema>;
+export type AnalysisErrorCode = z.infer<typeof analysisErrorCodeSchema>;
+export type WorkspaceAnalysis = z.infer<typeof workspaceAnalysisSchema>;
+export type RetryAnalysisResponse = z.infer<typeof retryAnalysisResponseSchema>;
 export type CreateWorkspaceRequest = z.infer<typeof createWorkspaceRequestSchema>;
 export type WorkspaceRepository = z.infer<typeof workspaceRepositorySchema>;
 export type Workspace = z.infer<typeof workspaceSchema>;

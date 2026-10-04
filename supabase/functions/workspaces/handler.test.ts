@@ -2,6 +2,7 @@ import { assert, assertEquals } from "@std/assert";
 import {
   apiErrorSchema,
   createWorkspaceResponseSchema,
+  retryAnalysisResponseSchema,
   workspaceDetailResponseSchema,
   workspaceListResponseSchema,
 } from "@stackprep/shared";
@@ -21,6 +22,7 @@ import { assertNoSecrets } from "../_shared/testing.ts";
 import {
   type ConnectionRow,
   createWorkspacesHandler,
+  toAnalysis,
   type WorkspaceReader,
   type WorkspaceRow,
   type WorkspaceWriters,
@@ -65,6 +67,7 @@ function workspaceRow(n: number, githubRepoId: number, extra: Partial<WorkspaceR
       default_branch: "main",
       github_connection_id: CONN,
     },
+    analysis_jobs: [{ status: "running", stage: "scanning", error_code: null }],
     ...extra,
   };
 }
@@ -75,6 +78,9 @@ interface Setup {
   list?: () => Promise<InstallationRepositories>;
   head?: () => Promise<RepositoryHead>;
   failJobInsert?: boolean;
+  failEnqueue?: boolean;
+  /** Simulates the atomic retry RPC finding the workspace no longer failed (e.g. a double click). */
+  retryConflict?: boolean;
   eventId?: string | null;
   /** Simulates a concurrent request creating the workspace between the existence check and the insert. */
   raceWith?: WorkspaceRow;
@@ -87,6 +93,8 @@ function setup({
   list = () => Promise.resolve({ repositories: [githubRepo(42, "alice/app")], truncated: false }),
   head = () => Promise.resolve({ defaultBranch: "main", commitSha: SHA }),
   failJobInsert = false,
+  failEnqueue = false,
+  retryConflict = false,
   eventId = null,
   raceWith,
   readerError = false,
@@ -94,7 +102,7 @@ function setup({
   const state = { workspaces: [...workspaces] };
   const writes: unknown[][] = [];
   const githubCalls: string[] = [];
-  const enqueued: [string, JobEvents["repository.index"]][] = [];
+  const enqueued: [string, JobEvents["repository.analysis.requested"]][] = [];
   const rlsClient = { rls: true } as unknown as SupabaseClient;
 
   const authenticate: Authenticate = (req) =>
@@ -148,6 +156,7 @@ function setup({
           default_branch,
           github_connection_id,
         },
+        analysis_jobs: [{ status: "queued", stage: null, error_code: null }],
       };
       state.workspaces.push(row);
       return Promise.resolve(row.id);
@@ -157,15 +166,30 @@ function setup({
       writes.push(["attachConnection", repositoryId, connectionId]);
       return Promise.resolve();
     },
-    insertIndexingJob(uid, workspaceId) {
+    insertIndexingJob(uid, workspaceId, sha) {
       assertEquals(uid, userId);
-      writes.push(["insertIndexingJob", workspaceId]);
+      writes.push(["insertIndexingJob", workspaceId, sha]);
       return failJobInsert ? Promise.reject(new Error("db down")) : Promise.resolve("job-1");
     },
     setJobEventId(uid, jobId, id) {
       assertEquals(uid, userId);
       writes.push(["setJobEventId", jobId, id]);
       return Promise.resolve();
+    },
+    failIndexingJob(workspaceId, jobId, code) {
+      writes.push(["failIndexingJob", workspaceId, jobId, code]);
+      return Promise.resolve();
+    },
+    retryAnalysis(uid, workspaceId) {
+      assertEquals(uid, userId);
+      writes.push(["retryAnalysis", workspaceId]);
+      const row = state.workspaces.find((w) => w.id === workspaceId);
+      if (retryConflict || !row || row.status !== "failed") {
+        return Promise.resolve(null);
+      }
+      row.status = "analyzing";
+      row.analysis_jobs = [{ status: "queued", stage: null, error_code: null }];
+      return Promise.resolve("job-2");
     },
   };
 
@@ -182,6 +206,9 @@ function setup({
 
   const jobs: JobQueue = {
     enqueue(name, payload) {
+      if (failEnqueue) {
+        return Promise.reject(new Error("inngest down: key=evt_secret"));
+      }
       enqueued.push([name, payload]);
       return Promise.resolve({ eventId });
     },
@@ -253,6 +280,10 @@ Deno.test("CORS, preflight, routing, method, and auth checks", async () => {
   const postToId = await request(handler, `/workspaces/${crypto.randomUUID()}`, { method: "POST" });
   assertEquals(postToId.headers.get("allow"), "GET, OPTIONS");
   await expectError(postToId, 405, "method_not_allowed");
+  const getRetry = await request(handler, `/workspaces/${crypto.randomUUID()}/analysis/retry`);
+  assertEquals(getRetry.headers.get("allow"), "POST, OPTIONS");
+  await expectError(getRetry, 405, "method_not_allowed");
+  await expectError(await request(handler, "/workspaces/a/analysis"), 404, "not_found");
 
   await expectError(await post(handler, validBody, ""), 401, "unauthorized");
   await expectError(await request(handler, "/workspaces", {}, "Bearer forged"), 401, "unauthorized");
@@ -335,11 +366,11 @@ Deno.test("creates a workspace pinned to the head commit and enqueues indexing",
       default_branch: "main",
     }],
     ["insertWorkspace", repositoryId, SHA],
-    ["insertIndexingJob", workspaceId],
+    ["insertIndexingJob", workspaceId, SHA],
   ]);
   assertEquals(enqueued, [[
-    "repository.index",
-    { workspace_id: workspaceId, repository_id: repositoryId, commit_sha: SHA, installation_id: 7 },
+    "repository.analysis.requested",
+    { workspace_id: workspaceId, job_id: "job-1", repository_id: repositoryId, commit_sha: SHA, installation_id: 7 },
   ]]);
   assertEquals(body, {
     created: true,
@@ -360,8 +391,22 @@ Deno.test("creates a workspace pinned to the head commit and enqueues indexing",
       indexed_commit_sha: null,
       created_at: "2026-10-04T12:00:00.123456+00:00",
       ready_at: null,
+      analysis: { state: "queued", stage: null, error_code: null, retryable: false },
     },
   });
+});
+
+Deno.test("a failed enqueue marks the job failed so the user can retry, without leaking the error", async () => {
+  const lines = quietConsole();
+  try {
+    const { handler, writes } = setup({ failEnqueue: true });
+    assertEquals((await post(handler, validBody)).status, 201);
+    assertEquals(writes.at(-1), ["failIndexingJob", "eeeeeeee-0000-4000-8000-000000000001", "job-1", "enqueue_failed"]);
+    assert(lines.some((l) => l.includes("workspace_indexing_enqueue_failed")));
+    assert(!lines.join("\n").includes("evt_secret"));
+  } finally {
+    restoreConsole();
+  }
 });
 
 Deno.test("records the runner's event id when one is returned", async () => {
@@ -483,6 +528,106 @@ Deno.test("returns workspace detail with an empty interview history", async () =
   assertEquals(body.repository, body.workspace.repository);
   assertEquals(body.repository.html_url, "https://github.com/alice/repo-1");
   assertEquals(body.workspace.status, "ready");
+});
+
+Deno.test("workspace detail includes the analysis stage while running", async () => {
+  const row = workspaceRow(1, 1, { analysis_jobs: [{ status: "running", stage: "analyzing", error_code: null }] });
+  const { handler } = setup({ workspaces: [row] });
+  const body = workspaceDetailResponseSchema.parse(await (await request(handler, `/workspaces/${row.id}`)).json());
+  assertEquals(body.workspace.analysis, { state: "running", stage: "analyzing", error_code: null, retryable: false });
+});
+
+Deno.test("toAnalysis derives the UI state from the latest job", () => {
+  assertEquals(toAnalysis(undefined, "analyzing"), null);
+  assertEquals(toAnalysis({ status: "queued", stage: null, error_code: null }, "analyzing"), {
+    state: "queued",
+    stage: null,
+    error_code: null,
+    retryable: false,
+  });
+  assertEquals(toAnalysis({ status: "succeeded", stage: "preparing_context", error_code: null }, "ready"), {
+    state: "succeeded",
+    stage: null,
+    error_code: null,
+    retryable: false,
+  });
+  assertEquals(toAnalysis({ status: "failed", stage: null, error_code: "github_unavailable" }, "failed"), {
+    state: "failed",
+    stage: null,
+    error_code: "github_unavailable",
+    retryable: true,
+  });
+  assertEquals(toAnalysis({ status: "failed", stage: null, error_code: "something_new" }, "failed")?.error_code, "internal_error");
+  assertEquals(toAnalysis({ status: "running", stage: "bogus", error_code: null }, "analyzing")?.stage, null);
+  assertEquals(toAnalysis({ status: "failed", stage: null, error_code: "internal_error" }, "ready")?.retryable, false);
+});
+
+// POST /workspaces/:id/analysis/retry ------------------------------------------------
+
+function failedRow(n = 1) {
+  return workspaceRow(n, n, {
+    status: "failed",
+    analysis_jobs: [{ status: "failed", stage: null, error_code: "github_unavailable" }],
+  });
+}
+
+const retry = (handler: Handler, id: string, auth = "Bearer valid") =>
+  request(handler, `/workspaces/${id}/analysis/retry`, { method: "POST" }, auth);
+
+Deno.test("retry re-queues a failed workspace and enqueues a new analysis", async () => {
+  const row = failedRow();
+  const { handler, writes, enqueued } = setup({ workspaces: [row], eventId: "evt_9" });
+  const res = await retry(handler, row.id);
+  assertEquals(res.status, 202);
+  await assertNoSecrets(res);
+  const body = retryAnalysisResponseSchema.parse(await res.json());
+  assertEquals(body.workspace.status, "analyzing");
+  assertEquals(body.workspace.analysis, { state: "queued", stage: null, error_code: null, retryable: false });
+  assertEquals(writes, [["retryAnalysis", row.id], ["setJobEventId", "job-2", "evt_9"]]);
+  assertEquals(enqueued, [[
+    "repository.analysis.requested",
+    { workspace_id: row.id, job_id: "job-2", repository_id: row.repository.id, commit_sha: SHA, installation_id: 7 },
+  ]]);
+});
+
+Deno.test("retry requires auth and hides other users' and unknown workspaces", async () => {
+  const { handler, writes, enqueued } = setup({ workspaces: [failedRow()] });
+  await expectError(await retry(handler, failedRow().id, ""), 401, "unauthorized");
+  await expectError(await retry(handler, crypto.randomUUID()), 404, "workspace_not_found");
+  await expectError(await retry(handler, "not-a-uuid"), 404, "workspace_not_found");
+  assertEquals(writes, []);
+  assertEquals(enqueued, []);
+});
+
+Deno.test("retry is rejected unless the workspace failed", async () => {
+  for (const status of ["analyzing", "ready"] as const) {
+    const row = workspaceRow(1, 1, { status, indexed_commit_sha: SHA, ready_at: "2026-10-01T01:00:00+00:00" });
+    const { handler, writes, enqueued } = setup({ workspaces: [row] });
+    await expectError(await retry(handler, row.id), 409, "analysis_not_retryable");
+    assertEquals(writes, []);
+    assertEquals(enqueued, []);
+  }
+});
+
+Deno.test("a concurrent retry loses the race without enqueuing", async () => {
+  const row = failedRow();
+  const { handler, enqueued } = setup({ workspaces: [row], retryConflict: true });
+  await expectError(await retry(handler, row.id), 409, "analysis_not_retryable");
+  assertEquals(enqueued, []);
+});
+
+Deno.test("retry requires a usable GitHub connection", async () => {
+  const detached = failedRow();
+  detached.repository.github_connection_id = null;
+  const noConn = setup({ workspaces: [detached] });
+  await expectError(await retry(noConn.handler, detached.id), 404, "connection_not_found");
+
+  const suspended = setup({
+    workspaces: [failedRow()],
+    connections: [{ ...conn, suspended_at: "2026-10-03T00:00:00Z" }],
+  });
+  await expectError(await retry(suspended.handler, failedRow().id), 409, "installation_suspended");
+  assertEquals([...noConn.writes, ...suspended.writes], []);
 });
 
 Deno.test("unknown, other users', and malformed workspace ids return 404", async () => {

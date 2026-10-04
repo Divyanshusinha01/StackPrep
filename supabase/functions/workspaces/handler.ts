@@ -1,8 +1,14 @@
 import {
+  type AnalysisErrorCode,
+  analysisErrorCodeSchema,
+  analysisStageSchema,
+  type AnalysisState,
   createWorkspaceRequestSchema,
   createWorkspaceResponseSchema,
   repositoryHtmlUrl,
+  retryAnalysisResponseSchema,
   type Workspace,
+  type WorkspaceAnalysis,
   workspaceDetailResponseSchema,
   workspaceIdParamSchema,
   workspaceListResponseSchema,
@@ -18,9 +24,19 @@ import type { JobQueue } from "../_shared/jobs.ts";
 const FN = "workspaces";
 const UNIQUE_VIOLATION = "23505";
 
+const ENQUEUE_FAILED_MESSAGE = "The analysis could not be queued";
+
+/** Only the latest repository_indexing job is embedded (see `withLatestJob`). */
 const WORKSPACE_COLUMNS = "id, status, target_commit_sha, indexed_commit_sha, created_at, ready_at, " +
   "repository:repositories!workspaces_repository_id_user_id_fkey" +
-  "(id, github_repo_id, owner, name, full_name, is_private, default_branch, github_connection_id)";
+  "(id, github_repo_id, owner, name, full_name, is_private, default_branch, github_connection_id), " +
+  "analysis_jobs:jobs!jobs_workspace_id_user_id_fkey(status, stage, error_code, type, created_at)";
+
+export interface AnalysisJobRow {
+  status: AnalysisState;
+  stage: string | null;
+  error_code: string | null;
+}
 
 export interface ConnectionRow {
   id: string;
@@ -45,6 +61,8 @@ export interface WorkspaceRow {
     default_branch: string;
     github_connection_id: string | null;
   };
+  /** At most one row: the latest repository_indexing job. */
+  analysis_jobs: AnalysisJobRow[];
 }
 
 /** Reads made with the caller's client, so RLS limits every result to their own rows. */
@@ -71,8 +89,12 @@ export interface WorkspaceWriters {
   /** Returns the new workspace id, or null when the repository already has a workspace. */
   insertWorkspace(userId: string, repositoryId: string, targetCommitSha: string): Promise<string | null>;
   attachConnection(userId: string, repositoryId: string, connectionId: string): Promise<void>;
-  insertIndexingJob(userId: string, workspaceId: string): Promise<string>;
+  insertIndexingJob(userId: string, workspaceId: string, commitSha: string): Promise<string>;
   setJobEventId(userId: string, jobId: string, eventId: string): Promise<void>;
+  /** Marks the job (and its workspace) failed so the user can retry. */
+  failIndexingJob(workspaceId: string, jobId: string, code: AnalysisErrorCode, message: string): Promise<void>;
+  /** Atomically re-queues a failed workspace; null when it is not the user's or not failed. */
+  retryAnalysis(userId: string, workspaceId: string): Promise<string | null>;
 }
 
 export interface WorkspacesHandlerOptions {
@@ -96,6 +118,15 @@ export function createWorkspaceReader(client: SupabaseClient): WorkspaceReader {
     return (data ?? null) as T | null;
   }
 
+  function workspaces() {
+    return client
+      .from("workspaces")
+      .select(WORKSPACE_COLUMNS)
+      .eq("analysis_jobs.type", "repository_indexing")
+      .order("created_at", { referencedTable: "analysis_jobs", ascending: false })
+      .limit(1, { referencedTable: "analysis_jobs" });
+  }
+
   async function findRepositoryId(githubRepoId: number): Promise<string | null> {
     const row = await maybeOne<{ id: string }>(
       "load repository",
@@ -114,13 +145,13 @@ export function createWorkspaceReader(client: SupabaseClient): WorkspaceReader {
     async listWorkspaces() {
       return (await maybeOne<WorkspaceRow[]>(
         "list workspaces",
-        client.from("workspaces").select(WORKSPACE_COLUMNS).order("created_at", { ascending: false }).order("id"),
+        workspaces().order("created_at", { ascending: false }).order("id"),
       )) ?? [];
     },
     getWorkspace: (workspaceId) =>
       maybeOne(
         "load workspace",
-        client.from("workspaces").select(WORKSPACE_COLUMNS).eq("id", workspaceId).maybeSingle(),
+        workspaces().eq("id", workspaceId).maybeSingle(),
       ),
     async findWorkspaceByGithubRepo(githubRepoId) {
       const repositoryId = await findRepositoryId(githubRepoId);
@@ -129,7 +160,7 @@ export function createWorkspaceReader(client: SupabaseClient): WorkspaceReader {
       }
       return maybeOne(
         "load workspace",
-        client.from("workspaces").select(WORKSPACE_COLUMNS).eq("repository_id", repositoryId).maybeSingle(),
+        workspaces().eq("repository_id", repositoryId).maybeSingle(),
       );
     },
   };
@@ -184,16 +215,46 @@ export function createWorkspaceWriters(serviceClient: SupabaseClient): Workspace
         throw new Error(`Failed to attach GitHub connection: ${error.message}`);
       }
     },
-    async insertIndexingJob(userId, workspaceId) {
+    async insertIndexingJob(userId, workspaceId, commitSha) {
       const row = await run<{ id: string }>(
         "insert indexing job",
         serviceClient
           .from("jobs")
-          .insert({ user_id: userId, workspace_id: workspaceId, type: "repository_indexing", status: "queued" })
+          .insert({
+            user_id: userId,
+            workspace_id: workspaceId,
+            type: "repository_indexing",
+            status: "queued",
+            repository_commit_sha: commitSha,
+          })
           .select("id")
           .single(),
       );
       return row.id;
+    },
+    async failIndexingJob(workspaceId, jobId, code, message) {
+      const { error } = await serviceClient.rpc("fail_repository_analysis", {
+        p_workspace_id: workspaceId,
+        p_job_id: jobId,
+        p_error_code: code,
+        p_error_message: message,
+      });
+      if (error) {
+        throw new Error(`Failed to record indexing failure: ${error.message}`);
+      }
+    },
+    async retryAnalysis(userId, workspaceId) {
+      const { data, error } = await serviceClient.rpc("retry_repository_analysis", {
+        p_workspace_id: workspaceId,
+        p_user_id: userId,
+      });
+      if (error?.code === UNIQUE_VIOLATION) {
+        return null;
+      }
+      if (error) {
+        throw new Error(`Failed to retry repository analysis: ${error.message}`);
+      }
+      return (data as string | null) ?? null;
     },
     async setJobEventId(userId, jobId, eventId) {
       const { error } = await serviceClient
@@ -208,6 +269,22 @@ export function createWorkspaceWriters(serviceClient: SupabaseClient): Workspace
   };
 }
 
+/** Unknown stored values degrade to null / internal_error instead of failing the response. */
+export function toAnalysis(job: AnalysisJobRow | undefined, status: WorkspaceStatus): WorkspaceAnalysis | null {
+  if (!job) {
+    return null;
+  }
+  const stage = analysisStageSchema.safeParse(job.stage);
+  const failed = job.status === "failed";
+  const code = failed ? analysisErrorCodeSchema.safeParse(job.error_code) : null;
+  return {
+    state: job.status,
+    stage: job.status === "running" && stage.success ? stage.data : null,
+    error_code: code ? (code.success ? code.data : "internal_error") : null,
+    retryable: failed && status === "failed",
+  };
+}
+
 function toWorkspace(row: WorkspaceRow): Workspace {
   const { github_connection_id: _, ...repository } = row.repository;
   return {
@@ -218,10 +295,11 @@ function toWorkspace(row: WorkspaceRow): Workspace {
     indexed_commit_sha: row.indexed_commit_sha,
     created_at: row.created_at,
     ready_at: row.ready_at,
+    analysis: toAnalysis(row.analysis_jobs?.[0], row.status),
   };
 }
 
-const ROUTE = /\/workspaces(?:\/([^/]+))?\/?$/;
+const ROUTE = /\/workspaces(?:\/([^/]+)(\/analysis\/retry)?)?\/?$/;
 
 export function createWorkspacesHandler({
   webOrigin,
@@ -238,18 +316,51 @@ export function createWorkspacesHandler({
     return json(body, { status: created ? 201 : 200, headers: cors.headers });
   }
 
-  /** Best effort: the workspace stays `analyzing` if this fails, and the failure is logged. */
+  /**
+   * Best effort and never throws. If the event cannot be sent, the job and workspace are marked
+   * failed (`enqueue_failed`) so the user can retry instead of waiting on a run that never starts.
+   */
+  async function enqueueAnalysis(
+    userId: string,
+    workspaceId: string,
+    jobId: string,
+    payload: { repository_id: string; commit_sha: string; installation_id: number },
+  ): Promise<void> {
+    const logCtx = { installation_id: payload.installation_id, workspace_id: workspaceId };
+    let eventId: string | null;
+    try {
+      ({ eventId } = await jobs.enqueue("repository.analysis.requested", {
+        workspace_id: workspaceId,
+        job_id: jobId,
+        ...payload,
+      }));
+    } catch (err) {
+      logGithubError(FN, err, { ...logCtx, event: "workspace_indexing_enqueue_failed", code: "internal_error" });
+      try {
+        await writers.failIndexingJob(workspaceId, jobId, "enqueue_failed", ENQUEUE_FAILED_MESSAGE);
+      } catch (failErr) {
+        logGithubError(FN, failErr, { ...logCtx, event: "workspace_indexing_fail_record_failed", code: "internal_error" });
+      }
+      return;
+    }
+    if (eventId !== null) {
+      try {
+        await writers.setJobEventId(userId, jobId, eventId);
+      } catch (err) {
+        logGithubError(FN, err, { ...logCtx, event: "workspace_job_event_id_failed", code: "internal_error" });
+      }
+    }
+  }
+
+  /** Best effort: the workspace stays `analyzing` if the job row cannot be created, and the failure is logged. */
   async function startIndexing(
     userId: string,
     workspaceId: string,
     payload: { repository_id: string; commit_sha: string; installation_id: number },
   ): Promise<void> {
+    let jobId: string;
     try {
-      const jobId = await writers.insertIndexingJob(userId, workspaceId);
-      const { eventId } = await jobs.enqueue("repository.index", { workspace_id: workspaceId, ...payload });
-      if (eventId !== null) {
-        await writers.setJobEventId(userId, jobId, eventId);
-      }
+      jobId = await writers.insertIndexingJob(userId, workspaceId, payload.commit_sha);
     } catch (err) {
       logGithubError(FN, err, {
         event: "workspace_indexing_enqueue_failed",
@@ -257,7 +368,9 @@ export function createWorkspacesHandler({
         installation_id: payload.installation_id,
         workspace_id: workspaceId,
       });
+      return;
     }
+    await enqueueAnalysis(userId, workspaceId, jobId, payload);
   }
 
   async function createWorkspace(req: Request): Promise<Response> {
@@ -380,6 +493,49 @@ export function createWorkspacesHandler({
     return json(body, { headers: cors.headers });
   }
 
+  async function retryAnalysis(req: Request, id: string): Promise<Response> {
+    const ctx = await authenticate(req);
+    if (!ctx) {
+      return apiError("unauthorized", cors);
+    }
+    if (!workspaceIdParamSchema.safeParse(id).success) {
+      return apiError("workspace_not_found", cors);
+    }
+    const userReader = reader(ctx.supabase);
+    const row = await userReader.getWorkspace(id);
+    if (!row) {
+      return apiError("workspace_not_found", cors);
+    }
+    if (row.status !== "failed" || row.target_commit_sha === null) {
+      return apiError("analysis_not_retryable", cors);
+    }
+    const connectionId = row.repository.github_connection_id;
+    const conn = connectionId ? await userReader.getConnection(connectionId) : null;
+    if (!conn) {
+      return apiError("connection_not_found", cors);
+    }
+    if (conn.suspended_at !== null) {
+      return apiError("installation_suspended", cors);
+    }
+
+    const jobId = await writers.retryAnalysis(ctx.user.id, row.id);
+    if (jobId === null) {
+      return apiError("analysis_not_retryable", cors);
+    }
+    await enqueueAnalysis(ctx.user.id, row.id, jobId, {
+      repository_id: row.repository.id,
+      commit_sha: row.target_commit_sha,
+      installation_id: conn.installation_id,
+    });
+
+    const updated = await userReader.getWorkspace(row.id);
+    if (!updated) {
+      throw new Error("Retried workspace is not readable");
+    }
+    const body = retryAnalysisResponseSchema.parse({ workspace: toWorkspace(updated) });
+    return json(body, { status: 202, headers: cors.headers });
+  }
+
   return async (req: Request): Promise<Response> => {
     const rejected = cors.rejectOrigin(req);
     if (rejected) {
@@ -395,12 +551,16 @@ export function createWorkspacesHandler({
       return apiError("not_found", cors);
     }
     const id = match[1];
-    const allowed = id === undefined ? "GET, POST" : "GET";
+    const isRetry = match[2] !== undefined;
+    const allowed = id === undefined ? "GET, POST" : isRetry ? "POST" : "GET";
     if (!allowed.split(", ").includes(req.method)) {
       return apiError("method_not_allowed", cors, { Allow: `${allowed}, OPTIONS` });
     }
 
     try {
+      if (isRetry) {
+        return await retryAnalysis(req, id);
+      }
       if (id !== undefined) {
         return await getWorkspace(req, id);
       }
