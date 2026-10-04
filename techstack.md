@@ -12,7 +12,10 @@
 | Cache               | **None initially**           | Avoid unnecessary infrastructure                     |
 | **Background jobs** | **Inngest**                  | Durable serverless jobs; free tier, no card required |
 | AI                  | **OpenAI API**               | LLM + voice + vision                                 |
-| Voice               | **OpenAI Realtime + WebRTC** | No separate voice provider                           |
+| Voice               | **OpenAI Realtime API over WebRTC** | No separate voice provider; browser connects directly to OpenAI for audio |
+| Voice credentials   | **Ephemeral Realtime credential minted by Edge Function** | `OPENAI_API_KEY` stays server-side; browser only gets a short-lived credential |
+| Application communication | **HTTP + SSE**         | HTTP for commands/state; SSE for server-to-client interview events |
+| Transcript storage  | **Supabase PostgreSQL (canonical)** | OpenAI Realtime runs the live session; StackPrep persists the interview record |
 | Vision              | **OpenAI vision models**     | No CV infrastructure                                 |
 | GitHub              | **GitHub App**               | Secure repository access                             |
 | Parsing             | **Tree-sitter**              | Local/open-source parsing                            |
