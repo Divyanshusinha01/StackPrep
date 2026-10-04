@@ -2,11 +2,14 @@ import { describe, expect, it } from "vitest";
 import { isProtectedPath, safeNextPath } from "./auth.ts";
 
 describe("isProtectedPath", () => {
-  it.each(["/workspaces", "/workspaces/abc", "/interviews", "/interviews/abc/report"])("protects %s", (path) => {
-    expect(isProtectedPath(path)).toBe(true);
-  });
+  it.each(["/workspaces", "/workspaces/abc", "/interviews", "/interviews/abc/report", "/github/callback"])(
+    "protects %s",
+    (path) => {
+      expect(isProtectedPath(path)).toBe(true);
+    },
+  );
 
-  it.each(["/", "/login", "/status", "/auth/callback", "/workspacesx", "/interviewsfoo"])("does not protect %s", (path) => {
+  it.each(["/", "/login", "/status", "/auth/callback", "/workspacesx", "/interviewsfoo", "/githubx"])("does not protect %s", (path) => {
     expect(isProtectedPath(path)).toBe(false);
   });
 });
@@ -27,6 +30,11 @@ describe("safeNextPath", () => {
     "javascript:alert(1)",
   ])("falls back for %s", (next) => {
     expect(safeNextPath(next)).toBe("/workspaces");
+  });
+
+  it("keeps the GitHub setup callback query so it survives sign-in", () => {
+    const next = "/github/callback?code=abc&installation_id=12345&setup_action=install";
+    expect(safeNextPath(next)).toBe(next);
   });
 
   it("uses a custom fallback", () => {
