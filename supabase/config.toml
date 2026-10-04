@@ -21,22 +21,18 @@ redirect_uri = ""
 enabled = true
 verify_jwt = false
 entrypoint = "./functions/health/index.ts"
-import_map = "./functions/deno.json"
 
 [functions.me]
 enabled = true
 verify_jwt = true
 entrypoint = "./functions/me/index.ts"
-import_map = "./functions/deno.json"
 
 [functions.github]
 enabled = true
 verify_jwt = true
 entrypoint = "./functions/github/index.ts"
-import_map = "./functions/deno.json"
 
 [functions.repositories]
 enabled = true
 verify_jwt = true
 entrypoint = "./functions/repositories/index.ts"
-import_map = "./functions/deno.json"
