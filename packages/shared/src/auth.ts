@@ -1,4 +1,4 @@
-export const PROTECTED_PATH_PREFIXES = ["/workspaces", "/interviews"] as const;
+export const PROTECTED_PATH_PREFIXES = ["/workspaces", "/interviews", "/github"] as const;
 
 export const DEFAULT_AUTHENTICATED_PATH = "/workspaces";
 
