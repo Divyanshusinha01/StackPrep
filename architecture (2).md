@@ -407,6 +407,8 @@ Supabase PostgreSQL / Storage
 
 Inngest provides retries, step-level durability, concurrency control, and scheduling, so no custom jobs table or polling worker is required.
 
+Inngest functions are served by a dedicated `inngest` Supabase Edge Function (`{SUPABASE_URL}/functions/v1/inngest`), which Inngest calls to execute each step. No separate worker host is deployed.
+
 Job status that the UI needs (e.g. indexing progress, report readiness) is persisted to Supabase PostgreSQL by the Inngest function.
 
 The application should expose a job abstraction (e.g. `enqueue(type, payload)`) so domain code does not depend directly on Inngest.
@@ -464,6 +466,31 @@ Supabase    Inngest
 Frontend, Edge Functions, and Inngest functions are independently deployable.
 
 Environment-specific configuration is managed through environment variables.
+
+### Environment variables
+
+Each integration has its own Zod schema in `@stackprep/shared` (`packages/shared/src/env.ts`) and is validated only where that integration is used. Only the core Supabase variables are required at boot. Secrets live only in the Edge Functions environment; the web app receives only `NEXT_PUBLIC_*` values plus Sentry build-time variables.
+
+**Vercel (Next.js)** — template in `apps/web/.env.example`
+
+| Schema                  | Variables                                                                    |
+| ----------------------- | ---------------------------------------------------------------------------- |
+| `webEnvSchema` (required) | `NODE_ENV`, `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY` |
+| `webSentryEnvSchema`    | `NEXT_PUBLIC_SENTRY_DSN`; build-time `SENTRY_ORG`, `SENTRY_PROJECT`, `SENTRY_AUTH_TOKEN` |
+| `webGithubAppEnvSchema` | `NEXT_PUBLIC_GITHUB_APP_SLUG` (install link only)                            |
+
+**Supabase Edge Functions** — template in `supabase/functions/.env.example`, set in production with `supabase secrets set`
+
+| Schema                     | Variables                                                                                     |
+| -------------------------- | --------------------------------------------------------------------------------------------- |
+| `edgeEnvSchema` (required) | `WEB_ORIGIN`                                                                                  |
+| `edgeSupabaseEnvSchema`    | `SUPABASE_URL`, `SUPABASE_ANON_KEY`, `SUPABASE_SERVICE_ROLE_KEY` (injected by the runtime)     |
+| `inngestEnvSchema`         | `INNGEST_EVENT_KEY`, `INNGEST_SIGNING_KEY`                                                    |
+| `openAIEnvSchema`          | `OPENAI_API_KEY`                                                                              |
+| `githubAppEnvSchema`       | `GITHUB_APP_ID`, `GITHUB_APP_CLIENT_ID`, `GITHUB_APP_CLIENT_SECRET`, `GITHUB_APP_PRIVATE_KEY`, `GITHUB_APP_WEBHOOK_SECRET` |
+| `edgeSentryEnvSchema`      | `SENTRY_DSN`, `SENTRY_ENVIRONMENT`                                                            |
+
+Edge Functions read their variables with the `readEnv(name, schema)` helper in `supabase/functions/_shared/env.ts`.
 
 ---
 
