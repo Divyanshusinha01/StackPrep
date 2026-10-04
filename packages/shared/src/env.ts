@@ -46,7 +46,10 @@ export const githubAppEnvSchema = z.object({
   GITHUB_APP_ID: z.string().regex(/^\d+$/, "Expected a numeric GitHub App id"),
   GITHUB_APP_CLIENT_ID: secret,
   GITHUB_APP_CLIENT_SECRET: secret,
-  GITHUB_APP_PRIVATE_KEY: secret,
+  GITHUB_APP_PRIVATE_KEY: secret.refine(
+    (pem) => pem.includes("-----BEGIN PRIVATE KEY-----") && pem.includes("-----END PRIVATE KEY-----"),
+    "Expected a PKCS#8 PEM (convert with openssl pkcs8 -topk8 -nocrypt)",
+  ),
   GITHUB_APP_WEBHOOK_SECRET: secret,
 });
 
