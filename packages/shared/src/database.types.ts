@@ -70,13 +70,13 @@ isOneToOne: false
                   ]
                 },"interview_messages": {
                   Row: {
-                    "content": string,"created_at": string,"id": string,"interview_id": string,"metadata": NonNullable<Json>,"question_message_id": string | null,"role": Database["public"]['Enums']["message_role"],"sequence": number,"user_id": string
+                    "client_event_id": string,"content": string,"created_at": string,"id": string,"interview_id": string,"metadata": NonNullable<Json>,"question_message_id": string | null,"role": Database["public"]['Enums']["message_role"],"sequence": number,"user_id": string
                   }
                   Insert: {
-                    "content": string,"created_at"?: string,"id"?: string,"interview_id": string,"metadata"?: NonNullable<Json>,"question_message_id"?: string | null,"role": Database["public"]['Enums']["message_role"],"sequence": number,"user_id": string
+                    "client_event_id"?: string,"content": string,"created_at"?: string,"id"?: string,"interview_id": string,"metadata"?: NonNullable<Json>,"question_message_id"?: string | null,"role": Database["public"]['Enums']["message_role"],"sequence": number,"user_id": string
                   }
                   Update: {
-                    "content"?: string,"created_at"?: string,"id"?: string,"interview_id"?: string,"metadata"?: NonNullable<Json>,"question_message_id"?: string | null,"role"?: Database["public"]['Enums']["message_role"],"sequence"?: number,"user_id"?: string
+                    "client_event_id"?: string,"content"?: string,"created_at"?: string,"id"?: string,"interview_id"?: string,"metadata"?: NonNullable<Json>,"question_message_id"?: string | null,"role"?: Database["public"]['Enums']["message_role"],"sequence"?: number,"user_id"?: string
                   }
                   Relationships: [
                     {
@@ -305,7 +305,7 @@ isOneToOne: false
                            }
           }
           Enums: {
-            "event_type": "start"|"integrity_warning"|"pause"|"resume"|"termination"|"completion"|"evidence_examined","interview_status": "created"|"in_progress"|"paused"|"completed"|"terminated"|"failed","job_status": "queued"|"running"|"succeeded"|"failed","job_type": "repository_indexing"|"deep_analysis"|"report_generation","message_role": "ai"|"user"|"system","termination_reason": "integrity_violation"|"completed_early"|"time_limit"|"technical_failure"|"user_abandoned","workspace_status": "analyzing"|"ready"|"failed"
+            "event_type": "start"|"integrity_warning"|"pause"|"resume"|"termination"|"completion"|"evidence_examined"|"tool_call"|"connected"|"disconnected","interview_status": "created"|"in_progress"|"paused"|"completed"|"terminated"|"failed","job_status": "queued"|"running"|"succeeded"|"failed","job_type": "repository_indexing"|"deep_analysis"|"report_generation","message_role": "ai"|"user"|"system","termination_reason": "integrity_violation"|"completed_early"|"time_limit"|"technical_failure"|"user_abandoned","workspace_status": "analyzing"|"ready"|"failed"
           }
           CompositeTypes: {
             [_ in never]: never
@@ -421,7 +421,7 @@ export type CompositeTypes<
 export const Constants = {
   "public": {
           Enums: {
-            "event_type": ["start", "integrity_warning", "pause", "resume", "termination", "completion", "evidence_examined"],"interview_status": ["created", "in_progress", "paused", "completed", "terminated", "failed"],"job_status": ["queued", "running", "succeeded", "failed"],"job_type": ["repository_indexing", "deep_analysis", "report_generation"],"message_role": ["ai", "user", "system"],"termination_reason": ["integrity_violation", "completed_early", "time_limit", "technical_failure", "user_abandoned"],"workspace_status": ["analyzing", "ready", "failed"]
+            "event_type": ["start", "integrity_warning", "pause", "resume", "termination", "completion", "evidence_examined", "tool_call", "connected", "disconnected"],"interview_status": ["created", "in_progress", "paused", "completed", "terminated", "failed"],"job_status": ["queued", "running", "succeeded", "failed"],"job_type": ["repository_indexing", "deep_analysis", "report_generation"],"message_role": ["ai", "user", "system"],"termination_reason": ["integrity_violation", "completed_early", "time_limit", "technical_failure", "user_abandoned"],"workspace_status": ["analyzing", "ready", "failed"]
           }
         }
 } as const

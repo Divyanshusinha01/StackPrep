@@ -295,7 +295,7 @@ The backend persists:
 Do not rely on the browser uploading a single final transcript at the end of the interview.
 
 - **Incremental capture.** The browser sends each completed transcript turn and important realtime event to the backend as it happens, not only at the end.
-- **Idempotent writes.** Each event carries a client-generated event ID and turn sequence number so retries do not create duplicates and gaps are detectable.
+- **Idempotent writes.** Each transcript turn carries a client-generated `client_event_id` (UUID) and a turn `sequence`. A retry with the same `client_event_id` returns the original acknowledgement; a different `client_event_id` at an existing `sequence` is rejected as a conflict. Gaps in `sequence` are detectable.
 - **Client buffering.** Events that fail to send are queued locally and retried until acknowledged.
 - **Server-owned state.** Interview progress (current question, turns, plan coverage) lives in PostgreSQL, so the interview can resume from the last persisted turn.
 - **Reconnection.** On disconnect, the browser requests a new ephemeral credential. The backend builds the new Realtime session from persisted interview state so the conversation continues where it stopped.
@@ -494,7 +494,7 @@ OpenAI Realtime runs the live conversation, but it never touches the database, G
 5. Repository/file retrieval goes through controlled tools pinned to the interview's commit SHA.
 6. Transcript turns are persisted incrementally, independent of tool calls.
 7. Tool inputs and outputs use shared Zod schemas in `@stackprep/shared`.
-8. Consequential mutations require explicit user approval.
+8. State-changing tools are requests; the backend decides whether they take effect.
 9. The browser never receives privileged credentials (`OPENAI_API_KEY`, `SUPABASE_SERVICE_ROLE_KEY`, GitHub tokens).
 
 ### Tool-call relay
@@ -539,7 +539,7 @@ Rules:
 | `search_repository` | Find relevant files/excerpts in the indexed repository                  | No                             |
 | `get_file`          | Retrieve a specific file or section at the interview's commit SHA       | No                             |
 | `advance_interview` | Request the next question / coverage step from the interview engine     | Yes — server-decided           |
-| `end_interview`     | Request interview completion                                            | Yes — requires user approval   |
+| `end_interview`     | Signal that sufficient evidence is gathered and the interview should close | Yes — server-decided        |
 
 Transcript persistence is **not** a model tool. The model could skip or misreport it, so transcript turns are captured by the browser from Realtime transcription events and sent through `POST /interviews/:id/events` (see [Transcript persistence](#transcript-persistence)).
 
@@ -588,11 +588,13 @@ Realtime
 - Examined files are recorded as `evidence_examined` interview events, which feed report scope evidence.
 - This is the integration point for a future RAG/pgvector retrieval layer; the tool contract does not change.
 
-### Approval for consequential mutations
+### Server-decided mutations
 
-Server-decided mutations (recording an evaluation, updating coverage via `update_interview_state`) happen automatically inside the tool handler, using the existing optimistic-concurrency version check.
+Evaluations, coverage updates (via the `update_interview_state` database function, not a Realtime tool), and interview completion happen inside tool handlers, using the existing optimistic-concurrency version check.
 
-Mutations with user-visible consequences — currently ending the interview early — require **explicit user approval in the UI**. The tool returns a `requires_confirmation` result; the browser shows a confirmation control; only the user's confirmation (a separate authenticated HTTP request) performs the mutation. Spoken intent alone is never sufficient.
+`end_interview` is a request, not a command: the backend checks completion criteria (sufficient evidence or the ~30-minute target) before marking the interview `completed`. If accepted, it returns guidance for the interviewer to deliver a closing statement, then emits a `completion` event and triggers report generation. If rejected, it returns guidance to continue.
+
+The candidate cannot voluntarily end or pause the interview (PRD §21). If a user-initiated early exit is added later, it must go through an explicit, authenticated UI confirmation — never spoken intent alone.
 
 ### Transcript persistence
 
@@ -619,12 +621,16 @@ This uses the existing tables rather than separate voice-session tables:
 | Tool calls / outcomes | `interview_events` (`call_id`, tool name, validated args, result summary)                    |
 | Connect / reconnect   | `interview_events`                                                                           |
 
-`unique (interview_id, sequence)` guarantees retries and reconnects cannot create duplicates, and gaps in `sequence` are detectable.
+Sequence ownership:
 
-Schema follow-ups required to implement this section:
+- `interview_messages.sequence` is assigned by the **browser** (transcript turns originate from Realtime transcription events on the client).
+- `interview_events.sequence` is assigned by the **backend** for every event, including connect/reconnect events reported by the browser. The browser never supplies an event sequence.
 
-- Add `tool_call` and connection (`connected` / `disconnected`) values to `event_type`.
-- Add a uniqueness guarantee on tool `call_id` per interview for idempotent tool execution.
+`unique (interview_id, client_event_id)` makes transcript retries idempotent, and `unique (interview_id, sequence)` prevents two different turns from claiming the same position. Gaps in `sequence` are detectable.
+
+Tool calls are idempotent per `call_id`: a partial unique index on `(interview_id, payload->>'call_id')` for `tool_call` events ensures a relayed retry is executed once.
+
+Schema: `tool_call`, `connected`, and `disconnected` event types, `interview_messages.client_event_id`, and the `call_id` index are added in migrations `20261004140000_realtime_event_types.sql` and `20261004140100_realtime_idempotency.sql`.
 
 ---
 
