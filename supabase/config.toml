@@ -4,4 +4,4 @@ project_id = "stackprep"
 enabled = true
 verify_jwt = false
 entrypoint = "./functions/health/index.ts"
-import_map = "./functions/health/deno.json"
+import_map = "./functions/deno.json"

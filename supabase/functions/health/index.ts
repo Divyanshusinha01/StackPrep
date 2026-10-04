@@ -1,8 +1,7 @@
-import { edgeEnvSchema, parseEnv } from "@stackprep/shared";
+import { edgeEnvSchema } from "@stackprep/shared";
+import { readEnv } from "../_shared/env.ts";
 import { createHealthHandler } from "./handler.ts";
 
-const env = parseEnv("health function", edgeEnvSchema, {
-  WEB_ORIGIN: Deno.env.get("WEB_ORIGIN"),
-});
+const env = readEnv("health function", edgeEnvSchema);
 
 Deno.serve(createHealthHandler({ webOrigin: env.WEB_ORIGIN }));
