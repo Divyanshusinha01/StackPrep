@@ -7,6 +7,7 @@ import {
   createWorkspaceResponseSchema,
   healthResponseSchema,
   repositoryListResponseSchema,
+  retryAnalysisResponseSchema,
   workspaceDetailResponseSchema,
   workspaceListResponseSchema,
 } from "@stackprep/shared";
@@ -71,4 +72,10 @@ export function listWorkspaces() {
 
 export function getWorkspace(id: string) {
   return functionRequest(`workspaces/${encodeURIComponent(id)}`, workspaceDetailResponseSchema, { method: "GET" });
+}
+
+export function retryWorkspaceAnalysis(id: string) {
+  return functionRequest(`workspaces/${encodeURIComponent(id)}/analysis/retry`, retryAnalysisResponseSchema, {
+    method: "POST",
+  });
 }

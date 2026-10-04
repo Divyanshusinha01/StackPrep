@@ -9,7 +9,7 @@
   "scripts": {
     "dev": "pnpm --filter @stackprep/web dev",
     "dev:functions": "supabase functions serve",
-    "test:functions": "deno test --config supabase/functions/deno.json supabase/functions",
+    "test:functions": "deno test --allow-env --config supabase/functions/deno.json supabase/functions",
     "typecheck:functions": "deno check --config supabase/functions/deno.json supabase/functions",
     "lint:functions": "deno lint supabase/functions",
     "db:reset": "supabase db reset",

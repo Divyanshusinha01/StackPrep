@@ -1,16 +1,18 @@
 export interface JobEvents {
-  "repository.index": {
+  "repository.analysis.requested": {
     workspace_id: string;
     repository_id: string;
-    commit_sha: string;
+    /** The `jobs` row that projects this run's progress. */
+    job_id: string;
     installation_id: number;
+    commit_sha: string;
   };
 }
 
 export type JobEventName = keyof JobEvents;
 
 export interface EnqueueResult {
-  /** Id assigned by the job runner; null until a real runner (Inngest) is wired in. */
+  /** Id assigned by the job runner, when it returns one. */
   eventId: string | null;
 }
 
@@ -18,12 +20,20 @@ export interface JobQueue {
   enqueue<E extends JobEventName>(name: E, payload: JobEvents[E]): Promise<EnqueueResult>;
 }
 
-/** Placeholder runner: records the event and returns no id. Swapped for Inngest in `index.ts`. */
-export function createLoggingJobQueue(log: (line: string) => void = console.log): JobQueue {
+/** The subset of the Inngest client the queue needs, so domain code never imports the SDK. */
+export interface EventSender {
+  send(payload: { id?: string; name: string; data: Record<string, unknown> }): Promise<{ ids: string[] }>;
+}
+
+/**
+ * Sends jobs as Inngest events. The event id is derived from the job id, so a re-sent event for
+ * the same job is deduplicated by Inngest instead of starting a second run.
+ */
+export function createInngestJobQueue(sender: EventSender): JobQueue {
   return {
-    enqueue(name, payload) {
-      log(JSON.stringify({ event: "job_enqueued", name, workspace_id: payload.workspace_id }));
-      return Promise.resolve({ eventId: null });
+    async enqueue(name, payload) {
+      const { ids } = await sender.send({ id: `${name}:${payload.job_id}`, name, data: { ...payload } });
+      return { eventId: ids[0] ?? null };
     },
   };
 }

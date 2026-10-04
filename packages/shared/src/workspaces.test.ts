@@ -2,11 +2,13 @@ import { describe, expect, it } from "vitest";
 import { Constants } from "./database.types.ts";
 import { apiErrorCodeSchema } from "./github.ts";
 import {
+  analysisStateSchema,
   createWorkspaceRequestSchema,
   createWorkspaceResponseSchema,
   gitCommitShaSchema,
   interviewStatusSchema,
   repositoryHtmlUrl,
+  retryAnalysisResponseSchema,
   workspaceDetailResponseSchema,
   workspaceIdParamSchema,
   workspaceListResponseSchema,
@@ -36,6 +38,7 @@ const workspace = {
   indexed_commit_sha: null,
   created_at: "2026-10-04T10:00:00.123456+00:00",
   ready_at: null,
+  analysis: { state: "running", stage: "scanning", error_code: null, retryable: false },
 };
 
 describe("createWorkspaceRequestSchema", () => {
@@ -76,8 +79,24 @@ describe("workspaceSchema", () => {
     ["uppercase sha", { target_commit_sha: "A".repeat(40) }],
     ["non-https repository url", { repository: { ...repository, html_url: "http://github.com/alice/app" } }],
     ["timestamp without offset", { created_at: "2026-10-04T10:00:00" }],
+    ["missing analysis", { analysis: undefined }],
+    ["unknown analysis stage", { analysis: { ...workspace.analysis, stage: "uploading" } }],
+    ["unknown analysis error code", { analysis: { state: "failed", stage: null, error_code: "boom", retryable: true } }],
   ])("rejects %s", (_label, patch) => {
     expect(workspaceSchema.safeParse({ ...workspace, ...patch }).success).toBe(false);
+  });
+
+  it("accepts a workspace with no analysis yet and a failed analysis", () => {
+    expect(workspaceSchema.parse({ ...workspace, analysis: null }).analysis).toBeNull();
+    const failed = { state: "failed", stage: null, error_code: "github_unavailable", retryable: true };
+    expect(workspaceSchema.parse({ ...workspace, status: "failed", analysis: failed }).analysis).toEqual(failed);
+  });
+});
+
+describe("retryAnalysisResponseSchema", () => {
+  it("wraps the updated workspace", () => {
+    expect(retryAnalysisResponseSchema.parse({ workspace })).toEqual({ workspace });
+    expect(apiErrorCodeSchema.safeParse("analysis_not_retryable").success).toBe(true);
   });
 });
 
@@ -120,5 +139,6 @@ describe("helpers", () => {
   it("status enums match the database", () => {
     expect(workspaceStatusSchema.options).toEqual([...Constants.public.Enums.workspace_status]);
     expect(interviewStatusSchema.options).toEqual([...Constants.public.Enums.interview_status]);
+    expect(analysisStateSchema.options).toEqual([...Constants.public.Enums.job_status]);
   });
 });

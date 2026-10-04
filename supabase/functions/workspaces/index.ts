@@ -1,14 +1,15 @@
-import { edgeEnvSchema, edgeSupabaseEnvSchema, githubAppEnvSchema } from "@stackprep/shared";
+import { edgeEnvSchema, edgeSupabaseEnvSchema, githubAppEnvSchema, inngestEnvSchema } from "@stackprep/shared";
 import { createClient } from "@supabase/supabase-js";
 import { createSupabaseAuthenticator } from "../_shared/auth.ts";
 import { readEnv } from "../_shared/env.ts";
 import { createGithubApp } from "../_shared/github-app.ts";
-import { createLoggingJobQueue } from "../_shared/jobs.ts";
+import { createInngestClient } from "../_shared/inngest.ts";
+import { createInngestJobQueue } from "../_shared/jobs.ts";
 import { createWorkspaceReader, createWorkspacesHandler, createWorkspaceWriters } from "./handler.ts";
 
 const env = readEnv(
   "workspaces function",
-  edgeEnvSchema.extend(edgeSupabaseEnvSchema.shape).extend(githubAppEnvSchema.shape),
+  edgeEnvSchema.extend(edgeSupabaseEnvSchema.shape).extend(githubAppEnvSchema.shape).extend(inngestEnvSchema.shape),
 );
 
 const serviceClient = createClient(env.SUPABASE_URL, env.SUPABASE_SERVICE_ROLE_KEY, {
@@ -29,6 +30,6 @@ Deno.serve(
     github,
     reader: createWorkspaceReader,
     writers: createWorkspaceWriters(serviceClient),
-    jobs: createLoggingJobQueue(),
+    jobs: createInngestJobQueue(createInngestClient(env)),
   }),
 );

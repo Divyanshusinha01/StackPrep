@@ -133,13 +133,13 @@ isOneToOne: false
                   ]
                 },"jobs": {
                   Row: {
-                    "created_at": string,"error_message": string | null,"finished_at": string | null,"id": string,"inngest_event_id": string | null,"inngest_run_id": string | null,"interview_id": string | null,"progress": number,"stage": string | null,"started_at": string | null,"status": Database["public"]['Enums']["job_status"],"type": Database["public"]['Enums']["job_type"],"updated_at": string,"user_id": string,"workspace_id": string
+                    "created_at": string,"error_code": string | null,"error_message": string | null,"finished_at": string | null,"id": string,"inngest_event_id": string | null,"inngest_run_id": string | null,"interview_id": string | null,"progress": number,"repository_commit_sha": string | null,"stage": string | null,"started_at": string | null,"status": Database["public"]['Enums']["job_status"],"type": Database["public"]['Enums']["job_type"],"updated_at": string,"user_id": string,"workspace_id": string
                   }
                   Insert: {
-                    "created_at"?: string,"error_message"?: string | null,"finished_at"?: string | null,"id"?: string,"inngest_event_id"?: string | null,"inngest_run_id"?: string | null,"interview_id"?: string | null,"progress"?: number,"stage"?: string | null,"started_at"?: string | null,"status"?: Database["public"]['Enums']["job_status"],"type": Database["public"]['Enums']["job_type"],"updated_at"?: string,"user_id": string,"workspace_id": string
+                    "created_at"?: string,"error_code"?: string | null,"error_message"?: string | null,"finished_at"?: string | null,"id"?: string,"inngest_event_id"?: string | null,"inngest_run_id"?: string | null,"interview_id"?: string | null,"progress"?: number,"repository_commit_sha"?: string | null,"stage"?: string | null,"started_at"?: string | null,"status"?: Database["public"]['Enums']["job_status"],"type": Database["public"]['Enums']["job_type"],"updated_at"?: string,"user_id": string,"workspace_id": string
                   }
                   Update: {
-                    "created_at"?: string,"error_message"?: string | null,"finished_at"?: string | null,"id"?: string,"inngest_event_id"?: string | null,"inngest_run_id"?: string | null,"interview_id"?: string | null,"progress"?: number,"stage"?: string | null,"started_at"?: string | null,"status"?: Database["public"]['Enums']["job_status"],"type"?: Database["public"]['Enums']["job_type"],"updated_at"?: string,"user_id"?: string,"workspace_id"?: string
+                    "created_at"?: string,"error_code"?: string | null,"error_message"?: string | null,"finished_at"?: string | null,"id"?: string,"inngest_event_id"?: string | null,"inngest_run_id"?: string | null,"interview_id"?: string | null,"progress"?: number,"repository_commit_sha"?: string | null,"stage"?: string | null,"started_at"?: string | null,"status"?: Database["public"]['Enums']["job_status"],"type"?: Database["public"]['Enums']["job_type"],"updated_at"?: string,"user_id"?: string,"workspace_id"?: string
                   }
                   Relationships: [
                     {
@@ -263,7 +263,10 @@ isOneToOne: false
             [_ in never]: never
           }
           Functions: {
-            "create_interview":
+            "complete_repository_analysis":
+{ Args: { "p_commit_sha": string,"p_job_id": string,"p_memory": Json,"p_workspace_id": string }; Returns: boolean
+                           },
+"create_interview":
 { Args: { "p_coverage_map": Json,"p_plan": Json,"p_repository_commit_sha": string,"p_strategy": Json,"p_user_id": string,"p_workspace_id": string }; Returns: {
               "created_at": string,
 "ended_at": string | null,
@@ -286,10 +289,16 @@ isOneToOne: false
         isOneToOne: true
         isSetofReturn: false
       } },
+"fail_repository_analysis":
+{ Args: { "p_error_code": string,"p_error_message": string,"p_job_id": string,"p_workspace_id": string }; Returns: undefined
+                           },
 "match_repository_memory":
 { Args: { "p_commit_sha": string,"p_match_count"?: number,"p_query_embedding": string,"p_workspace_id": string }; Returns: {
               "content": string,"id": string,"kind": string,"metadata": Json,"similarity": number,"structured": Json
             }[]
+                           },
+"retry_repository_analysis":
+{ Args: { "p_user_id": string,"p_workspace_id": string }; Returns: string
                            },
 "update_interview_state":
 { Args: { "p_coverage_map": Json,"p_expected_version": number,"p_interview_id": string,"p_plan": Json,"p_strategy": Json }; Returns: number

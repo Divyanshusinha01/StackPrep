@@ -524,6 +524,80 @@ Deno.test("getRepositoryHead maps rate limits and 5xx, and evicts the token on 4
   assertEquals(evicting.count(MINT(7)), 2);
 });
 
+// Repository tree and blobs --------------------------------------------------------
+
+const BLOB_SHA = "fedcba9876543210fedcba9876543210fedcba98";
+const TREE = `GET /repos/alice/app/git/trees/${SHA}`;
+const BLOB = `GET /repos/alice/app/git/blobs/${BLOB_SHA}`;
+
+Deno.test("getRepositoryTree lists the recursive tree at a commit", async () => {
+  const { app, calls, clock } = setup({
+    [MINT(7)]: (req, url) => mintOk(clock)(req, url),
+    [TREE]: (req, url) => {
+      assertEquals(req.headers.get("authorization"), "Bearer ghs_installation");
+      assertEquals(url.searchParams.get("recursive"), "1");
+      return json({
+        sha: SHA,
+        truncated: true,
+        url: "x",
+        tree: [
+          { path: "src", mode: "040000", type: "tree", sha: BLOB_SHA },
+          { path: "src/index.ts", mode: "100644", type: "blob", sha: BLOB_SHA, size: 12 },
+        ],
+      });
+    },
+  });
+  const tree = await app.getRepositoryTree(7, "alice", "app", SHA);
+  assertEquals(tree.truncated, true);
+  assertEquals(tree.entries, [
+    { path: "src", type: "tree", sha: BLOB_SHA },
+    { path: "src/index.ts", type: "blob", sha: BLOB_SHA, size: 12 },
+  ]);
+  assertEquals(calls.map((c) => c.key), [MINT(7), TREE]);
+});
+
+Deno.test("getRepositoryTree rejects a malformed commit sha without calling GitHub", async () => {
+  const { app, calls } = setup({});
+  await assertRejects(() => app.getRepositoryTree(7, "alice", "app", "../../evil"), GithubUnexpectedResponseError);
+  assertEquals(calls, []);
+});
+
+Deno.test("getRepositoryTree maps a 404 tree read to an unexpected response", async () => {
+  const { app, clock } = setup({
+    [MINT(7)]: (req, url) => mintOk(clock)(req, url),
+    [TREE]: () => json({ message: "Not Found" }, { status: 404 }),
+  });
+  const err = await assertRejects(() => app.getRepositoryTree(7, "alice", "app", SHA), GithubUnexpectedResponseError);
+  assertEquals(err.status, 404);
+  assert(!err.message.includes("Not Found"));
+});
+
+Deno.test("getBlob decodes base64 content and enforces the size limit", async () => {
+  const content = btoa("hello world").replace(/(.{4})/g, "$1\n");
+  const { app, clock } = setup({
+    [MINT(7)]: (req, url) => mintOk(clock)(req, url),
+    [BLOB]: () => json({ sha: BLOB_SHA, size: 11, encoding: "base64", content, node_id: "x" }),
+  });
+  assertEquals(new TextDecoder().decode((await app.getBlob(7, "alice", "app", BLOB_SHA, 100))!), "hello world");
+  assertEquals(await app.getBlob(7, "alice", "app", BLOB_SHA, 10), null);
+  await assertRejects(() => app.getBlob(7, "alice", "app", "nope", 100), GithubUnexpectedResponseError);
+});
+
+Deno.test("getBlob returns null for non-base64 encodings and rejects malformed bodies", async () => {
+  const clock = { now: START };
+  const other = setup({
+    [MINT(7)]: (req, url) => mintOk(clock)(req, url),
+    [BLOB]: () => json({ sha: BLOB_SHA, size: 1, encoding: "none", content: "" }),
+  }, { now: () => clock.now });
+  assertEquals(await other.app.getBlob(7, "alice", "app", BLOB_SHA, 100), null);
+
+  const malformed = setup({
+    [MINT(7)]: (req, url) => mintOk(clock)(req, url),
+    [BLOB]: () => json({ sha: BLOB_SHA, size: "big" }),
+  }, { now: () => clock.now });
+  await assertRejects(() => malformed.app.getBlob(7, "alice", "app", BLOB_SHA, 100), GithubUnexpectedResponseError);
+});
+
 Deno.test("a malformed repository entry is rejected", async () => {
   const { app, clock } = setup({
     [MINT(7)]: (req, url) => mintOk(clock)(req, url),

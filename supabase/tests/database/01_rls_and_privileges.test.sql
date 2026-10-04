@@ -47,7 +47,7 @@ insert into public.reports (interview_id, workspace_id, user_id, content)
 select id, workspace_id, user_id, '{"executive_summary": "..."}' from public.interviews;
 
 insert into public.jobs (user_id, workspace_id, type, status, progress, stage)
-select user_id, id, 'repository_indexing', 'running', 40, 'Scanning files' from public.workspaces;
+select user_id, id, 'repository_indexing', 'running', 40, 'scanning' from public.workspaces;
 
 -- Catalog-level privilege assertions ------------------------------------------------
 

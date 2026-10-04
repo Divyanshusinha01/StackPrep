@@ -41,3 +41,9 @@ entrypoint = "./functions/repositories/index.ts"
 enabled = true
 verify_jwt = true
 entrypoint = "./functions/workspaces/index.ts"
+
+# Called by Inngest, not browsers: requests are authenticated with the Inngest signing key.
+[functions.inngest]
+enabled = true
+verify_jwt = false
+entrypoint = "./functions/inngest/index.ts"

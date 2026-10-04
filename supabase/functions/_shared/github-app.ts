@@ -121,6 +121,28 @@ const branchSchema = z.object({
   commit: z.object({ sha: gitCommitShaSchema }),
 });
 
+const gitObjectShaSchema = z.string().regex(/^[0-9a-f]{40}([0-9a-f]{24})?$/);
+
+const treeSchema = z.object({
+  sha: gitObjectShaSchema,
+  truncated: z.boolean(),
+  tree: z.array(
+    z.object({
+      path: z.string().min(1),
+      type: z.enum(["blob", "tree", "commit"]),
+      sha: gitObjectShaSchema,
+      size: z.int().min(0).optional(),
+    }),
+  ),
+});
+
+const blobSchema = z.object({
+  sha: gitObjectShaSchema,
+  size: z.int().min(0),
+  encoding: z.string(),
+  content: z.string(),
+});
+
 export type GithubInstallation = z.infer<typeof installationSchema>;
 export type GithubRepo = z.infer<typeof githubRepoSchema>;
 
@@ -154,11 +176,27 @@ export interface RepositoryHead {
   commitSha: string;
 }
 
+export interface RepositoryTreeEntry {
+  path: string;
+  type: "blob" | "tree" | "commit";
+  sha: string;
+  size?: number;
+}
+
+export interface RepositoryTree {
+  entries: RepositoryTreeEntry[];
+  /** GitHub stopped listing entries (very large repositories). */
+  truncated: boolean;
+}
+
 export interface GithubApp {
   verifyUserInstallation(code: string, installationId: number): Promise<UserInstallationCheck>;
   getInstallation(installationId: number): Promise<GithubInstallation>;
   listAllInstallationRepositories(installationId: number): Promise<InstallationRepositories>;
   getRepositoryHead(installationId: number, owner: string, name: string): Promise<RepositoryHead>;
+  getRepositoryTree(installationId: number, owner: string, name: string, commitSha: string): Promise<RepositoryTree>;
+  /** Decoded blob bytes, or null when the blob is larger than `maxBytes` or not base64-encoded. */
+  getBlob(installationId: number, owner: string, name: string, blobSha: string, maxBytes: number): Promise<Uint8Array | null>;
   /** Test-only access to internals. */
   _internal: {
     getInstallationToken(installationId: number): Promise<string>;
@@ -450,15 +488,68 @@ export function createGithubApp({
   /** Current default branch and its head commit. Error semantics match `listAllInstallationRepositories`. */
   async function getRepositoryHead(installationId: number, owner: string, name: string): Promise<RepositoryHead> {
     const token = await getInstallationToken(installationId);
-    const repoUrl = `${API_BASE}/repos/${encodeURIComponent(owner)}/${encodeURIComponent(name)}`;
-    const repo = await installationGet(installationId, token, repoUrl, githubRepoSchema);
+    const url = repoUrl(owner, name);
+    const repo = await installationGet(installationId, token, url, githubRepoSchema);
     const branch = await installationGet(
       installationId,
       token,
-      `${repoUrl}/branches/${encodeURIComponent(repo.default_branch)}`,
+      `${url}/branches/${encodeURIComponent(repo.default_branch)}`,
       branchSchema,
     );
     return { defaultBranch: repo.default_branch, commitSha: branch.commit.sha };
+  }
+
+  function repoUrl(owner: string, name: string): string {
+    return `${API_BASE}/repos/${encodeURIComponent(owner)}/${encodeURIComponent(name)}`;
+  }
+
+  /** Full recursive tree at a commit, without cloning. Error semantics match `getRepositoryHead`. */
+  async function getRepositoryTree(
+    installationId: number,
+    owner: string,
+    name: string,
+    commitSha: string,
+  ): Promise<RepositoryTree> {
+    if (!gitObjectShaSchema.safeParse(commitSha).success) {
+      throw new GithubUnexpectedResponseError();
+    }
+    const token = await getInstallationToken(installationId);
+    const body = await installationGet(
+      installationId,
+      token,
+      `${repoUrl(owner, name)}/git/trees/${commitSha}?recursive=1`,
+      treeSchema,
+    );
+    return { entries: body.tree, truncated: body.truncated };
+  }
+
+  async function getBlob(
+    installationId: number,
+    owner: string,
+    name: string,
+    blobSha: string,
+    maxBytes: number,
+  ): Promise<Uint8Array | null> {
+    if (!gitObjectShaSchema.safeParse(blobSha).success) {
+      throw new GithubUnexpectedResponseError();
+    }
+    const token = await getInstallationToken(installationId);
+    const blob = await installationGet(
+      installationId,
+      token,
+      `${repoUrl(owner, name)}/git/blobs/${blobSha}`,
+      blobSchema,
+    );
+    if (blob.size > maxBytes || blob.encoding !== "base64") {
+      return null;
+    }
+    let bytes: Uint8Array;
+    try {
+      bytes = Uint8Array.from(atob(blob.content.replace(/\s+/g, "")), (c) => c.charCodeAt(0));
+    } catch {
+      throw new GithubUnexpectedResponseError();
+    }
+    return bytes.length > maxBytes ? null : bytes;
   }
 
   return {
@@ -466,6 +557,8 @@ export function createGithubApp({
     getInstallation,
     listAllInstallationRepositories,
     getRepositoryHead,
+    getRepositoryTree,
+    getBlob,
     _internal: { getInstallationToken, createAppJwt },
   };
 }
