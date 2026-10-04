@@ -6,22 +6,15 @@ const httpUrl = z.url({ protocol: /^https?$/ });
 
 export const webEnvSchema = z.object({
   NODE_ENV: nodeEnv,
-  NEXT_PUBLIC_API_URL: httpUrl,
+  NEXT_PUBLIC_SUPABASE_URL: httpUrl,
 });
 
-export const apiEnvSchema = z.object({
-  NODE_ENV: nodeEnv,
-  PORT: z.coerce.number().int().min(1).max(65535),
+export const edgeEnvSchema = z.object({
   WEB_ORIGIN: httpUrl,
 });
 
-export const workerEnvSchema = z.object({
-  NODE_ENV: nodeEnv,
-});
-
 export type WebEnv = z.infer<typeof webEnvSchema>;
-export type ApiEnv = z.infer<typeof apiEnvSchema>;
-export type WorkerEnv = z.infer<typeof workerEnvSchema>;
+export type EdgeEnv = z.infer<typeof edgeEnvSchema>;
 
 export function parseEnv<T extends z.ZodType>(
   name: string,

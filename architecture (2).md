@@ -22,38 +22,39 @@ Repository Workspace
   └── Interview Report
 ```
 
-The system is split into a Next.js frontend, Hono API, PostgreSQL database, GitHub integration, and AI interview engine.
+The system is split into a Next.js frontend (Vercel), a Supabase Edge Functions API, Supabase (PostgreSQL + pgvector, Auth, Storage), Inngest background jobs, a GitHub App integration, and an OpenAI-backed interview engine.
 
 ---
 
 ## 2. Architecture
 
 ```text
-                    ┌─────────────────┐
-                    │     Next.js     │
-                    │    Frontend     │
-                    └────────┬────────┘
-                             │ HTTPS
-                             ▼
-                    ┌─────────────────┐
-                    │   Hono / Node   │
-                    │      API        │
-                    └──────┬────┬─────┘
-                           │    │
-              ┌────────────┘    └─────────────┐
-              ▼                               ▼
-       ┌─────────────┐                 ┌─────────────┐
-       │ PostgreSQL  │                 │   GitHub    │
-       │             │                 │     API     │
-       └─────────────┘                 └─────────────┘
-                           │
-                           ▼
-                    ┌─────────────────┐
-                    │   AI Engine     │
-                    │ Interview +     │
-                    │ Evaluation      │
-                    └─────────────────┘
+                 ┌─────────────────────┐
+                 │  Next.js (Vercel)   │
+                 └──────────┬──────────┘
+                            │ HTTPS
+                            ▼
+                 ┌─────────────────────┐
+                 │   Supabase Edge     │
+                 │   Functions (API)   │
+                 └──────┬───────┬──────┘
+                        │       │ events
+              ┌─────────┘       └─────────┐
+              ▼                           ▼
+     ┌─────────────────┐         ┌─────────────────┐
+     │    Supabase     │         │     Inngest     │
+     │ Postgres +      │         │ Background jobs │
+     │ pgvector, Auth, │         └────────┬────────┘
+     │ Storage         │                  │
+     └─────────────────┘                  ▼
+              ▲               ┌───────────────────────┐
+              │               │ GitHub App /          │
+              │               │ Tree-sitter / OpenAI  │
+              │               └───────────┬───────────┘
+              └───────────────────────────┘
 ```
+
+Request/response work runs in Supabase Edge Functions. Long-running work (indexing, analysis, report generation) runs as Inngest functions, which call GitHub, Tree-sitter, and OpenAI and persist results back to Supabase.
 
 ---
 
@@ -72,7 +73,9 @@ Responsibilities:
 
 The frontend communicates with the backend through the API. Business logic and secrets remain server-side.
 
-### Backend — Hono + Node.js
+### Backend — Supabase Edge Functions
+
+Serverless TypeScript functions hosted on Supabase.
 
 Responsibilities:
 
@@ -82,12 +85,12 @@ Responsibilities:
 - Workspace management
 - Interview orchestration
 - AI requests
-- Report generation
+- Enqueuing background jobs (Inngest events)
 - Persistence
 
 The backend is the primary application boundary.
 
-### Database — PostgreSQL
+### Database — Supabase PostgreSQL
 
 Stores persistent application state:
 
@@ -103,7 +106,15 @@ Stores persistent application state:
 
 Repository source code itself should not be treated as primary database data.
 
-### GitHub
+### Auth & Storage — Supabase Auth, Supabase Storage
+
+Supabase Auth handles user authentication. Supabase Storage holds file artifacts (e.g. generated reports, uploaded media).
+
+### Background Jobs — Inngest
+
+Durable, event-driven jobs for repository indexing, analysis, and report generation. See [Background Processing](#11-background-processing).
+
+### GitHub — GitHub App
 
 Used to:
 
@@ -114,7 +125,7 @@ Used to:
 
 GitHub credentials/tokens are never exposed to the browser.
 
-### AI Engine
+### AI Engine — OpenAI API
 
 Responsible for:
 
@@ -285,9 +296,10 @@ The frontend should never directly call GitHub or the AI provider for privileged
 ```text
 User
  → Next.js
- → Hono
- → GitHub API
- → PostgreSQL
+ → Supabase Edge Functions
+ → GitHub App
+ → Supabase PostgreSQL
+ → Inngest (repository indexing)
  → Workspace
 ```
 
@@ -377,49 +389,27 @@ Use background jobs for:
 - Report generation
 - Other expensive AI operations
 
-### Initial implementation
+### Implementation — Inngest
 
-Use a PostgreSQL-backed jobs table with a lightweight worker.
+Background jobs run on **Inngest**. Supabase Edge Functions only send events; they do not execute long-running work.
 
 ```text
-API
+Supabase Edge Function
+ ↓ (send event)
+Inngest
  ↓
-jobs table
+Inngest function (durable steps)
  ↓
-Worker
+GitHub App / Tree-sitter / OpenAI
  ↓
-Job handler
- ↓
-PostgreSQL / external service
+Supabase PostgreSQL / Storage
 ```
 
-Jobs should have:
+Inngest provides retries, step-level durability, concurrency control, and scheduling, so no custom jobs table or polling worker is required.
 
-- `id`
-- `type`
-- `status`
-- `payload`
-- `attempts`
-- `available_at`
-- `locked_at`
-- `completed_at`
-- `error`
+Job status that the UI needs (e.g. indexing progress, report readiness) is persisted to Supabase PostgreSQL by the Inngest function.
 
-Workers claim jobs transactionally using PostgreSQL row-level locking:
-
-```sql
-SELECT *
-FROM jobs
-WHERE status = 'pending'
-  AND available_at <= NOW()
-ORDER BY available_at
-FOR UPDATE SKIP LOCKED
-LIMIT 1;
-```
-
-The selected job is marked as locked/processing within the same transaction. This allows multiple workers to process jobs concurrently without claiming the same job.
-
-The application should expose a job abstraction so the implementation can later move to Redis/BullMQ without changing domain code.
+The application should expose a job abstraction (e.g. `enqueue(type, payload)`) so domain code does not depend directly on Inngest.
 
 Do not rely on in-process background tasks for critical work.
 
@@ -446,19 +436,32 @@ Key requirements:
 ## 13. Deployment
 
 ```text
-                    Internet
-                       │
-             ┌─────────┴─────────┐
-             ▼                   ▼
-          Vercel              Render
-        Next.js             Hono/Node
-                                │
-                    ┌───────────┼───────────┐
-                    ▼           ▼           ▼
-               PostgreSQL    GitHub       AI API
+Next.js / Vercel
+       ↓
+Supabase Edge Functions
+       ↓
+ ┌─────┴─────┐
+ ▼           ▼
+Supabase    Inngest
+             ↓
+      GitHub / Tree-sitter / OpenAI
+             ↓
+          Supabase
 ```
 
-Frontend and backend are independently deployable.
+| Concern         | Platform                |
+| --------------- | ----------------------- |
+| Frontend        | Vercel (Next.js)        |
+| Backend / API   | Supabase Edge Functions |
+| Database        | Supabase PostgreSQL     |
+| Vector search   | pgvector                |
+| Authentication  | Supabase Auth           |
+| File storage    | Supabase Storage        |
+| Background jobs | Inngest                 |
+| AI              | OpenAI API              |
+| Repo access     | GitHub App              |
+
+Frontend, Edge Functions, and Inngest functions are independently deployable.
 
 Environment-specific configuration is managed through environment variables.
 
@@ -470,20 +473,18 @@ Optimize for simplicity first.
 
 ### Initial architecture
 
-- Stateless API
-- PostgreSQL
+- Stateless Supabase Edge Functions
+- Supabase PostgreSQL
 - Server-side GitHub integration
 - AI provider abstraction
-- Simple background-job abstraction
+- Inngest background jobs behind a job abstraction
 
 ### Scale when required
 
 ```text
-Single API
+Edge Functions + Inngest
    ↓
-Multiple API instances
-   ↓
-Job Queue + Workers
+Tune Inngest concurrency / throttling
    ↓
 Caching
    ↓

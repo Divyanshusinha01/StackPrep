@@ -1,0 +1,7 @@
+project_id = "stackprep"
+
+[functions.health]
+enabled = true
+verify_jwt = false
+entrypoint = "./functions/health/index.ts"
+import_map = "./functions/health/deno.json"
