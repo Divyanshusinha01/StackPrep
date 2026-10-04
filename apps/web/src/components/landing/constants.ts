@@ -1,5 +1,9 @@
-/** Placeholder until GitHub OAuth (Supabase Auth) is wired up; swap for the real sign-in route. */
-export const CONNECT_GITHUB_HREF = "#how-it-works";
+/** Sign-in (Supabase Auth) only; repository access is granted separately through the GitHub App. */
+export function primaryCta(signedIn: boolean) {
+  return signedIn
+    ? { href: "/workspaces", label: "Open workspace" }
+    : { href: "/login", label: "Sign in with GitHub" };
+}
 
 /** Brand halo for primary calls to action; `shadow-*` composes with the focus ring. */
 export const CTA_GLOW =

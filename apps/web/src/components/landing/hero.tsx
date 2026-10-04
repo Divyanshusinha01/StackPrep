@@ -8,7 +8,7 @@ import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { useParallax } from "@/components/motion/parallax";
 import { useReducedMotion } from "@/components/motion/use-reduced-motion";
-import { CONNECT_GITHUB_HREF, CTA_GLOW } from "./constants";
+import { CTA_GLOW, primaryCta } from "./constants";
 import { GitHubMark } from "./github-mark";
 /** Progress [0, 1] maps to [0, -distance]: planes start at rest while the hero is fully in view. */
 const FROM_REST: [number, number] = [-1, 1];
@@ -24,7 +24,8 @@ const fadeUp = (reduced: boolean, delay: number) =>
         transition: { duration: 0.55, delay, ease: EASE },
       };
 
-export function Hero() {
+export function Hero({ signedIn }: { signedIn: boolean }) {
+  const cta = primaryCta(signedIn);
   const ref = useRef<HTMLElement>(null);
   const reduced = useReducedMotion();
   const { scrollYProgress } = useScroll({ target: ref, offset: ["start start", "end start"] });
@@ -79,9 +80,9 @@ export function Hero() {
             {...fadeUp(reduced, 0.3)}
           >
             <Button asChild size="lg" className={cn("h-11 px-5 text-[15px]", CTA_GLOW)}>
-              <a href={CONNECT_GITHUB_HREF}>
+              <a href={cta.href}>
                 <GitHubMark className="size-4" />
-                Connect GitHub
+                {cta.label}
               </a>
             </Button>
             <Button

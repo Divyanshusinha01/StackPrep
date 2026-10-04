@@ -1,10 +1,11 @@
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { ScrollReveal } from "@/components/motion/scroll-reveal";
-import { CONNECT_GITHUB_HREF, CTA_GLOW } from "./constants";
+import { CTA_GLOW, primaryCta } from "./constants";
 import { GitHubMark } from "./github-mark";
 
-export function FinalCta() {
+export function FinalCta({ signedIn }: { signedIn: boolean }) {
+  const cta = primaryCta(signedIn);
   return (
     <section aria-labelledby="cta-heading" className="relative overflow-hidden border-t py-28 sm:py-40">
       <div aria-hidden className="pointer-events-none absolute inset-0 bg-grid mask-radial opacity-70" />
@@ -30,9 +31,9 @@ export function FinalCta() {
           size="lg"
           className={cn("mt-10 h-12 px-6 text-[15px]", CTA_GLOW)}
         >
-          <a href={CONNECT_GITHUB_HREF}>
+          <a href={cta.href}>
             <GitHubMark className="size-4" />
-            Connect GitHub
+            {cta.label}
           </a>
         </Button>
       </ScrollReveal>

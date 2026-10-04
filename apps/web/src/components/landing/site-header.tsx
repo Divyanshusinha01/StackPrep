@@ -6,14 +6,15 @@ import { m, useScroll, useSpring } from "framer-motion";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { useReducedMotion } from "@/components/motion/use-reduced-motion";
-import { CONNECT_GITHUB_HREF, CTA_GLOW, SECTIONS } from "./constants";
+import { CTA_GLOW, SECTIONS, primaryCta } from "./constants";
 import { GitHubMark } from "./github-mark";
 import { useActiveSection } from "./use-active-section";
 import { Wordmark } from "./wordmark";
 
 export { Wordmark } from "./wordmark";
 
-export function SiteHeader() {
+export function SiteHeader({ signedIn }: { signedIn: boolean }) {
+  const cta = primaryCta(signedIn);
   const [scrolled, setScrolled] = useState(false);
   const active = useActiveSection();
   const reduced = useReducedMotion();
@@ -91,9 +92,9 @@ export function SiteHeader() {
         </nav>
 
         <Button asChild size="sm" className={cn("ml-auto md:ml-0", CTA_GLOW)}>
-          <a href={CONNECT_GITHUB_HREF}>
+          <a href={cta.href}>
             <GitHubMark className="size-3.5" />
-            Connect GitHub
+            {cta.label}
           </a>
         </Button>
       </div>

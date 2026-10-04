@@ -2,7 +2,7 @@ begin;
 
 create extension if not exists pgtap with schema extensions;
 
-select plan(37);
+select plan(51);
 
 -- Fixtures (as postgres) ---------------------------------------------------------
 
@@ -103,6 +103,16 @@ select is(
   'alice',
   'profile is created from auth.users metadata'
 );
+select is(
+  (select display_name from public.profiles where id = 'aaaaaaaa-0000-4000-8000-000000000001'),
+  'Alice',
+  'profile display_name comes from GitHub full_name'
+);
+select is(
+  (select count(*) from public.profiles where id = 'bbbbbbbb-0000-4000-8000-000000000001'),
+  1::bigint,
+  'profile is created even with sparse GitHub metadata'
+);
 
 -- As Alice ------------------------------------------------------------------
 
@@ -159,6 +169,41 @@ select is(
   0::bigint,
   'Bob cannot see Alice''s interviews'
 );
+select is(
+  (select count(*) from public.profiles where id = 'aaaaaaaa-0000-4000-8000-000000000001'),
+  0::bigint,
+  'Bob cannot see Alice''s profile'
+);
+select is(
+  (select count(*) from public.workspaces where user_id = 'aaaaaaaa-0000-4000-8000-000000000001'),
+  0::bigint,
+  'Bob cannot see Alice''s workspaces'
+);
+select is(
+  (select count(*) from public.repositories where user_id = 'aaaaaaaa-0000-4000-8000-000000000001'),
+  0::bigint,
+  'Bob cannot see Alice''s repositories'
+);
+select is(
+  (select count(*) from public.reports where user_id = 'aaaaaaaa-0000-4000-8000-000000000001'),
+  0::bigint,
+  'Bob cannot see Alice''s reports'
+);
+select is(
+  (select count(*) from public.jobs where user_id = 'aaaaaaaa-0000-4000-8000-000000000001'),
+  0::bigint,
+  'Bob cannot see Alice''s jobs'
+);
+select is(
+  (select count(*) from public.workspaces),
+  1::bigint,
+  'Bob sees only his own workspace'
+);
+
+-- Authenticated role without a user id (e.g. a forged role claim with no sub) sees nothing.
+select set_config('request.jwt.claims', '{"role": "authenticated"}', true);
+select is((select count(*) from public.workspaces), 0::bigint, 'authenticated without sub sees no workspaces');
+select is((select count(*) from public.profiles), 0::bigint, 'authenticated without sub sees no profiles');
 
 -- As anon -------------------------------------------------------------------
 
@@ -166,6 +211,10 @@ set local role anon;
 select set_config('request.jwt.claims', '{"role": "anon"}', true);
 
 select throws_ok('select * from public.workspaces', '42501', null, 'anon cannot read workspaces');
+select throws_ok('select * from public.profiles', '42501', null, 'anon cannot read profiles');
+select throws_ok('select * from public.interviews', '42501', null, 'anon cannot read interviews');
+select throws_ok('select * from public.reports', '42501', null, 'anon cannot read reports');
+select throws_ok('select * from public.github_connections', '42501', null, 'anon cannot read GitHub connections');
 select throws_ok(
   $$select * from public.match_repository_memory('aaaaaaaa-0000-4000-8000-000000000004', array_fill(0.1::real, array[1536])::extensions.vector, repeat('a', 40), 5)$$,
   '42501', null, 'anon cannot execute match_repository_memory'
