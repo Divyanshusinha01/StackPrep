@@ -1,5 +1,8 @@
 project_id = "stackprep"
 
+[db]
+major_version = 17
+
 [functions.health]
 enabled = true
 verify_jwt = false
