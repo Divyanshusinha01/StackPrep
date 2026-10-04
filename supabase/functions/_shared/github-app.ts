@@ -1,4 +1,4 @@
-import { MAX_REPOS_PER_INSTALLATION } from "@stackprep/shared";
+import { gitCommitShaSchema, MAX_REPOS_PER_INSTALLATION } from "@stackprep/shared";
 import { z } from "zod";
 
 const API_BASE = "https://api.github.com";
@@ -116,6 +116,11 @@ const installationReposSchema = z.object({
   repositories: z.array(githubRepoSchema),
 });
 
+const branchSchema = z.object({
+  name: z.string().min(1),
+  commit: z.object({ sha: gitCommitShaSchema }),
+});
+
 export type GithubInstallation = z.infer<typeof installationSchema>;
 export type GithubRepo = z.infer<typeof githubRepoSchema>;
 
@@ -144,10 +149,16 @@ export interface InstallationRepositories {
   truncated: boolean;
 }
 
+export interface RepositoryHead {
+  defaultBranch: string;
+  commitSha: string;
+}
+
 export interface GithubApp {
   verifyUserInstallation(code: string, installationId: number): Promise<UserInstallationCheck>;
   getInstallation(installationId: number): Promise<GithubInstallation>;
   listAllInstallationRepositories(installationId: number): Promise<InstallationRepositories>;
+  getRepositoryHead(installationId: number, owner: string, name: string): Promise<RepositoryHead>;
   /** Test-only access to internals. */
   _internal: {
     getInstallationToken(installationId: number): Promise<string>;
@@ -395,20 +406,26 @@ export function createGithubApp({
     return (await pending).token;
   }
 
-  async function listRepositoriesPage(installationId: number, token: string, page: number) {
+  /** 403/404 on a read with a valid installation token are unexpected, unlike the same statuses from minting. */
+  async function installationGet<T>(installationId: number, token: string, url: string, schema: z.ZodType<T>) {
     try {
       return await withTokenEviction(installationId, () =>
-        requestJson(
-          `${API_BASE}/installation/repositories?per_page=${PER_PAGE}&page=${page}`,
-          { headers: { Authorization: `Bearer ${token}` } },
-          installationReposSchema,
-        ));
+        requestJson(url, { headers: { Authorization: `Bearer ${token}` } }, schema));
     } catch (err) {
       if (err instanceof GithubForbiddenError || err instanceof GithubNotFoundError) {
         throw new GithubUnexpectedResponseError({ status: err.status, requestId: err.requestId });
       }
       throw err;
     }
+  }
+
+  function listRepositoriesPage(installationId: number, token: string, page: number) {
+    return installationGet(
+      installationId,
+      token,
+      `${API_BASE}/installation/repositories?per_page=${PER_PAGE}&page=${page}`,
+      installationReposSchema,
+    );
   }
 
   /**
@@ -430,10 +447,25 @@ export function createGithubApp({
     return { repositories, truncated: totalCount > MAX_REPOS_PER_INSTALLATION };
   }
 
+  /** Current default branch and its head commit. Error semantics match `listAllInstallationRepositories`. */
+  async function getRepositoryHead(installationId: number, owner: string, name: string): Promise<RepositoryHead> {
+    const token = await getInstallationToken(installationId);
+    const repoUrl = `${API_BASE}/repos/${encodeURIComponent(owner)}/${encodeURIComponent(name)}`;
+    const repo = await installationGet(installationId, token, repoUrl, githubRepoSchema);
+    const branch = await installationGet(
+      installationId,
+      token,
+      `${repoUrl}/branches/${encodeURIComponent(repo.default_branch)}`,
+      branchSchema,
+    );
+    return { defaultBranch: repo.default_branch, commitSha: branch.commit.sha };
+  }
+
   return {
     verifyUserInstallation,
     getInstallation,
     listAllInstallationRepositories,
+    getRepositoryHead,
     _internal: { getInstallationToken, createAppJwt },
   };
 }

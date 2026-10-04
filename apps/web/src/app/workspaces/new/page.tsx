@@ -1,15 +1,18 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import type { ConnectionStatus, RepositoryListResponse } from "@stackprep/shared";
+import { type ApiErrorCode, apiErrorCodeSchema, type ConnectionStatus, type RepositoryListResponse } from "@stackprep/shared";
 import { ExternalLink, GitBranch, Lock } from "lucide-react";
 import { AppShell } from "@/components/app/app-shell";
+import { Notice } from "@/components/app/notice";
+import { SubmitButton } from "@/components/app/submit-button";
 import { CTA_GLOW } from "@/components/landing/constants";
 import { GitHubMark } from "@/components/landing/github-mark";
 import { Button } from "@/components/ui/button";
-import { listRepositories } from "@/lib/api";
+import { listRepositories, listWorkspaces } from "@/lib/api";
 import { requireUser } from "@/lib/auth";
 import { connectErrorMessage, githubInstallUrl, parseConnectError } from "@/lib/github";
 import { cn } from "@/lib/utils";
+import { selectWorkspace } from "./actions";
 
 export const metadata: Metadata = {
   title: "Choose a repository · StackPrep",
@@ -36,20 +39,18 @@ function ConnectButton({ installUrl, label, variant = "default" }: {
   );
 }
 
-function Notice({ tone, children }: { tone: "error" | "info" | "success"; children: React.ReactNode }) {
-  return (
-    <div
-      role={tone === "error" ? "alert" : "status"}
-      className={cn(
-        "mt-6 flex flex-wrap items-center gap-3 rounded-md border px-4 py-3 text-sm",
-        tone === "error" && "border-red-500/30 bg-red-500/10 text-red-300",
-        tone === "info" && "border-border bg-panel/60 text-muted-foreground",
-        tone === "success" && "border-emerald-500/30 bg-emerald-500/10 text-emerald-300",
-      )}
-    >
-      {children}
-    </div>
-  );
+const WORKSPACE_ERROR_MESSAGES: Partial<Record<ApiErrorCode, string>> = {
+  repository_not_accessible:
+    "StackPrep can no longer access that repository. Check the GitHub App's repository access, then try again.",
+  connection_not_found: "That GitHub connection no longer exists. Reload the list and try again.",
+  installation_suspended: "That installation is suspended on GitHub. Unsuspend it in GitHub settings, then try again.",
+  github_rate_limited: "GitHub is rate limiting requests right now. Wait a minute, then try again.",
+  github_unavailable: "GitHub could not be reached. Try again in a moment.",
+};
+
+function parseWorkspaceError(value: unknown): ApiErrorCode | null {
+  const parsed = apiErrorCodeSchema.safeParse(value);
+  return parsed.success ? parsed.data : null;
 }
 
 const CONNECTION_NOTES: Record<Exclude<ConnectionStatus["status"], "ok">, (login: string) => string> = {
@@ -58,7 +59,37 @@ const CONNECTION_NOTES: Record<Exclude<ConnectionStatus["status"], "ok">, (login
   error: (login) => `Could not load repositories from ${login} right now.`,
 };
 
-function RepositoryList({ data, installUrl }: { data: RepositoryListResponse; installUrl: string | null }) {
+function RepositoryAction({ connectionId, githubRepoId, fullName, workspaceId }: {
+  connectionId: string;
+  githubRepoId: number;
+  fullName: string;
+  workspaceId: string | undefined;
+}) {
+  if (workspaceId) {
+    return (
+      <Button asChild variant="outline" size="sm">
+        <Link href={`/workspaces/${workspaceId}`} aria-label={`Open workspace for ${fullName}`}>
+          Open
+        </Link>
+      </Button>
+    );
+  }
+  return (
+    <form action={selectWorkspace}>
+      <input type="hidden" name="connection_id" value={connectionId} />
+      <input type="hidden" name="github_repo_id" value={githubRepoId} />
+      <SubmitButton size="sm" pendingLabel="Selecting…" aria-label={`Select ${fullName}`}>
+        Select
+      </SubmitButton>
+    </form>
+  );
+}
+
+function RepositoryList({ data, installUrl, workspaceIds }: {
+  data: RepositoryListResponse;
+  installUrl: string | null;
+  workspaceIds: Map<number, string>;
+}) {
   const notes = data.connections.filter((c) => c.status !== "ok");
 
   return (
@@ -103,6 +134,12 @@ function RepositoryList({ data, installUrl }: { data: RepositoryListResponse; in
                 <ExternalLink className="size-3.5" aria-hidden />
                 <span className="sr-only">Open {repo.full_name} on GitHub</span>
               </a>
+              <RepositoryAction
+                connectionId={repo.connection_id}
+                githubRepoId={repo.id}
+                fullName={repo.full_name}
+                workspaceId={workspaceIds.get(repo.id)}
+              />
             </li>
           ))}
         </ul>
@@ -134,6 +171,7 @@ export default async function NewWorkspacePage({ searchParams }: PageProps<"/wor
   const params = await searchParams;
   const connectError = parseConnectError(params.github_error);
   const connected = params.connected === "1";
+  const workspaceError = parseWorkspaceError(params.workspace_error);
 
   let installUrl: string | null = null;
   try {
@@ -142,7 +180,11 @@ export default async function NewWorkspacePage({ searchParams }: PageProps<"/wor
     // Missing NEXT_PUBLIC_GITHUB_APP_SLUG: the page still lists existing connections.
   }
 
-  const result = await listRepositories(parsePage(params.page));
+  const [result, workspaces] = await Promise.all([listRepositories(parsePage(params.page)), listWorkspaces()]);
+  // Best effort: without the list every row shows "Select", which still opens an existing workspace.
+  const workspaceIds = new Map(
+    workspaces.ok ? workspaces.data.workspaces.map((w) => [w.repository.github_repo_id, w.id]) : [],
+  );
 
   return (
     <AppShell user={user}>
@@ -160,6 +202,11 @@ export default async function NewWorkspacePage({ searchParams }: PageProps<"/wor
         </Notice>
       ) : null}
       {connected ? <Notice tone="success">GitHub connected. Choose a repository below.</Notice> : null}
+      {workspaceError ? (
+        <Notice tone="error">
+          {WORKSPACE_ERROR_MESSAGES[workspaceError] ?? "Could not create the workspace. Try again."}
+        </Notice>
+      ) : null}
 
       {!result.ok ? (
         <Notice tone="error">
@@ -173,7 +220,7 @@ export default async function NewWorkspacePage({ searchParams }: PageProps<"/wor
           </Button>
         </Notice>
       ) : result.data.connected ? (
-        <RepositoryList data={result.data} installUrl={installUrl} />
+        <RepositoryList data={result.data} installUrl={installUrl} workspaceIds={workspaceIds} />
       ) : (
         <div className="mt-8 rounded-lg border bg-panel/60 p-8 text-center">
           <h2 className="font-display text-lg font-semibold">Connect GitHub</h2>

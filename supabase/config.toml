@@ -36,3 +36,8 @@ entrypoint = "./functions/github/index.ts"
 enabled = true
 verify_jwt = true
 entrypoint = "./functions/repositories/index.ts"
+
+[functions.workspaces]
+enabled = true
+verify_jwt = true
+entrypoint = "./functions/workspaces/index.ts"

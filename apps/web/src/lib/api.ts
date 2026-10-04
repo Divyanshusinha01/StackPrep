@@ -3,8 +3,12 @@ import {
   apiErrorSchema,
   type ConnectGithubRequest,
   connectGithubResponseSchema,
+  type CreateWorkspaceRequest,
+  createWorkspaceResponseSchema,
   healthResponseSchema,
   repositoryListResponseSchema,
+  workspaceDetailResponseSchema,
+  workspaceListResponseSchema,
 } from "@stackprep/shared";
 import { FunctionsHttpError } from "@supabase/supabase-js";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
@@ -55,4 +59,16 @@ export function connectGithub(body: ConnectGithubRequest) {
 
 export function listRepositories(page = 1) {
   return functionRequest(`repositories?page=${page}&per_page=100`, repositoryListResponseSchema, { method: "GET" });
+}
+
+export function createWorkspace(body: CreateWorkspaceRequest) {
+  return functionRequest("workspaces", createWorkspaceResponseSchema, { method: "POST", body });
+}
+
+export function listWorkspaces() {
+  return functionRequest("workspaces", workspaceListResponseSchema, { method: "GET" });
+}
+
+export function getWorkspace(id: string) {
+  return functionRequest(`workspaces/${encodeURIComponent(id)}`, workspaceDetailResponseSchema, { method: "GET" });
 }
