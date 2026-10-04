@@ -1,0 +1,21 @@
+{
+  "name": "@stackprep/worker",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "node --env-file-if-exists=.env --watch src/index.ts",
+    "start": "node src/index.ts",
+    "build": "tsc",
+    "lint": "eslint .",
+    "typecheck": "tsc"
+  },
+  "dependencies": {
+    "@stackprep/shared": "workspace:^"
+  },
+  "devDependencies": {
+    "@types/node": "^26.6.3",
+    "eslint": "^9.39.5",
+    "typescript": "^6.0.3"
+  }
+}
