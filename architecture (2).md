@@ -49,12 +49,12 @@ The system is split into a Next.js frontend (Vercel), a Supabase Edge Functions 
      └─────────────────┘                  ▼
               ▲               ┌───────────────────────┐
               │               │ GitHub App /          │
-              │               │ Tree-sitter / OpenAI  │
+              │               │ OpenAI                │
               │               └───────────┬───────────┘
               └───────────────────────────┘
 ```
 
-Request/response work runs in Supabase Edge Functions. Long-running work (indexing, analysis, report generation) runs as Inngest functions, which call GitHub, Tree-sitter, and OpenAI and persist results back to Supabase.
+Request/response work runs in Supabase Edge Functions. Long-running work (indexing, analysis, interview planning, report generation) runs as Inngest functions, which call GitHub and OpenAI and persist results back to Supabase.
 
 ---
 
@@ -112,7 +112,7 @@ Supabase Auth handles user authentication. Supabase Storage holds file artifacts
 
 ### Background Jobs — Inngest
 
-Durable, event-driven jobs for repository indexing, analysis, and report generation. See [Background Processing](#12-background-processing).
+Durable, event-driven jobs for repository indexing, deep analysis, interview planning, and report generation. See [Background Processing](#12-background-processing).
 
 ### GitHub — GitHub App
 
@@ -176,6 +176,37 @@ Architecture
 ├── Security
 └── Testing
 ```
+
+Planning runs as an Inngest job, overlapped with the camera and microphone check:
+
+```text
+1. Browser → Backend
+   POST /workspaces/:id/interviews
+
+2. Backend
+   Authenticates user, verifies workspace ownership and status = ready
+   Creates interviews row (status = created, pinned commit SHA)
+   Creates empty interview_state row
+   Sends interview.planning.requested event
+   Returns the interview immediately
+
+3. Browser
+   Runs the camera + microphone check while planning runs
+
+4. Inngest (interview planning)
+   Loads repository memory for the pinned commit SHA
+   Loads previous interview outcomes for the workspace (coverage, strengths, weaknesses)
+   OpenAI builds coverage map, high-level plan, and strategy
+   Writes them via update_interview_state
+
+5. Browser → Backend
+   POST /interviews/:id/realtime/session
+   Returns interview_preparing until the plan exists
+```
+
+- The planner uses whatever repository memory exists. If deep analysis has not finished, it plans from the baseline analysis.
+- Previous interview outcomes guide question selection only; previous answers are never evidence of current ability.
+- If planning fails after retries, the job records a fixed error code and the UI offers a retry. The interview stays `created`.
 
 ### Phase 2 — Dynamic Interview
 
@@ -244,6 +275,7 @@ The browser never holds the OpenAI API key. The backend mints a short-lived ephe
 
 2. Backend → OpenAI
    Authenticates user, verifies interview ownership
+   Verifies the interview plan exists (otherwise returns interview_preparing)
    Uses server-side OPENAI_API_KEY
    Creates ephemeral Realtime credential (session config set server-side)
 
@@ -333,16 +365,30 @@ Repository processing should produce a compact context containing:
 - Relevant code excerpts
 - Configuration information
 
-Initial indexing uses file-tree analysis, metadata/dependency analysis, and lightweight code parsing.
+Analysis runs in two stages, matching the PRD's lightweight-then-deeper flow.
 
-Semantic/vector retrieval can be introduced later with `pgvector` if repository scale requires it.
+**Baseline analysis** (`repository_indexing` job) is rule-based: file-tree analysis, metadata/dependency analysis, and lightweight fact extraction per file, with secret scrubbing. The workspace becomes `ready` when it completes.
+
+**Deep analysis** (`deep_analysis` job) starts after the baseline. It sends the scrubbed baseline facts to OpenAI and adds AI-derived repository memory:
+
+- Architecture summary
+- Major modules
+- Major technical decisions
+- Security-sensitive areas
+- Repository-specific concepts
+
+Deep analysis does not block interviews. Repository memory persists across interviews, so this understanding is computed once per commit SHA rather than per interview.
+
+Tree-sitter parsing is deferred; baseline fact extraction is sufficient initially. Semantic/vector retrieval can be introduced later with `pgvector` if repository scale requires it.
 
 ```text
 Repository
     ↓
 Commit SHA
     ↓
-Index
+Baseline analysis  →  workspace ready
+    ↓
+Deep analysis (background)
     ↓
 Repository Context
     ↓
@@ -382,7 +428,7 @@ POST   /interviews/:id/tool-calls
 GET    /interviews/:id/report
 ```
 
-`POST /interviews/:id/realtime/session` returns a short-lived ephemeral Realtime credential. `POST /interviews/:id/events` accepts idempotent transcript turns and realtime interview events. `POST /interviews/:id/tool-calls` executes Realtime tool calls relayed by the browser (see [Realtime Tool Execution & Persistence](#10-realtime-tool-execution--persistence)).
+`POST /workspaces/:id/interviews` creates the interview and enqueues planning (see [Phase 1 — Planning](#phase-1--planning)). `POST /interviews/:id/realtime/session` returns a short-lived ephemeral Realtime credential, or `interview_preparing` while the plan is still being generated. `POST /interviews/:id/events` accepts idempotent transcript turns and realtime interview events. `POST /interviews/:id/tool-calls` executes Realtime tool calls relayed by the browser (see [Realtime Tool Execution & Persistence](#10-realtime-tool-execution--persistence)).
 
 The frontend should never directly call GitHub or the AI provider for privileged operations. The only direct browser-to-OpenAI connection is the WebRTC voice session, authorized by a backend-issued ephemeral credential.
 
@@ -398,8 +444,20 @@ User
  → Supabase Edge Functions
  → GitHub App
  → Supabase PostgreSQL
- → Inngest (repository indexing)
+ → Inngest (baseline analysis → workspace ready → deep analysis)
  → Workspace
+```
+
+### Interview Planning
+
+```text
+Workspace
+ → Interview API (POST /workspaces/:id/interviews)
+ → PostgreSQL (interview created)
+ → Inngest (interview planning)
+ → Repository memory + previous interview outcomes
+ → AI Engine
+ → PostgreSQL (interview_state)
 ```
 
 ### Interview
@@ -543,15 +601,98 @@ Rules:
 
 Transcript persistence is **not** a model tool. The model could skip or misreport it, so transcript turns are captured by the browser from Realtime transcription events and sent through `POST /interviews/:id/events` (see [Transcript persistence](#transcript-persistence)).
 
+#### Tool schemas
+
+Shared Zod contracts in `@stackprep/shared`. All limits are enforced server-side. No tool accepts an interview ID or other database identifier; the interview comes from the authenticated route.
+
+```ts
+// Common error result, so the interviewer can recover conversationally
+toolErrorSchema = z.object({
+  ok: z.literal(false),
+  error: z.object({
+    code: z.enum(["invalid_arguments", "unknown_tool", "interview_not_active",
+                  "not_found", "excluded", "rate_limited", "internal"]),
+  }),
+});
+
+// search_repository (read-only)
+searchRepositoryInput = z.object({
+  query: z.string().trim().min(1).max(200),
+  limit: z.int().min(1).max(8).default(5),
+});
+searchRepositoryOutput = z.object({
+  ok: z.literal(true),
+  results: z.array(z.object({
+    path: z.string(),
+    area: z.string().optional(),        // module / repository area
+    excerpt: z.string().max(1500),      // secret-scrubbed, delimited as data
+  })),
+});
+
+// get_file (read-only, pinned to the interview's commit SHA)
+getFileInput = z.object({
+  path: z.string().min(1).max(512),
+  startLine: z.int().min(1).optional(),
+  endLine: z.int().min(1).optional(),   // window capped server-side (~200 lines)
+});
+getFileOutput = z.object({
+  ok: z.literal(true),
+  path: z.string(),
+  startLine: z.int(),
+  endLine: z.int(),
+  totalLines: z.int(),
+  content: z.string(),
+  truncated: z.boolean(),
+});
+
+// evaluate_answer (server resolves the current question)
+evaluateAnswerInput = z.object({
+  answerSummary: z.string().trim().min(1).max(1000),
+});
+evaluateAnswerOutput = z.object({
+  ok: z.literal(true),
+  guidance: z.enum(["follow_up", "clarify", "move_on"]),
+  focus: z.string().max(300).optional(), // e.g. "probe refresh token rotation"; never a score
+});
+
+// advance_interview (server picks the next coverage step)
+advanceInterviewInput = z.object({});
+advanceInterviewOutput = z.object({
+  ok: z.literal(true),
+  nextFocus: z.object({
+    area: z.string(),                   // e.g. "src/auth"
+    category: z.string(),               // e.g. "security"
+    angle: z.string().max(300),
+  }),
+  depth: z.enum(["foundational", "standard", "deep"]),
+  elapsedMinutes: z.int(),
+});
+
+// end_interview (request; the server may reject it)
+endInterviewInput = z.object({
+  reason: z.enum(["sufficient_evidence", "time_target"]),
+});
+endInterviewOutput = z.object({
+  ok: z.literal(true),
+  accepted: z.boolean(),
+  guidance: z.string().max(300),        // closing-statement cue or "continue with…"
+});
+```
+
+- Outputs never contain scores, internal reasoning, or coverage progress.
+- `get_file` returns `excluded` for generated, binary, oversized, or secret-bearing files.
+- `search_repository` starts as a keyword search over Repository Context; a pgvector retrieval layer can replace it without changing the contract.
+
 #### `evaluate_answer`
 
 ```text
 Realtime
-  → evaluate_answer({ questionMessageId, answerSummary })
+  → evaluate_answer({ answerSummary })
 
 Edge Function
   → authenticate, verify ownership
-  → load question, interview state, plan coverage
+  → resolve the current question from interview_messages
+  → load interview state, plan coverage
   → load relevant Repository Context at the pinned commit SHA
   → AI engine evaluates the persisted transcript of the answer
   → persist evaluation (hidden from client)
@@ -561,7 +702,7 @@ Realtime
   → asks follow-up / next question
 ```
 
-The evaluation is based on the **persisted transcript**, not only on the model's `answerSummary`. Scores and internal reasoning stay server-side and are never returned to Realtime, so the interviewer cannot read them out (PRD: AI internal evaluation is never shown).
+The model never supplies the question identifier; the backend resolves the current question itself. The evaluation is based on the **persisted transcript**, not only on the model's `answerSummary`. Scores and internal reasoning stay server-side and are never returned to Realtime, so the interviewer cannot read them out (PRD: AI internal evaluation is never shown).
 
 #### `search_repository` / `get_file`
 
@@ -660,10 +801,18 @@ Long-running operations should not block normal API requests.
 
 Use background jobs for:
 
-- Repository indexing
-- Large repository analysis
+- Repository indexing (baseline analysis)
+- Deep repository analysis
+- Interview planning
 - Report generation
 - Other expensive AI operations
+
+| Job type              | Trigger                                 | Output                                  |
+| --------------------- | --------------------------------------- | --------------------------------------- |
+| `repository_indexing` | Workspace created / analysis retried    | Baseline repository memory; workspace `ready` |
+| `deep_analysis`       | Baseline analysis succeeded             | AI-derived repository memory            |
+| `interview_planning`  | `POST /workspaces/:id/interviews`       | Coverage map, plan, strategy in `interview_state` |
+| `report_generation`   | Backend marks interview complete        | Interview report                        |
 
 ### Implementation — Inngest
 
@@ -676,7 +825,7 @@ Inngest
  ↓
 Inngest function (durable steps)
  ↓
-GitHub App / Tree-sitter / OpenAI
+GitHub App / OpenAI
  ↓
 Supabase PostgreSQL / Storage
 ```
@@ -725,7 +874,7 @@ Supabase Edge Functions
  ▼           ▼
 Supabase    Inngest
              ↓
-      GitHub / Tree-sitter / OpenAI
+      GitHub / OpenAI
              ↓
           Supabase
 ```

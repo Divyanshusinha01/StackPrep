@@ -18,7 +18,7 @@
 | Transcript storage  | **Supabase PostgreSQL (canonical)** | OpenAI Realtime runs the live session; StackPrep persists the interview record |
 | Vision              | **OpenAI vision models**     | No CV infrastructure                                 |
 | GitHub              | **GitHub App**               | Secure repository access                             |
-| Parsing             | **Tree-sitter**              | Local/open-source parsing                            |
+| Parsing             | **Rule-based fact extraction** (Tree-sitter deferred) | Lightweight, runs in Edge Functions; adopt Tree-sitter if analysis needs deeper parsing |
 | Validation          | **Zod**                      | Lightweight schema validation                        |
 | Testing             | **Vitest + Playwright**      | Unit + E2E testing                                   |
 | Monitoring          | **Sentry**                   | Error tracking; free tier initially                  |
