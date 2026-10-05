@@ -40,7 +40,7 @@ export default async function InterviewPage({ params }: PageProps<"/interviews/[
       <p className="mt-2 text-sm text-muted-foreground">
         The interview uses your camera and microphone. Both are required to continue.
       </p>
-      <InterviewSession interviewId={interview.id} planning={interview.planning} />
+      <InterviewSession interviewId={interview.id} workspaceId={interview.workspace_id} planning={interview.planning} />
     </AppShell>
   );
 }

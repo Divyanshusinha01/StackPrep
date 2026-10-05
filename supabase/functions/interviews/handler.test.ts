@@ -1,6 +1,7 @@
 import { assert, assertEquals } from "@std/assert";
 import {
   apiErrorSchema,
+  integrityFrameResponseSchema,
   interviewEventAckSchema,
   type InterviewPlan,
   type InterviewReport,
@@ -10,10 +11,19 @@ import {
   VOICE_LIMIT_SECONDS,
 } from "@stackprep/shared";
 import type { SupabaseClient, User } from "@supabase/supabase-js";
+import { AIUnavailableError, type StructuredRequest } from "../_shared/ai/provider.ts";
 import type { Authenticate } from "../_shared/auth.ts";
 import { CREDENTIAL_TTL_SECONDS, createRealtimeClient } from "../_shared/realtime/openai-realtime.ts";
 import { createFakeAIProvider } from "../_shared/testing.ts";
-import { createFakeGithub, createFakeJobQueue, createFakeReportJobs, createFakeToolStore } from "./testing.ts";
+import { INTEGRITY_WARNING_MESSAGES } from "./integrity.ts";
+import {
+  createFakeGithub,
+  createFakeIntegrityStore,
+  createFakeJobQueue,
+  createFakeReportJobs,
+  createFakeToolStore,
+} from "./testing.ts";
+import type { InterviewStateSnapshot, TranscriptMessage } from "./tools/types.ts";
 import {
   createInterviewsHandler,
   type InterviewReader,
@@ -62,6 +72,9 @@ interface Setup {
   voiceResult?: RecordResult;
   report?: StoredReport | null;
   reportJob?: ReportJob | null;
+  vision?: (request: StructuredRequest<unknown>) => unknown;
+  messages?: TranscriptMessage[];
+  state?: InterviewStateSnapshot | null;
 }
 
 function at(offsetSeconds: number): string {
@@ -78,7 +91,11 @@ function setup({
   voiceResult = { status: "created", sequence: 7 },
   report = null,
   reportJob = null,
+  vision = () => ({ signal: false, kind: "none" }),
+  messages = [],
+  state = null,
 }: Setup = {}) {
+  const clock = { now: NOW };
   const rlsClient = { rls: true } as unknown as SupabaseClient;
   const openaiRequests: { url: string; headers: Headers; body: Record<string, unknown> }[] = [];
   const turns: TranscriptTurnRecord[] = [];
@@ -98,8 +115,12 @@ function setup({
   };
   const jobs = createFakeJobQueue();
   const reportJobs = createFakeReportJobs();
+  const integrity = createFakeIntegrityStore(() => clock.now);
+  const ai = createFakeAIProvider(vision);
   const store: InterviewStore = {
-    ...createFakeToolStore(),
+    ...createFakeToolStore({ messages, state }),
+    reserveIntegrityCheck: (...args) => integrity.reserveIntegrityCheck(...args),
+    recordIntegritySignal: (...args) => integrity.recordIntegritySignal(...args),
     getPlan: (id) => {
       assertEquals(id, INTERVIEW_ID);
       return Promise.resolve(storedPlan);
@@ -135,13 +156,14 @@ function setup({
     model: "gpt-realtime-2.1-mini",
     transcriptionModel: "gpt-4o-mini-transcribe",
     github: createFakeGithub({}),
-    ai: createFakeAIProvider(() => new Error("unused")),
+    ai,
     evaluationModel: "gpt-eval",
+    visionModel: "gpt-vision",
     jobs,
     reportJobs,
-    now: () => NOW,
+    now: () => clock.now,
   });
-  return { handler, openaiRequests, turns, voiceEvents, jobs, reportJobs };
+  return { handler, openaiRequests, turns, voiceEvents, jobs, reportJobs, integrity, ai, clock };
 }
 
 function post(path = `/interviews/${INTERVIEW_ID}/realtime/session`, auth = "Bearer valid", method = "POST") {
@@ -246,6 +268,7 @@ Deno.test("mints a credential with server-side instructions and tools", async ()
     expires_at: "2026-10-05T12:01:00.000Z",
     model: "gpt-realtime-2.1-mini",
     remaining_voice_seconds: VOICE_LIMIT_SECONDS - 600,
+    resume: { last_turn_sequence: 0, current_question: null },
   });
 
   assertEquals(openaiRequests.length, 1);
@@ -277,11 +300,67 @@ Deno.test("mints a credential with server-side instructions and tools", async ()
   assert(!instructions.includes(INTERVIEW_ID), "instructions must not carry database ids");
 });
 
-Deno.test("first session asks the opening question", async () => {
+Deno.test("first session asks the opening question and has no resume point", async () => {
   const { handler, openaiRequests } = setup();
-  assertEquals((await handler(post())).status, 201);
+  const res = await handler(post());
+  assertEquals(res.status, 201);
+  assertEquals(realtimeSessionResponseSchema.parse(await res.json()).resume, null);
   const instructions = (openaiRequests[0].body.session as { instructions: string }).instructions;
   assert(instructions.includes(plan.opening_question));
+  assert(!instructions.includes("<recap>"));
+});
+
+const resumeMessages: TranscriptMessage[] = [
+  { id: "m1", sequence: 1, role: "ai", content: "Walk me through src/server.ts." },
+  { id: "m2", sequence: 2, role: "user", content: "It boots Express." },
+  { id: "m3", sequence: 3, role: "ai", content: "How do you validate sessions?" },
+];
+
+const coverageState: InterviewStateSnapshot = {
+  coverageMap: {
+    areas: [
+      { id: "architecture", name: "Architecture", priority: "high", rationale: "r", topics: ["flow"], repo_evidence: [], status: "covered" },
+      { id: "data", name: "Data layer", priority: "medium", rationale: "r", topics: ["schema"], repo_evidence: [], status: "partial" },
+      { id: "testing", name: "Testing", priority: "low", rationale: "r", topics: ["unit"], repo_evidence: [], status: "not_started" },
+    ],
+  },
+  plan,
+  strategy: {},
+  version: 3,
+};
+
+Deno.test("a reconnected session gets a compact recap and its resume point", async () => {
+  const events: VoiceEvent[] = [
+    { event_type: "connected", occurred_at: at(-900) },
+    { event_type: "disconnected", occurred_at: at(-300) },
+  ];
+  const { handler, openaiRequests } = setup({ events, messages: resumeMessages, state: coverageState });
+  const res = await handler(post());
+  assertEquals(res.status, 201);
+  assertEquals(realtimeSessionResponseSchema.parse(await res.json()).resume, {
+    last_turn_sequence: 3,
+    current_question: "How do you validate sessions?",
+  });
+  const instructions = (openaiRequests[0].body.session as { instructions: string }).instructions;
+  const recap = instructions.slice(instructions.indexOf("<recap>"));
+  assert(recap.includes("Architecture (covered); Data layer (partly covered)"));
+  assert(!recap.includes("Testing"));
+  assert(recap.includes("Current question: How do you validate sessions?"));
+  assert(recap.includes("Candidate's answer: not received"));
+  assert(instructions.includes("Ask the current question again"));
+  assert(!instructions.includes("It boots Express."), "earlier turns are summarized, not replayed");
+  assert(!instructions.includes("Start now"), "a resumed session does not restart the interview");
+});
+
+Deno.test("a reconnect after a saved answer tells the interviewer it was received", async () => {
+  const messages: TranscriptMessage[] = [...resumeMessages, { id: "m4", sequence: 4, role: "user", content: "With signed JWTs." }];
+  const events: VoiceEvent[] = [{ event_type: "connected", occurred_at: at(-120) }, { event_type: "disconnected", occurred_at: at(-60) }];
+  const { handler, openaiRequests } = setup({ events, messages, state: coverageState });
+  const body = realtimeSessionResponseSchema.parse(await (await handler(post())).json());
+  assertEquals(body.resume?.last_turn_sequence, 4);
+  const instructions = (openaiRequests[0].body.session as { instructions: string }).instructions;
+  assert(instructions.includes(`Candidate's answer: received: "With signed JWTs."`));
+  assert(instructions.includes("may have been cut off"));
 });
 
 Deno.test("OpenAI failures map to realtime_unavailable without leaking details", async () => {
@@ -545,6 +624,182 @@ Deno.test("report retry: a retry that cannot be queued reports the current state
   assertEquals((await reportBody(result)).status, "failed");
   assertEquals(down.reportJobs.failures, [{ jobId: "job-1", code: "enqueue_failed" }]);
   assert(!lines.join("\n").includes("inngest down"), "logs carry codes, not raw errors");
+});
+
+Deno.test("events: pause keeps its reason and resume is acknowledged like other voice events", async () => {
+  const { handler, voiceEvents } = setup({ voiceResult: { status: "created", sequence: 11 } });
+  const occurredAt = NOW.toISOString();
+  const paused = await handler(postEvent({ type: "pause", reason: "camera", client_event_id: EVENT_ID, occurred_at: occurredAt }));
+  assertEquals(paused.status, 201);
+  assertEquals(interviewEventAckSchema.parse(await paused.json()), {
+    type: "pause",
+    status: "created",
+    client_event_id: EVENT_ID,
+    event_sequence: 11,
+  });
+  const RESUME_ID = "bbbbbbbb-0000-4000-8000-000000000002";
+  assertEquals((await handler(postEvent({ type: "resume", client_event_id: RESUME_ID, occurred_at: occurredAt }))).status, 201);
+  assertEquals(voiceEvents.map((e) => [e.eventType, e.payload]), [
+    ["pause", { client_occurred_at: occurredAt, reason: "camera" }],
+    ["resume", { client_occurred_at: occurredAt }],
+  ]);
+  await expectError(
+    await handler(postEvent({ type: "pause", reason: "bored", client_event_id: EVENT_ID, occurred_at: occurredAt })),
+    400,
+    "invalid_request",
+  );
+});
+
+// POST /interviews/:id/integrity/frames ---------------------------------------------------
+
+const FRAME = "data:image/jpeg;base64,/9j/4AAQSkZJRgABAQ==";
+const inProgress: InterviewRow = { ...interviewRow, status: "in_progress" };
+
+function postFrame(body: unknown, { auth = "Bearer valid", id = INTERVIEW_ID, headers = {} as Record<string, string> } = {}) {
+  return new Request(`http://localhost:54321/functions/v1/interviews/${id}/integrity/frames`, {
+    method: "POST",
+    headers: { Authorization: auth, Origin: webOrigin, "Content-Type": "application/json", ...headers },
+    body: typeof body === "string" ? body : JSON.stringify(body),
+  });
+}
+
+async function frameBody(res: Response) {
+  assertEquals(res.status, 200);
+  return integrityFrameResponseSchema.parse(await res.json());
+}
+
+function captureAllLogs<T>(run: () => Promise<T>): Promise<{ result: T; lines: string[] }> {
+  const lines: string[] = [];
+  const [log, error] = [console.log, console.error];
+  console.log = (line: string) => lines.push(line);
+  console.error = (line: string) => lines.push(line);
+  return run().then((result) => ({ result, lines })).finally(() => {
+    console.log = log;
+    console.error = error;
+  });
+}
+
+function signals(...kinds: string[]) {
+  let i = 0;
+  return () => {
+    const kind = kinds[i++] ?? "none";
+    return { signal: kind !== "none", kind };
+  };
+}
+
+Deno.test("frames: auth, ownership, method, and body are checked before reserving", async () => {
+  const { handler, integrity, ai } = setup({ interview: inProgress });
+  await expectError(await handler(postFrame({ image: FRAME }, { auth: "Bearer nope" })), 401, "unauthorized");
+  await expectError(await handler(postFrame({ image: FRAME }, { id: "nope" })), 404, "interview_not_found");
+  await expectError(await setup({ interview: null }).handler(postFrame({ image: FRAME })), 404, "interview_not_found");
+  for (const body of ["{bad", { image: "data:image/png;base64,iVBORw0KGgo=" }, { image: FRAME, extra: 1 }, {}]) {
+    await expectError(await handler(postFrame(body)), 400, "invalid_request");
+  }
+  await expectError(
+    await handler(postFrame({ image: FRAME }, { headers: { "Content-Length": "999999" } })),
+    400,
+    "invalid_request",
+  );
+  const get = await handler(new Request(`http://localhost:54321/functions/v1/interviews/${INTERVIEW_ID}/integrity/frames`, {
+    method: "GET",
+    headers: { Authorization: "Bearer valid", Origin: webOrigin },
+  }));
+  await expectError(get, 405, "method_not_allowed");
+  assertEquals([integrity.checks.size, ai.calls.length], [0, 0]);
+});
+
+Deno.test("frames: a clear frame is analyzed at low detail with the vision model and resolved", async () => {
+  const { handler, integrity, ai } = setup({ interview: inProgress });
+  assertEquals(await frameBody(await handler(postFrame({ image: FRAME }))), { status: "ok" });
+  assertEquals(ai.calls.length, 1);
+  assertEquals([ai.calls[0].model, ai.calls[0].images], ["gpt-vision", [FRAME]]);
+  assertEquals([...integrity.checks.values()], [{ status: "clear", warningNumber: null }]);
+  assertEquals(integrity.warnings, []);
+});
+
+Deno.test("frames: signals 1 and 2 warn, the third terminates", async () => {
+  const { handler, integrity, clock } = setup({ interview: inProgress, vision: signals("looking_away", "device_or_notes", "other_person") });
+  const first = await frameBody(await handler(postFrame({ image: FRAME })));
+  assertEquals(first, { status: "warning", warning_number: 1, message: INTEGRITY_WARNING_MESSAGES.looking_away });
+  clock.now = new Date(clock.now.getTime() + 10_000);
+  const second = await frameBody(await handler(postFrame({ image: FRAME })));
+  assertEquals(second, { status: "warning", warning_number: 2, message: INTEGRITY_WARNING_MESSAGES.device_or_notes });
+  clock.now = new Date(clock.now.getTime() + 10_000);
+  const third = await frameBody(await handler(postFrame({ image: FRAME })));
+  assert(third.status === "terminated" && third.warning_number === 3);
+  assertEquals(integrity.status, "terminated");
+  assertEquals(integrity.warnings.map((w) => [w.kind, w.number]), [["looking_away", 1], ["device_or_notes", 2], ["other_person", 3]]);
+  clock.now = new Date(clock.now.getTime() + 10_000);
+  await expectError(await handler(postFrame({ image: FRAME })), 409, "interview_not_active");
+});
+
+Deno.test("frames: more than one frame per 10 seconds is rate limited without calling the model", async () => {
+  const { handler, ai, clock } = setup({ interview: inProgress });
+  await frameBody(await handler(postFrame({ image: FRAME })));
+  clock.now = new Date(clock.now.getTime() + 9_000);
+  const limited = await handler(postFrame({ image: FRAME }));
+  assertEquals(limited.headers.get("retry-after"), "10");
+  await expectError(limited, 429, "rate_limited");
+  assertEquals(ai.calls.length, 1);
+  clock.now = new Date(clock.now.getTime() + 1_000);
+  await frameBody(await handler(postFrame({ image: FRAME })));
+  assertEquals(ai.calls.length, 2);
+});
+
+Deno.test("frames: two frames at once lead to one accepted check", async () => {
+  const { handler, ai, integrity } = setup({ interview: inProgress, vision: signals("looking_away", "looking_away") });
+  const statuses = (await Promise.all([handler(postFrame({ image: FRAME })), handler(postFrame({ image: FRAME }))]))
+    .map((res) => res.status)
+    .sort();
+  assertEquals(statuses, [200, 429]);
+  assertEquals([ai.calls.length, integrity.checks.size, integrity.warnings.length], [1, 1, 1]);
+});
+
+Deno.test("frames: refused while paused or disconnected, and when the interview is not active", async () => {
+  for (const voice of ["pause", "disconnected"] as const) {
+    const { handler, integrity, ai } = setup({ interview: inProgress });
+    integrity.voice = voice;
+    await expectError(await handler(postFrame({ image: FRAME })), 409, "interview_interrupted");
+    assertEquals([integrity.checks.size, ai.calls.length], [0, 0]);
+  }
+  const ended = setup({ interview: inProgress });
+  ended.integrity.status = "completed";
+  await expectError(await ended.handler(postFrame({ image: FRAME })), 409, "interview_not_active");
+});
+
+Deno.test("frames: a vision failure fails open but still counts toward the rate limit", async () => {
+  const { handler, integrity, clock } = setup({ interview: inProgress, vision: () => new AIUnavailableError(503) });
+  const { result, lines } = await captureAllLogs(() => handler(postFrame({ image: FRAME })));
+  assertEquals(await frameBody(result), { status: "ok" });
+  assertEquals([...integrity.checks.values()], [{ status: "clear", warningNumber: null }]);
+  assert(lines.some((line) => JSON.parse(line).event === "integrity_check_failed"));
+  clock.now = new Date(clock.now.getTime() + 5_000);
+  await expectError(await handler(postFrame({ image: FRAME })), 429, "rate_limited");
+});
+
+Deno.test("frames: an interview that ends while the frame is analyzed records nothing", async () => {
+  const ref: { integrity?: ReturnType<typeof createFakeIntegrityStore> } = {};
+  const { handler, integrity } = setup({
+    interview: inProgress,
+    vision: () => {
+      ref.integrity!.status = "completed";
+      return { signal: true, kind: "looking_away" };
+    },
+  });
+  ref.integrity = integrity;
+  await expectError(await handler(postFrame({ image: FRAME })), 409, "interview_not_active");
+  assertEquals(integrity.warnings, []);
+});
+
+Deno.test("frames: the image is never logged or stored", async () => {
+  const { handler, integrity } = setup({ interview: inProgress, vision: signals("face_absent") });
+  const { result, lines } = await captureAllLogs(() => handler(postFrame({ image: FRAME })));
+  assertEquals((await frameBody(result)).status, "warning");
+  assert(lines.length > 0);
+  for (const line of lines) {
+    assert(!line.includes("base64") && !line.includes(FRAME.slice(-12)), `log leaks the frame: ${line}`);
+  }
+  assert(!JSON.stringify({ warnings: integrity.warnings, checks: [...integrity.checks] }).includes("base64"));
 });
 
 Deno.test("voiceSecondsUsed sums connected time and closes open segments", () => {

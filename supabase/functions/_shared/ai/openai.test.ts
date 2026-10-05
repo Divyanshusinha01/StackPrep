@@ -53,6 +53,21 @@ Deno.test("sends a strict JSON-schema request and returns validated output with 
   assertEquals(body.text.format.schema.required, ["title", "count"]);
 });
 
+Deno.test("sends images as low-detail input_image parts after the text", async () => {
+  const { provider, calls } = stub(() => Response.json(completed(JSON.stringify({ title: "Frame", count: 0 }))));
+  const image = "data:image/jpeg;base64,/9j/4AAQ";
+  await provider.generateStructured({ ...request, images: [image] });
+  const body = JSON.parse(calls[0].init.body as string);
+  assertEquals(body.input, [{
+    role: "user",
+    content: [
+      { type: "input_text", text: "<repository>hello</repository>" },
+      { type: "input_image", image_url: image, detail: "low" },
+    ],
+  }]);
+  assertEquals(body.store, false);
+});
+
 Deno.test("strips schema keywords OpenAI rejects but keeps supported ones", () => {
   const json = JSON.stringify(toStrictJsonSchema(schema));
   for (const keyword of ["$schema", "minLength", "maxLength"]) {

@@ -1,4 +1,8 @@
 import {
+  type IntegrityFrameResponse,
+  integrityFrameRequestSchema,
+  integrityFrameResponseSchema,
+  INTEGRITY_FRAME_MAX_CHARS,
   type InterviewEventAck,
   interviewEventAckSchema,
   interviewEventRequestSchema,
@@ -17,7 +21,7 @@ import {
   VOICE_LIMIT_SECONDS,
 } from "@stackprep/shared";
 import type { SupabaseClient } from "@supabase/supabase-js";
-import type { AIProvider } from "../_shared/ai/provider.ts";
+import { AIError, type AIProvider } from "../_shared/ai/provider.ts";
 import type { Authenticate } from "../_shared/auth.ts";
 import type { GithubApp } from "../_shared/github-app.ts";
 import { apiError, logGithubError } from "../_shared/github-errors.ts";
@@ -26,7 +30,16 @@ import type { JobQueue } from "../_shared/jobs.ts";
 import { buildRealtimeInstructions, type InstructionsMemory } from "../_shared/realtime/instructions.ts";
 import type { RealtimeClient } from "../_shared/realtime/openai-realtime.ts";
 import { buildRealtimeTools } from "../_shared/realtime/tools.ts";
+import {
+  analyzeFrame,
+  INTEGRITY_TERMINATION_MESSAGE,
+  INTEGRITY_WARNING_MESSAGES,
+  type IntegrityReservation,
+  type IntegritySignalResult,
+  type IntegrityStore,
+} from "./integrity.ts";
 import { type ReportInterview, type ReportJobStore, requestReport } from "./report-request.ts";
+import { buildResumeContext, RESUME_MESSAGES } from "./resume.ts";
 import { createTreeCache, type TreeCache } from "./tools/get-file.ts";
 import { parseToolCall, READ_TOOLS, runTool } from "./tools/index.ts";
 import { createToolStore } from "./tools/store.ts";
@@ -95,7 +108,7 @@ export interface VoiceEventRecord {
   interviewId: string;
   userId: string;
   clientEventId: string;
-  eventType: VoiceEvent["event_type"];
+  eventType: VoiceEvent["event_type"] | "pause" | "resume";
   payload: Record<string, unknown>;
 }
 
@@ -109,7 +122,7 @@ export interface RecordResult {
  * Service-role reads of hidden state. Every call is keyed by ids taken from an interview the
  * caller has already been shown to own.
  */
-export interface InterviewStore extends ToolStore {
+export interface InterviewStore extends ToolStore, IntegrityStore {
   /** Raw `interview_state.plan`; `{}` until planning writes it. */
   getPlan(interviewId: string): Promise<unknown>;
   /** Connected / disconnected events in sequence order. */
@@ -130,6 +143,7 @@ export interface InterviewsHandlerOptions {
   github: GithubApp;
   ai: AIProvider;
   evaluationModel: string;
+  visionModel: string;
   jobs: JobQueue;
   reportJobs: ReportJobStore;
   trees?: TreeCache;
@@ -258,6 +272,26 @@ export function createInterviewStore(serviceClient: SupabaseClient): InterviewSt
       check("record voice event", error);
       return data as RecordResult;
     },
+    async reserveIntegrityCheck(interviewId, userId) {
+      const { data, error } = await serviceClient.rpc("reserve_integrity_check", {
+        p_interview_id: interviewId,
+        p_user_id: userId,
+      }).single();
+      check("reserve integrity check", error);
+      const row = data as { status: IntegrityReservation["status"]; check_id: string | null };
+      return { status: row.status, checkId: row.check_id };
+    },
+    async recordIntegritySignal(interviewId, userId, checkId, kind) {
+      const { data, error } = await serviceClient.rpc("record_integrity_signal", {
+        p_interview_id: interviewId,
+        p_user_id: userId,
+        p_check_id: checkId,
+        p_kind: kind,
+      }).single();
+      check("record integrity signal", error);
+      const row = data as { status: IntegritySignalResult["status"]; warning_number: number | null };
+      return { status: row.status, warningNumber: row.warning_number };
+    },
   };
 }
 
@@ -313,6 +347,11 @@ const EVENTS_ROUTE = /\/interviews\/([^/]+)\/events\/?$/;
 const TOOL_CALLS_ROUTE = /\/interviews\/([^/]+)\/tool-calls\/?$/;
 const REPORT_ROUTE = /\/interviews\/([^/]+)\/report\/?$/;
 const REPORT_RETRY_ROUTE = /\/interviews\/([^/]+)\/report\/retry\/?$/;
+const FRAMES_ROUTE = /\/interviews\/([^/]+)\/integrity\/frames\/?$/;
+
+/** Body bytes allowed for one frame request: the data URL cap plus JSON framing. */
+const FRAME_BODY_MAX_BYTES = INTEGRITY_FRAME_MAX_CHARS + 1024;
+const FRAME_RETRY_AFTER_SECONDS = "10";
 
 export function createInterviewsHandler({
   webOrigin,
@@ -325,6 +364,7 @@ export function createInterviewsHandler({
   github,
   ai,
   evaluationModel,
+  visionModel,
   jobs,
   reportJobs,
   trees = createTreeCache(),
@@ -521,6 +561,78 @@ export function createInterviewsHandler({
     return toolResponse(output);
   }
 
+  /**
+   * One camera frame: reserve a check (rate limit, active and not interrupted), run the vision
+   * model with no lock held, then resolve the check. A vision failure resolves it with no signal,
+   * so the candidate is never penalized for it. The frame is never stored or logged.
+   */
+  async function submitFrame(req: Request, id: string): Promise<Response> {
+    const ctx = await authenticate(req);
+    if (!ctx) {
+      return apiError("unauthorized", cors);
+    }
+    if (!interviewIdParamSchema.safeParse(id).success) {
+      return apiError("interview_not_found", cors);
+    }
+    const interview = await reader(ctx.supabase).getInterview(id);
+    if (!interview) {
+      return apiError("interview_not_found", cors);
+    }
+
+    if (Number(req.headers.get("content-length") ?? 0) > FRAME_BODY_MAX_BYTES) {
+      await req.body?.cancel();
+      return apiError("invalid_request", cors);
+    }
+    let raw: unknown;
+    try {
+      raw = await req.json();
+    } catch {
+      return apiError("invalid_request", cors);
+    }
+    const frame = integrityFrameRequestSchema.safeParse(raw);
+    if (!frame.success) {
+      return apiError("invalid_request", cors);
+    }
+
+    const reservation = await store.reserveIntegrityCheck(interview.id, ctx.user.id);
+    if (reservation.status === "not_active") {
+      return apiError("interview_not_active", cors);
+    }
+    if (reservation.status === "interrupted") {
+      return apiError("interview_interrupted", cors);
+    }
+    if (reservation.status === "rate_limited" || !reservation.checkId) {
+      return apiError("rate_limited", cors, { "Retry-After": FRAME_RETRY_AFTER_SECONDS });
+    }
+
+    const log = (entry: Record<string, string | number | boolean>) =>
+      console.log(JSON.stringify({ fn: FN, interview_id: interview.id, ...entry }));
+    let kind: Awaited<ReturnType<typeof analyzeFrame>> = null;
+    try {
+      kind = await analyzeFrame({ ai, model: visionModel, log }, frame.data.image);
+    } catch (err) {
+      if (!(err instanceof AIError)) {
+        throw err;
+      }
+      log({ event: "integrity_check_failed", reason: err.name });
+    }
+
+    const result = await store.recordIntegritySignal(interview.id, ctx.user.id, reservation.checkId, kind);
+    if (result.status === "not_active") {
+      return apiError("interview_not_active", cors);
+    }
+    let body: IntegrityFrameResponse = { status: "ok" };
+    if (result.status === "terminated") {
+      body = { status: "terminated", warning_number: 3, message: INTEGRITY_TERMINATION_MESSAGE };
+    } else if (result.status === "warning" && kind && result.warningNumber !== null) {
+      body = { status: "warning", warning_number: result.warningNumber, message: INTEGRITY_WARNING_MESSAGES[kind] };
+    }
+    if (body.status !== "ok") {
+      log({ event: "integrity_signal", kind: kind ?? "none", warning_number: result.warningNumber ?? 0 });
+    }
+    return json(integrityFrameResponseSchema.parse(body), { headers: cors.headers });
+  }
+
   async function createSession(req: Request, id: string): Promise<Response> {
     const ctx = await authenticate(req);
     if (!ctx) {
@@ -554,16 +666,22 @@ export function createInterviewsHandler({
       return apiError("interview_not_active", cors);
     }
 
-    const context = await store.getRepositoryContext(interview.workspace_id, interview.repository_commit_sha);
+    const [context, messages, state] = await Promise.all([
+      store.getRepositoryContext(interview.workspace_id, interview.repository_commit_sha),
+      store.listRecentMessages(interview.id, RESUME_MESSAGES),
+      store.getInterviewState(interview.id),
+    ]);
     if (!context) {
       throw new Error("Interview workspace is not readable");
     }
+    const resumed = buildResumeContext({ elapsedVoiceSeconds: elapsed, coverageMap: state?.coverageMap, messages });
     const instructions = buildRealtimeInstructions({
       repositoryFullName: context.repositoryFullName,
       commitSha: interview.repository_commit_sha,
       memory: context.memory,
       plan: plan.data,
       elapsedVoiceSeconds: elapsed,
+      recap: resumed?.recap ?? null,
     });
 
     let credential;
@@ -582,6 +700,7 @@ export function createInterviewsHandler({
       expires_at: credential.expiresAt.toISOString(),
       model,
       remaining_voice_seconds: remaining,
+      resume: resumed?.resume ?? null,
     });
     return json(body, { status: 201, headers: cors.headers });
   }
@@ -636,7 +755,10 @@ export function createInterviewsHandler({
         userId: ctx.user.id,
         clientEventId: event.client_event_id,
         eventType: event.type,
-        payload: { client_occurred_at: event.occurred_at },
+        payload: {
+          client_occurred_at: event.occurred_at,
+          ...(event.type === "pause" ? { reason: event.reason } : {}),
+        },
       });
       if (result.status === "event_conflict") {
         return apiError("event_conflict", cors);
@@ -664,6 +786,7 @@ export function createInterviewsHandler({
       { pattern: TOOL_CALLS_ROUTE, method: "POST", run: callTool },
       { pattern: REPORT_ROUTE, method: "GET", run: getReport },
       { pattern: REPORT_RETRY_ROUTE, method: "POST", run: retryReport },
+      { pattern: FRAMES_ROUTE, method: "POST", run: submitFrame },
     ] as const;
     let matched: { route: (typeof routes)[number]; id: string } | null = null;
     for (const route of routes) {

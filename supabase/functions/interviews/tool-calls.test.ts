@@ -168,6 +168,8 @@ function setup({
     getRepositoryContext: () => Promise.resolve(null),
     recordTranscriptTurn: () => Promise.reject(new Error("unused")),
     recordVoiceEvent: () => Promise.reject(new Error("unused")),
+    reserveIntegrityCheck: () => Promise.reject(new Error("unused")),
+    recordIntegritySignal: () => Promise.reject(new Error("unused")),
   };
   const fakeAI = createFakeAIProvider(ai);
   const jobs = createFakeJobQueue();
@@ -191,6 +193,7 @@ function setup({
     github,
     ai: fakeAI,
     evaluationModel: "gpt-eval",
+    visionModel: "gpt-vision",
     jobs,
     reportJobs,
     now: () => NOW,

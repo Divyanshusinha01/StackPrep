@@ -60,7 +60,13 @@ function retryAfterSeconds(res: Response): number {
 /** OpenAI Responses API with strict JSON-schema output. Errors carry status codes only, never bodies. */
 export function createOpenAIProvider({ apiKey, fetch: fetchFn = fetch, timeoutMs = DEFAULT_TIMEOUT_MS }: OpenAIProviderOptions): AIProvider {
   return {
-    async generateStructured({ model, system, input, schemaName, schema, maxOutputTokens }) {
+    async generateStructured({ model, system, input, images, schemaName, schema, maxOutputTokens }) {
+      const userContent = images?.length
+        ? [
+          { type: "input_text", text: input },
+          ...images.map((url) => ({ type: "input_image", image_url: url, detail: "low" })),
+        ]
+        : input;
       let res: Response;
       try {
         res = await fetchFn(RESPONSES_URL, {
@@ -69,7 +75,7 @@ export function createOpenAIProvider({ apiKey, fetch: fetchFn = fetch, timeoutMs
           body: JSON.stringify({
             model,
             instructions: system,
-            input: [{ role: "user", content: input }],
+            input: [{ role: "user", content: userContent }],
             text: { format: { type: "json_schema", name: schemaName, schema: toStrictJsonSchema(schema), strict: true } },
             max_output_tokens: maxOutputTokens ?? DEFAULT_MAX_OUTPUT_TOKENS,
             store: false,

@@ -3,6 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { EMPTY_TRANSCRIPT, transcriptReducer } from "./realtime-transcript";
 import {
   createTranscriptOutbox,
+  drainTurns,
   newlyFinalTurns,
   type OutboxOptions,
   type OutboxStorage,
@@ -128,6 +129,32 @@ describe("transcript outbox", () => {
     expect(outbox.pending()).toEqual([]);
   });
 
+  it("sends pause with its reason and resume, and reports every ack", async () => {
+    const onAck = vi.fn();
+    const { send, sent } = scripted([(item) => ack(item, "created", 7)]);
+    const outbox = make({ send, onAck });
+    outbox.enqueue(turn("answer"));
+    outbox.enqueue({ type: "disconnected" });
+    outbox.enqueue({ type: "pause", reason: "camera" });
+    const resume = outbox.enqueue({ type: "resume" });
+    await tick();
+    expect(sent.map((i) => i.type)).toEqual(["transcript_turn", "disconnected", "pause", "resume"]);
+    expect(sent[2]).toMatchObject({ type: "pause", reason: "camera" });
+    expect(resume).not.toHaveProperty("reason");
+    expect(onAck).toHaveBeenCalledTimes(4);
+    expect(onAck.mock.calls[0][1]).toMatchObject({ type: "transcript_turn", turn_sequence: 7 });
+    expect(onAck.mock.calls[3][0]).toBe(resume);
+  });
+
+  it("does not report a dropped item as acked", async () => {
+    const onAck = vi.fn();
+    const { send } = scripted([() => ({ ok: false, retryable: false, code: "event_conflict" })]);
+    const outbox = make({ send, onAck });
+    outbox.enqueue(turn("one"));
+    await tick();
+    expect(onAck).not.toHaveBeenCalled();
+  });
+
   it("treats a duplicate ack as delivered", async () => {
     const { send } = scripted([(item) => ack(item, "duplicate")]);
     const outbox = make({ send });
@@ -231,6 +258,41 @@ describe("transcript outbox", () => {
     const outbox = make({ send: () => new Promise(() => {}) });
     const item = outbox.enqueue(turn("x".repeat(9_000)));
     expect(item.type === "transcript_turn" && item.content.length).toBe(8_000);
+  });
+});
+
+describe("drainTurns", () => {
+  it("resolves at once when no turn is pending, even with voice events queued", async () => {
+    const outbox = make({ send: () => new Promise(() => {}) });
+    outbox.enqueue({ type: "disconnected" });
+    await expect(drainTurns(outbox)).resolves.toBe(true);
+  });
+
+  it("waits until every saved answer is acknowledged before a reconnect", async () => {
+    const { send, sent } = scripted([
+      () => ({ ok: false, retryable: true, code: "network_error" }),
+      () => ({ ok: false, retryable: true, code: "network_error" }),
+    ]);
+    const outbox = make({ send, baseDelayMs: 60_000, maxDelayMs: 60_000 });
+    outbox.enqueue(turn("my answer"));
+    let drained: boolean | null = null;
+    void drainTurns(outbox, 5_000, 500).then((ok) => (drained = ok));
+    await vi.advanceTimersByTimeAsync(1_500);
+    expect(drained).toBe(true);
+    expect(sent.length).toBeGreaterThanOrEqual(3);
+    expect(outbox.pending()).toEqual([]);
+  });
+
+  it("gives up after the timeout so a reconnect is not blocked forever", async () => {
+    const failures = Array.from({ length: 50 }, () => (): SendResult => ({ ok: false, retryable: true, code: "network_error" }));
+    const { send } = scripted(failures);
+    const outbox = make({ send, baseDelayMs: 60_000, maxDelayMs: 60_000 });
+    outbox.enqueue(turn("my answer"));
+    let drained: boolean | null = null;
+    void drainTurns(outbox, 2_000, 500).then((ok) => (drained = ok));
+    await vi.advanceTimersByTimeAsync(2_600);
+    expect(drained).toBe(false);
+    expect(outbox.pending()).toHaveLength(1);
   });
 });
 

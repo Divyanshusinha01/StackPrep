@@ -9,12 +9,23 @@ export const interviewIdParamSchema = z.uuid();
 
 // POST /interviews/:id/realtime/session -------------------------------------------
 
+export const RESUME_QUESTION_MAX_CHARS = 1000;
+
+/** What a reconnected session resumes from; null on the first connection. */
+export const sessionResumeSchema = z.object({
+  /** Highest persisted `interview_messages.sequence` the recap was built from; 0 if none. */
+  last_turn_sequence: z.int().min(0),
+  /** The interviewer's latest question, as persisted. */
+  current_question: z.string().max(RESUME_QUESTION_MAX_CHARS).nullable(),
+});
+
 export const realtimeSessionResponseSchema = z.object({
   /** Short-lived OpenAI Realtime credential; used once to open the WebRTC call. */
   client_secret: z.string().min(1),
   expires_at: z.iso.datetime({ offset: true }),
   model: z.string().min(1),
   remaining_voice_seconds: z.int().min(1).max(VOICE_LIMIT_SECONDS),
+  resume: sessionResumeSchema.nullable(),
 });
 
 // POST /interviews/:id/events -----------------------------------------------------
@@ -42,7 +53,28 @@ export const voiceEventSchema = z.strictObject({
   occurred_at: z.iso.datetime({ offset: true }),
 });
 
-export const interviewEventRequestSchema = z.discriminatedUnion("type", [transcriptTurnEventSchema, voiceEventSchema]);
+/** Technical interruptions only; the candidate cannot pause voluntarily (PRD section 21). */
+export const pauseReasonSchema = z.enum(["camera", "microphone", "network", "connection"]);
+
+export const pauseEventSchema = z.strictObject({
+  type: z.literal("pause"),
+  client_event_id: z.uuid(),
+  reason: pauseReasonSchema,
+  occurred_at: z.iso.datetime({ offset: true }),
+});
+
+export const resumeEventSchema = z.strictObject({
+  type: z.literal("resume"),
+  client_event_id: z.uuid(),
+  occurred_at: z.iso.datetime({ offset: true }),
+});
+
+export const interviewEventRequestSchema = z.discriminatedUnion("type", [
+  transcriptTurnEventSchema,
+  voiceEventSchema,
+  pauseEventSchema,
+  resumeEventSchema,
+]);
 
 export const interviewEventAckStatusSchema = z.enum(["created", "duplicate"]);
 
@@ -55,7 +87,7 @@ export const transcriptTurnAckSchema = z.strictObject({
 });
 
 export const voiceEventAckSchema = z.strictObject({
-  type: z.enum(["connected", "disconnected"]),
+  type: z.enum(["connected", "disconnected", "pause", "resume"]),
   status: interviewEventAckStatusSchema,
   client_event_id: z.uuid(),
   /** Server-assigned `interview_events.sequence`. */
@@ -63,6 +95,38 @@ export const voiceEventAckSchema = z.strictObject({
 });
 
 export const interviewEventAckSchema = z.discriminatedUnion("type", [transcriptTurnAckSchema, voiceEventAckSchema]);
+
+// POST /interviews/:id/integrity/frames --------------------------------------------
+// One low-detail camera frame about every 10 seconds (PRD section 20). The frame is analyzed and
+// discarded; only the detected signal is stored. The backend enforces the interval.
+
+export const INTEGRITY_FRAME_INTERVAL_MS = 10_000;
+export const INTEGRITY_WARNING_LIMIT = 3;
+/** Data URL length cap; a ~320 px wide JPEG is a few tens of kilobytes. */
+export const INTEGRITY_FRAME_MAX_CHARS = 200_000;
+
+export const integrityFrameRequestSchema = z.strictObject({
+  image: z
+    .string()
+    .max(INTEGRITY_FRAME_MAX_CHARS)
+    .regex(/^data:image\/jpeg;base64,[A-Za-z0-9+/]+={0,2}$/),
+});
+
+export const integritySignalKindSchema = z.enum(["looking_away", "other_person", "device_or_notes", "face_absent"]);
+
+export const integrityFrameResponseSchema = z.discriminatedUnion("status", [
+  z.strictObject({ status: z.literal("ok") }),
+  z.strictObject({
+    status: z.literal("warning"),
+    warning_number: z.int().min(1).max(INTEGRITY_WARNING_LIMIT - 1),
+    message: z.string().min(1).max(300),
+  }),
+  z.strictObject({
+    status: z.literal("terminated"),
+    warning_number: z.literal(INTEGRITY_WARNING_LIMIT),
+    message: z.string().min(1).max(300),
+  }),
+]);
 
 // Realtime tools ------------------------------------------------------------------
 // No tool accepts an interview id or other database identifier: the interview comes from the
@@ -238,9 +302,16 @@ export const toolCallEventPayloadSchema = z.object({
   result_summary: z.record(z.string(), z.unknown()),
 });
 
+export type SessionResume = z.infer<typeof sessionResumeSchema>;
 export type RealtimeSessionResponse = z.infer<typeof realtimeSessionResponseSchema>;
 export type TranscriptTurnEvent = z.infer<typeof transcriptTurnEventSchema>;
 export type VoiceEventRequest = z.infer<typeof voiceEventSchema>;
+export type PauseReason = z.infer<typeof pauseReasonSchema>;
+export type PauseEventRequest = z.infer<typeof pauseEventSchema>;
+export type ResumeEventRequest = z.infer<typeof resumeEventSchema>;
+export type IntegrityFrameRequest = z.infer<typeof integrityFrameRequestSchema>;
+export type IntegritySignalKind = z.infer<typeof integritySignalKindSchema>;
+export type IntegrityFrameResponse = z.infer<typeof integrityFrameResponseSchema>;
 export type InterviewEventRequest = z.infer<typeof interviewEventRequestSchema>;
 export type InterviewEventAckStatus = z.infer<typeof interviewEventAckStatusSchema>;
 export type TranscriptTurnAck = z.infer<typeof transcriptTurnAckSchema>;

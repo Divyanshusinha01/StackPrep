@@ -46,6 +46,8 @@ export const openAIEnvSchema = z.object({
   OPENAI_REALTIME_MODEL: secret.default("gpt-realtime-2.1-mini"),
   /** Transcribes the candidate's speech for the live transcript; the interviewer's own transcript is free. */
   OPENAI_REALTIME_TRANSCRIPTION_MODEL: secret.default("gpt-4o-mini-transcribe"),
+  /** Checks one low-detail camera frame for integrity signals. */
+  OPENAI_VISION_MODEL: secret.default("gpt-5.6-luna"),
 });
 
 export const githubAppEnvSchema = z.object({
