@@ -1,4 +1,7 @@
 import {
+  type InterviewEventAck,
+  interviewEventAckSchema,
+  interviewEventRequestSchema,
   interviewIdParamSchema,
   interviewPlanSchema,
   type InterviewStatus,
@@ -44,6 +47,29 @@ export interface RepositoryContext {
   memory: InstructionsMemory[];
 }
 
+export interface TranscriptTurnRecord {
+  interviewId: string;
+  userId: string;
+  clientEventId: string;
+  role: "ai" | "user";
+  content: string;
+  metadata: Record<string, unknown>;
+}
+
+export interface VoiceEventRecord {
+  interviewId: string;
+  userId: string;
+  clientEventId: string;
+  eventType: VoiceEvent["event_type"];
+  payload: Record<string, unknown>;
+}
+
+/** `sequence` is the server-assigned sequence of the stored row. */
+export interface RecordResult {
+  status: "created" | "duplicate" | "event_conflict";
+  sequence: number;
+}
+
 /**
  * Service-role reads of hidden state. Every call is keyed by ids taken from an interview the
  * caller has already been shown to own.
@@ -54,6 +80,8 @@ export interface InterviewStore {
   /** Connected / disconnected events in sequence order. */
   listVoiceEvents(interviewId: string): Promise<VoiceEvent[]>;
   getRepositoryContext(workspaceId: string, commitSha: string): Promise<RepositoryContext | null>;
+  recordTranscriptTurn(turn: TranscriptTurnRecord): Promise<RecordResult>;
+  recordVoiceEvent(event: VoiceEventRecord): Promise<RecordResult>;
 }
 
 export interface InterviewsHandlerOptions {
@@ -144,6 +172,29 @@ export function createInterviewStore(serviceClient: SupabaseClient): InterviewSt
         memory: [...(summaries.data ?? []), ...(files.data ?? [])] as InstructionsMemory[],
       };
     },
+    async recordTranscriptTurn(turn) {
+      const { data, error } = await serviceClient.rpc("record_transcript_turn", {
+        p_interview_id: turn.interviewId,
+        p_user_id: turn.userId,
+        p_client_event_id: turn.clientEventId,
+        p_role: turn.role,
+        p_content: turn.content,
+        p_metadata: turn.metadata,
+      }).single();
+      check("record transcript turn", error);
+      return data as RecordResult;
+    },
+    async recordVoiceEvent(event) {
+      const { data, error } = await serviceClient.rpc("record_voice_event", {
+        p_interview_id: event.interviewId,
+        p_user_id: event.userId,
+        p_client_event_id: event.clientEventId,
+        p_event_type: event.eventType,
+        p_payload: event.payload,
+      }).single();
+      check("record voice event", error);
+      return data as RecordResult;
+    },
   };
 }
 
@@ -182,7 +233,8 @@ async function safetyIdentifier(userId: string): Promise<string> {
   return Array.from(new Uint8Array(digest), (b) => b.toString(16).padStart(2, "0")).join("");
 }
 
-const ROUTE = /\/interviews\/([^/]+)\/realtime\/session\/?$/;
+const SESSION_ROUTE = /\/interviews\/([^/]+)\/realtime\/session\/?$/;
+const EVENTS_ROUTE = /\/interviews\/([^/]+)\/events\/?$/;
 
 export function createInterviewsHandler({
   webOrigin,
@@ -262,6 +314,68 @@ export function createInterviewsHandler({
     return json(body, { status: 201, headers: cors.headers });
   }
 
+  /** Accepted after the interview ends too, so turns buffered during a drop are not lost. */
+  async function recordEvent(req: Request, id: string): Promise<Response> {
+    const ctx = await authenticate(req);
+    if (!ctx) {
+      return apiError("unauthorized", cors);
+    }
+    if (!interviewIdParamSchema.safeParse(id).success) {
+      return apiError("interview_not_found", cors);
+    }
+    const interview = await reader(ctx.supabase).getInterview(id);
+    if (!interview) {
+      return apiError("interview_not_found", cors);
+    }
+
+    let raw: unknown;
+    try {
+      raw = await req.json();
+    } catch {
+      return apiError("invalid_request", cors);
+    }
+    const parsed = interviewEventRequestSchema.safeParse(raw);
+    if (!parsed.success) {
+      return apiError("invalid_request", cors);
+    }
+    const event = parsed.data;
+
+    let ack: InterviewEventAck;
+    if (event.type === "transcript_turn") {
+      const result = await store.recordTranscriptTurn({
+        interviewId: interview.id,
+        userId: ctx.user.id,
+        clientEventId: event.client_event_id,
+        role: event.role,
+        content: event.content,
+        metadata: {
+          item_id: event.item_id,
+          occurred_at: event.occurred_at,
+          ...(event.interrupted ? { interrupted: true } : {}),
+        },
+      });
+      if (result.status === "event_conflict") {
+        return apiError("event_conflict", cors);
+      }
+      ack = { type: event.type, status: result.status, client_event_id: event.client_event_id, turn_sequence: result.sequence };
+    } else {
+      const result = await store.recordVoiceEvent({
+        interviewId: interview.id,
+        userId: ctx.user.id,
+        clientEventId: event.client_event_id,
+        eventType: event.type,
+        payload: { client_occurred_at: event.occurred_at },
+      });
+      if (result.status === "event_conflict") {
+        return apiError("event_conflict", cors);
+      }
+      ack = { type: event.type, status: result.status, client_event_id: event.client_event_id, event_sequence: result.sequence };
+    }
+
+    const body = interviewEventAckSchema.parse(ack);
+    return json(body, { status: body.status === "created" ? 201 : 200, headers: cors.headers });
+  }
+
   return async (req: Request): Promise<Response> => {
     const rejected = cors.rejectOrigin(req);
     if (rejected) {
@@ -271,8 +385,15 @@ export function createInterviewsHandler({
       return new Response(null, { status: 204, headers: cors.headers });
     }
 
-    const match = new URL(req.url).pathname.match(ROUTE);
-    if (!match) {
+    const path = new URL(req.url).pathname;
+    const session = path.match(SESSION_ROUTE);
+    const events = path.match(EVENTS_ROUTE);
+    const route = session
+      ? () => createSession(req, session[1])
+      : events
+      ? () => recordEvent(req, events[1])
+      : null;
+    if (!route) {
       return apiError("not_found", cors);
     }
     if (req.method !== "POST") {
@@ -280,7 +401,7 @@ export function createInterviewsHandler({
     }
 
     try {
-      return await createSession(req, match[1]);
+      return await route();
     } catch (err) {
       logGithubError(FN, err, { code: "internal_error" });
       return apiError("internal_error", cors);

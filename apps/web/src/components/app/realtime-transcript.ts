@@ -1,6 +1,7 @@
 /**
  * Display-only transcript built from Realtime data-channel events. One turn per conversation
- * item, kept in the order each item was first seen. Nothing here is persisted.
+ * item, kept in the order each item was first seen. The reducer persists nothing; finalized
+ * turns are picked up by `newlyFinalTurns` and sent through the transcript outbox.
  */
 
 export interface TranscriptTurn {

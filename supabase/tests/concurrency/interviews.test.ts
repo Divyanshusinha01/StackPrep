@@ -143,6 +143,89 @@ Deno.test({
 });
 
 Deno.test({
+  name: "concurrent voice events are serialized and get distinct event sequences",
+  ignore: !dbUrl,
+  async fn() {
+    await withFixture(async ({ a, b, userId, workspaceId }) => {
+      const [{ id: interviewId }] = await a`
+        select id from public.create_interview(${workspaceId}, ${userId}, ${sha}, '{}'::jsonb, '{}'::jsonb, '{}'::jsonb)`;
+      const recorded = Promise.withResolvers<void>();
+      const release = Promise.withResolvers<void>();
+
+      const first = a.begin(async (tx) => {
+        const [row] = await tx`
+          select status, sequence from public.record_voice_event(
+            ${interviewId}, ${userId}, ${crypto.randomUUID()}, 'connected', '{}'::jsonb)`;
+        recorded.resolve();
+        await release.promise;
+        return row as { status: string; sequence: number };
+      });
+
+      await recorded.promise;
+      const second = b`
+        select status, sequence from public.record_voice_event(
+          ${interviewId}, ${userId}, ${crypto.randomUUID()}, 'disconnected', '{}'::jsonb)`
+        .then(([row]) => row as { status: string; sequence: number });
+      const secondState = settled(second);
+
+      await delay(300);
+      assertEquals(secondState.done, false, "second event should wait for the per-interview lock");
+
+      release.resolve();
+      const rows = await Promise.all([first, second]);
+      assertEquals(rows.map((r) => `${r.status}:${r.sequence}`), ["created:1", "created:2"]);
+    });
+  },
+});
+
+Deno.test({
+  name: "concurrent transcript turns: a retry returns duplicate, a different turn gets the next sequence",
+  ignore: !dbUrl,
+  async fn() {
+    await withFixture(async ({ a, b, userId, workspaceId }) => {
+      const firstEventId = crypto.randomUUID();
+      const rounds = [
+        { eventId: firstEventId, content: "It uses Postgres.", expected: "duplicate:1", stored: 1 },
+        { eventId: crypto.randomUUID(), content: "Another turn.", expected: "created:2", stored: 2 },
+      ];
+      for (const { eventId, content, expected, stored } of rounds) {
+        const [{ id: interviewId }] = await a`
+          select id from public.create_interview(${workspaceId}, ${userId}, ${sha}, '{}'::jsonb, '{}'::jsonb, '{}'::jsonb)`;
+        const turn = (sql: postgres.Sql | postgres.TransactionSql, id: string, text: string) =>
+          sql`
+            select status, sequence from public.record_transcript_turn(
+              ${interviewId}, ${userId}, ${id}, 'user', ${text}, '{}'::jsonb)`
+            .then(([row]) => `${row.status}:${row.sequence}`);
+
+        const inserted = Promise.withResolvers<void>();
+        const release = Promise.withResolvers<void>();
+        const first = a.begin(async (tx) => {
+          const result = await turn(tx, firstEventId, "It uses Postgres.");
+          inserted.resolve();
+          await release.promise;
+          return result;
+        });
+
+        await inserted.promise;
+        const second = turn(b, eventId, content);
+        const secondState = settled(second);
+
+        await delay(300);
+        assertEquals(secondState.done, false, "second turn should wait for the per-interview lock");
+
+        release.resolve();
+        assertEquals(await first, "created:1");
+        assertEquals(await second, expected);
+
+        const [{ count }] = await a`
+          select count(*)::int as count from public.interview_messages where interview_id = ${interviewId}`;
+        assertEquals(count, stored);
+      }
+    });
+  },
+});
+
+Deno.test({
   name: "an interview inserted without state by the service role fails at commit",
   ignore: !dbUrl,
   async fn() {

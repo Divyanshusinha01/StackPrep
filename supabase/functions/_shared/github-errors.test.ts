@@ -57,6 +57,7 @@ Deno.test("apiError uses the status defined for each code", async () => {
     ["interview_planning_failed", 409],
     ["interview_not_active", 409],
     ["realtime_unavailable", 502],
+    ["event_conflict", 409],
   ];
   for (const [code, status] of cases) {
     const res = apiError(code, cors);

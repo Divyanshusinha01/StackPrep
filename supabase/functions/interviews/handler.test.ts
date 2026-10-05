@@ -1,6 +1,7 @@
 import { assert, assertEquals } from "@std/assert";
 import {
   apiErrorSchema,
+  interviewEventAckSchema,
   type InterviewPlan,
   type PlanningState,
   realtimeSessionResponseSchema,
@@ -14,7 +15,10 @@ import {
   type InterviewReader,
   type InterviewRow,
   type InterviewStore,
+  type RecordResult,
+  type TranscriptTurnRecord,
   type VoiceEvent,
+  type VoiceEventRecord,
   voiceSecondsUsed,
 } from "./handler.ts";
 
@@ -48,6 +52,8 @@ interface Setup {
   storedPlan?: unknown;
   events?: VoiceEvent[];
   openai?: (req: Request) => Response | Promise<Response>;
+  turnResult?: RecordResult;
+  voiceResult?: RecordResult;
 }
 
 function at(offsetSeconds: number): string {
@@ -60,9 +66,13 @@ function setup({
   storedPlan = plan,
   events = [],
   openai = () => Response.json({ value: "ek_test_123", expires_at: NOW.getTime() / 1000 + 60, session: {} }),
+  turnResult = { status: "created", sequence: 3 },
+  voiceResult = { status: "created", sequence: 7 },
 }: Setup = {}) {
   const rlsClient = { rls: true } as unknown as SupabaseClient;
   const openaiRequests: { url: string; headers: Headers; body: Record<string, unknown> }[] = [];
+  const turns: TranscriptTurnRecord[] = [];
+  const voiceEvents: VoiceEventRecord[] = [];
   const authenticate: Authenticate = (req) =>
     Promise.resolve(
       req.headers.get("Authorization") === "Bearer valid" ? { user: { id: userId } as User, supabase: rlsClient } : null,
@@ -87,6 +97,14 @@ function setup({
         memory: [{ kind: "architecture_summary", content: "Express API." }],
       });
     },
+    recordTranscriptTurn: (turn) => {
+      turns.push(turn);
+      return Promise.resolve(turnResult);
+    },
+    recordVoiceEvent: (event) => {
+      voiceEvents.push(event);
+      return Promise.resolve(voiceResult);
+    },
   };
   const fakeFetch: typeof fetch = async (input, init) => {
     const req = new Request(input, init);
@@ -103,7 +121,7 @@ function setup({
     transcriptionModel: "gpt-4o-mini-transcribe",
     now: () => NOW,
   });
-  return { handler, openaiRequests };
+  return { handler, openaiRequests, turns, voiceEvents };
 }
 
 function post(path = `/interviews/${INTERVIEW_ID}/realtime/session`, auth = "Bearer valid", method = "POST") {
@@ -264,6 +282,140 @@ Deno.test("OpenAI failures map to realtime_unavailable without leaking details",
     assert(!lines[0].includes(API_KEY) && !lines[0].includes("bad key"));
     assertEquals(JSON.parse(lines[0]).interview_id, INTERVIEW_ID);
   }
+});
+
+// POST /interviews/:id/events ------------------------------------------------------
+
+const EVENT_ID = "bbbbbbbb-0000-4000-8000-000000000001";
+
+const turnEvent = {
+  type: "transcript_turn",
+  client_event_id: EVENT_ID,
+  role: "user",
+  content: " It uses Postgres. ",
+  item_id: "item_1",
+  occurred_at: NOW.toISOString(),
+};
+
+function postEvent(body: unknown, { id = INTERVIEW_ID, auth = "Bearer valid" } = {}) {
+  return new Request(`http://localhost:54321/functions/v1/interviews/${id}/events`, {
+    method: "POST",
+    headers: { Authorization: auth, Origin: webOrigin, "Content-Type": "application/json" },
+    body: typeof body === "string" ? body : JSON.stringify(body),
+  });
+}
+
+Deno.test("events: rejects unauthenticated requests without writing", async () => {
+  const { handler, turns } = setup();
+  await expectError(await handler(postEvent(turnEvent, { auth: "Bearer nope" })), 401, "unauthorized");
+  assertEquals(turns.length, 0);
+});
+
+Deno.test("events: unknown, malformed, and other users' interviews are not found", async () => {
+  const { handler, turns } = setup({ interview: null });
+  await expectError(await handler(postEvent(turnEvent)), 404, "interview_not_found");
+  await expectError(await handler(postEvent(turnEvent, { id: "not-a-uuid" })), 404, "interview_not_found");
+  assertEquals(turns.length, 0);
+});
+
+Deno.test("events: invalid bodies are rejected", async () => {
+  const { handler, turns, voiceEvents } = setup();
+  const bodies = [
+    "{not json",
+    { ...turnEvent, role: "system" },
+    { ...turnEvent, content: "   " },
+    { ...turnEvent, sequence: 1 },
+    { type: "connected", client_event_id: EVENT_ID, occurred_at: NOW.toISOString(), sequence: 1 },
+    { type: "tool_call", client_event_id: EVENT_ID, occurred_at: NOW.toISOString() },
+  ];
+  for (const body of bodies) {
+    await expectError(await handler(postEvent(body)), 400, "invalid_request");
+  }
+  assertEquals([turns.length, voiceEvents.length], [0, 0]);
+});
+
+Deno.test("events: only POST is allowed", async () => {
+  const { handler } = setup();
+  const res = await handler(new Request(`http://localhost:54321/functions/v1/interviews/${INTERVIEW_ID}/events`, {
+    method: "GET",
+    headers: { Authorization: "Bearer valid", Origin: webOrigin },
+  }));
+  await expectError(res, 405, "method_not_allowed");
+});
+
+Deno.test("events: a new turn is stored and acknowledged with the server-assigned turn_sequence", async () => {
+  const { handler, turns } = setup({ turnResult: { status: "created", sequence: 3 } });
+  const res = await handler(postEvent({ ...turnEvent, interrupted: true }));
+  assertEquals(res.status, 201);
+  assertEquals(res.headers.get("access-control-allow-origin"), webOrigin);
+  assertEquals(interviewEventAckSchema.parse(await res.json()), {
+    type: "transcript_turn",
+    status: "created",
+    client_event_id: EVENT_ID,
+    turn_sequence: 3,
+  });
+  assertEquals(turns, [{
+    interviewId: INTERVIEW_ID,
+    userId,
+    clientEventId: EVENT_ID,
+    role: "user",
+    content: "It uses Postgres.",
+    metadata: { item_id: "item_1", occurred_at: NOW.toISOString(), interrupted: true },
+  }]);
+});
+
+Deno.test("events: a duplicate turn returns 200 with the stored sequence", async () => {
+  const { handler } = setup({ turnResult: { status: "duplicate", sequence: 3 } });
+  const res = await handler(postEvent(turnEvent));
+  assertEquals(res.status, 200);
+  const body = interviewEventAckSchema.parse(await res.json());
+  assertEquals(body.status, "duplicate");
+  assert(body.type === "transcript_turn" && body.turn_sequence === 3);
+});
+
+Deno.test("events: a reused event id with a different payload is a 409", async () => {
+  const { handler } = setup({ turnResult: { status: "event_conflict", sequence: 3 } });
+  await expectError(await handler(postEvent(turnEvent)), 409, "event_conflict");
+});
+
+Deno.test("events: turns are accepted after the interview has ended", async () => {
+  for (const status of ["completed", "terminated", "failed"] as const) {
+    const { handler, turns } = setup({ interview: { ...interviewRow, status } });
+    assertEquals((await handler(postEvent(turnEvent))).status, 201);
+    assertEquals(turns.length, 1);
+  }
+});
+
+Deno.test("events: voice events get a server event_sequence and keep the client clock in the payload", async () => {
+  const { handler, voiceEvents } = setup({ voiceResult: { status: "created", sequence: 7 } });
+  const occurredAt = "2020-01-01T00:00:00.000Z";
+  const res = await handler(postEvent({ type: "disconnected", client_event_id: EVENT_ID, occurred_at: occurredAt }));
+  assertEquals(res.status, 201);
+  const body = await res.json();
+  assertEquals(interviewEventAckSchema.parse(body), {
+    type: "disconnected",
+    status: "created",
+    client_event_id: EVENT_ID,
+    event_sequence: 7,
+  });
+  assert(!("turn_sequence" in body), "voice acks never carry a turn sequence");
+  assertEquals(voiceEvents, [{
+    interviewId: INTERVIEW_ID,
+    userId,
+    clientEventId: EVENT_ID,
+    eventType: "disconnected",
+    payload: { client_occurred_at: occurredAt },
+  }]);
+
+  const dup = setup({ voiceResult: { status: "duplicate", sequence: 7 } });
+  const again = await dup.handler(postEvent({ type: "connected", client_event_id: EVENT_ID, occurred_at: occurredAt }));
+  assertEquals(again.status, 200);
+  const conflict = setup({ voiceResult: { status: "event_conflict", sequence: 7 } });
+  await expectError(
+    await conflict.handler(postEvent({ type: "connected", client_event_id: EVENT_ID, occurred_at: occurredAt })),
+    409,
+    "event_conflict",
+  );
 });
 
 Deno.test("voiceSecondsUsed sums connected time and closes open segments", () => {
