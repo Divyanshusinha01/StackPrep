@@ -114,6 +114,8 @@ export interface ToolContext {
   ai: AIProvider;
   evaluationModel: string;
   elapsedSeconds: number;
+  /** Queues report generation after this call completed the interview. Never throws. */
+  requestReport: () => Promise<void>;
   log: (entry: Record<string, string | number | boolean>) => void;
 }
 

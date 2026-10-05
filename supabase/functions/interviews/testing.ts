@@ -1,6 +1,8 @@
 import type { EvidenceExaminedPayload } from "@stackprep/shared";
 import { GithubUnexpectedResponseError, type GithubApp, type RepositoryTreeEntry } from "../_shared/github-app.ts";
 import { StaleInterviewStateError } from "../_shared/interview-state.ts";
+import type { JobEventName, JobEvents, JobQueue } from "../_shared/jobs.ts";
+import type { ReportJobStore } from "./report-request.ts";
 import type {
   EvaluationRecord,
   InterviewStateSnapshot,
@@ -119,6 +121,68 @@ export function createFakeToolStore(init: Partial<Pick<FakeToolStore, "memory" |
     },
   };
   return store;
+}
+
+export interface FakeReportJobs extends ReportJobStore {
+  /** Interview ids passed to requestReportJob, in order. */
+  requests: string[];
+  failures: { jobId: string; code: string }[];
+  eventIds: { jobId: string; eventId: string }[];
+  /** Ids of jobs that are currently active (queued). */
+  active: Set<string>;
+  /** When set, requestReportJob returns null (already reported or an active job exists). */
+  skip: boolean;
+}
+
+/** Mirrors request_report: at most one active job per interview. */
+export function createFakeReportJobs(): FakeReportJobs {
+  let counter = 0;
+  const jobs: FakeReportJobs = {
+    requests: [],
+    failures: [],
+    eventIds: [],
+    active: new Set(),
+    skip: false,
+    requestReportJob(interviewId) {
+      jobs.requests.push(interviewId);
+      if (jobs.skip || jobs.active.has(interviewId)) {
+        return Promise.resolve(null);
+      }
+      jobs.active.add(interviewId);
+      return Promise.resolve(`job-${++counter}`);
+    },
+    setReportJobEventId(jobId, eventId) {
+      jobs.eventIds.push({ jobId, eventId });
+      return Promise.resolve();
+    },
+    failReportJob(jobId, code) {
+      jobs.failures.push({ jobId, code });
+      jobs.active.clear();
+      return Promise.resolve();
+    },
+  };
+  return jobs;
+}
+
+export interface FakeJobQueue extends JobQueue {
+  sent: { name: JobEventName; payload: JobEvents[JobEventName] }[];
+  /** When set, enqueue rejects with this error. */
+  fail: Error | null;
+}
+
+export function createFakeJobQueue(): FakeJobQueue {
+  const queue: FakeJobQueue = {
+    sent: [],
+    fail: null,
+    enqueue(name, payload) {
+      if (queue.fail) {
+        return Promise.reject(queue.fail);
+      }
+      queue.sent.push({ name, payload });
+      return Promise.resolve({ eventId: `evt-${queue.sent.length}` });
+    },
+  };
+  return queue;
 }
 
 export interface FakeGithub extends GithubApp {

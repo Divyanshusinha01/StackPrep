@@ -5,12 +5,12 @@ import { ExternalLink, GitBranch, Lock } from "lucide-react";
 import { type ApiErrorCode, apiErrorCodeSchema } from "@stackprep/shared";
 import { AnalysisProgress } from "@/components/app/analysis-progress";
 import { AppShell } from "@/components/app/app-shell";
-import { InterviewStatusBadge } from "@/components/app/interview-status";
+import { InterviewHistoryRow } from "@/components/app/interview-history-row";
 import { Notice } from "@/components/app/notice";
 import { SubmitButton } from "@/components/app/submit-button";
 import { WorkspaceStatusBadge } from "@/components/app/workspace-status";
 import { Button } from "@/components/ui/button";
-import { getWorkspace } from "@/lib/api";
+import { getInterviewHistory, getWorkspace } from "@/lib/api";
 import { requireUser } from "@/lib/auth";
 import { retryAnalysis, startInterview } from "./actions";
 
@@ -30,7 +30,6 @@ const INTERVIEW_ERROR_MESSAGES: Partial<Record<ApiErrorCode, string>> = {
   interview_limit_reached: "You have started 5 interviews in the last 24 hours.",
 };
 
-const dateFormat = new Intl.DateTimeFormat("en", { dateStyle: "medium", timeZone: "UTC" });
 const dateTimeFormat = new Intl.DateTimeFormat("en", { dateStyle: "medium", timeStyle: "short", timeZone: "UTC" });
 
 function errorCode(value: string | string[] | undefined): ApiErrorCode | "unknown" | null {
@@ -90,8 +89,9 @@ export default async function WorkspacePage({ params, searchParams }: PageProps<
     );
   }
 
-  const { workspace, repository, interviews } = result.data;
+  const { workspace, repository } = result.data;
   const ready = workspace.status === "ready";
+  const interviews = (await getInterviewHistory(workspace.id))[0]?.interviews ?? [];
 
   return (
     <AppShell user={user}>
@@ -146,17 +146,7 @@ export default async function WorkspacePage({ params, searchParams }: PageProps<
         ) : (
           <ul className="mt-4 divide-y rounded-lg border bg-panel/60" data-testid="interview-history">
             {interviews.map((interview) => (
-              <li key={interview.id} className="flex items-center gap-3 px-4 py-3 text-sm">
-                <Link href={`/interviews/${interview.id}`} className="font-medium hover:underline">
-                  Interview {interview.interview_number}
-                </Link>
-                <time dateTime={interview.created_at} className="text-xs text-muted-foreground">
-                  {dateFormat.format(new Date(interview.created_at))}
-                </time>
-                <span className="ml-auto">
-                  <InterviewStatusBadge status={interview.status} />
-                </span>
-              </li>
+              <InterviewHistoryRow key={interview.id} interview={interview} />
             ))}
           </ul>
         )}

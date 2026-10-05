@@ -318,8 +318,14 @@ isOneToOne: false
               "sequence": number,"status": string
             }[]
                            },
+"request_report":
+{ Args: { "p_interview_id": string,"p_user_id": string }; Returns: string
+                           },
 "retry_repository_analysis":
 { Args: { "p_user_id": string,"p_workspace_id": string }; Returns: string
+                           },
+"save_report":
+{ Args: { "p_content": Json,"p_interview_id": string,"p_job_id": string }; Returns: undefined
                            },
 "start_interview":
 { Args: { "p_commit_sha": string,"p_user_id": string,"p_workspace_id": string }; Returns: {

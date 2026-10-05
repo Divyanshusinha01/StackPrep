@@ -1,5 +1,8 @@
 import type { Metadata } from "next";
+import Link from "next/link";
 import { AppShell } from "@/components/app/app-shell";
+import { InterviewHistoryRow } from "@/components/app/interview-history-row";
+import { getInterviewHistory } from "@/lib/api";
 import { requireUser } from "@/lib/auth";
 
 export const metadata: Metadata = {
@@ -9,13 +12,35 @@ export const metadata: Metadata = {
 
 export default async function InterviewsPage() {
   const user = await requireUser("/interviews");
+  const groups = await getInterviewHistory();
 
   return (
     <AppShell user={user}>
       <h1 className="font-display text-2xl font-semibold tracking-tight">Interviews</h1>
-      <p className="mt-2 text-sm text-muted-foreground">
-        Your interviews and reports will appear here.
-      </p>
+      {groups.length === 0 ? (
+        <p className="mt-2 text-sm text-muted-foreground">
+          No interviews yet. Start one from a{" "}
+          <Link href="/workspaces" className="underline hover:text-foreground">
+            repository workspace
+          </Link>
+          .
+        </p>
+      ) : (
+        groups.map((group) => (
+          <section key={group.workspace_id} className="mt-8" aria-labelledby={`workspace-${group.workspace_id}`}>
+            <h2 id={`workspace-${group.workspace_id}`} className="font-mono text-sm font-semibold">
+              <Link href={`/workspaces/${group.workspace_id}`} className="hover:underline">
+                {group.repository_full_name}
+              </Link>
+            </h2>
+            <ul className="mt-3 divide-y rounded-lg border bg-panel/60" data-testid="interview-history">
+              {group.interviews.map((interview) => (
+                <InterviewHistoryRow key={interview.id} interview={interview} />
+              ))}
+            </ul>
+          </section>
+        ))
+      )}
     </AppShell>
   );
 }

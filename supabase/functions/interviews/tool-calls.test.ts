@@ -22,7 +22,13 @@ import {
   TIME_UP_GUIDANCE,
   type VoiceEvent,
 } from "./handler.ts";
-import { createFakeGithub, createFakeToolStore, type FakeToolStore } from "./testing.ts";
+import {
+  createFakeGithub,
+  createFakeJobQueue,
+  createFakeReportJobs,
+  createFakeToolStore,
+  type FakeToolStore,
+} from "./testing.ts";
 import { pickNextArea } from "./tools/advance-interview.ts";
 import { CLOSING_GUIDANCE, CONTINUE_GUIDANCE } from "./tools/end-interview.ts";
 import { type AnswerEvaluation, resolveCurrentQuestion } from "./tools/evaluate-answer.ts";
@@ -164,6 +170,8 @@ function setup({
     recordVoiceEvent: () => Promise.reject(new Error("unused")),
   };
   const fakeAI = createFakeAIProvider(ai);
+  const jobs = createFakeJobQueue();
+  const reportJobs = createFakeReportJobs();
   const handler = createInterviewsHandler({
     webOrigin,
     authenticate,
@@ -172,6 +180,8 @@ function setup({
       return {
         getInterview: (id) => Promise.resolve(interview && interview.id === id ? interview : null),
         getPlanningState: () => Promise.resolve("succeeded"),
+        getReport: () => Promise.resolve(null),
+        getReportJob: () => Promise.resolve(null),
       };
     },
     store: interviewStore,
@@ -181,9 +191,11 @@ function setup({
     github,
     ai: fakeAI,
     evaluationModel: "gpt-eval",
+    jobs,
+    reportJobs,
     now: () => NOW,
   });
-  return { handler, store, github, ai: fakeAI };
+  return { handler, store, github, ai: fakeAI, jobs, reportJobs };
 }
 
 let callCounter = 0;
@@ -284,11 +296,25 @@ Deno.test("tool-calls: past the 35-minute cap the interview completes and the in
     { event_type: "connected", occurred_at: at(-3_000) },
     { event_type: "disconnected", occurred_at: at(-3_000 + VOICE_LIMIT_SECONDS) },
   ];
-  const { handler, store, ai } = setup({ events });
+  const { handler, store, ai, jobs } = setup({ events });
   const body = await expectToolError(await handler(toolCall("evaluate_answer", { answerSummary: "JWTs" })), "interview_not_active");
   assertEquals(body.guidance, TIME_UP_GUIDANCE);
   assertEquals(store.completions, ["time_limit"]);
   assertEquals([store.records.length, ai.calls.length], [0, 0]);
+  assertEquals(jobs.sent, [{
+    name: "interview.report.requested",
+    payload: { interview_id: INTERVIEW_ID, workspace_id: WORKSPACE_ID, job_id: "job-1" },
+  }]);
+});
+
+Deno.test("tool-calls: a time-limit call that loses the completion race does not queue a report", async () => {
+  const events: VoiceEvent[] = [{ event_type: "connected", occurred_at: at(-VOICE_LIMIT_SECONDS - 10) }];
+  const store = createFakeToolStore({ memory, messages, state: stateSnapshot() });
+  store.status = "completed";
+  const { handler, jobs, reportJobs } = setup({ events, store });
+  await expectToolError(await handler(toolCall("get_file", { path: "src/server.ts" })), "interview_not_active");
+  assertEquals(store.completions, ["time_limit"]);
+  assertEquals([jobs.sent.length, reportJobs.requests.length], [0, 0]);
 });
 
 // get_file ---------------------------------------------------------------------------
@@ -533,23 +559,50 @@ Deno.test("pickNextArea orders by focus, priority, then untouched before partial
 // end_interview ---------------------------------------------------------------------------------
 
 Deno.test("end_interview: declined before 30 minutes without enough evidence", async () => {
-  const { handler, store } = setup();
+  const { handler, store, jobs } = setup();
   const body = await result(await handler(toolCall("end_interview", { reason: "sufficient_evidence" })));
   assertEquals(body, { ok: true, accepted: false, guidance: CONTINUE_GUIDANCE });
   assertEquals(store.completions, []);
+  assertEquals(jobs.sent.length, 0);
 });
 
 Deno.test("end_interview: accepted at the 30-minute target and completes once, even when replayed", async () => {
   const events: VoiceEvent[] = [{ event_type: "connected", occurred_at: at(-VOICE_WRAP_UP_SECONDS) }];
-  const { handler, store } = setup({ events });
+  const { handler, store, jobs, reportJobs } = setup({ events });
   const body = await result(await handler(toolCall("end_interview", { reason: "time_target" }, { callId: "end_1" })));
   assertEquals(body, { ok: true, accepted: true, guidance: CLOSING_GUIDANCE });
   assertEquals(store.completions, [null]);
+  assertEquals(jobs.sent, [{
+    name: "interview.report.requested",
+    payload: { interview_id: INTERVIEW_ID, workspace_id: WORKSPACE_ID, job_id: "job-1" },
+  }]);
+  assertEquals(reportJobs.eventIds, [{ jobId: "job-1", eventId: "evt-1" }]);
 
   const replay = await result(await handler(toolCall("end_interview", { reason: "time_target" }, { callId: "end_1" })));
   assertEquals(replay, body);
   assertEquals(store.completions, [null], "a replay does not complete again");
   assertEquals(store.records.length, 1);
+  assertEquals(jobs.sent.length, 1, "a replay does not queue another report");
+});
+
+Deno.test("end_interview: a concurrent call that did not complete the interview queues no report", async () => {
+  const events: VoiceEvent[] = [{ event_type: "connected", occurred_at: at(-VOICE_WRAP_UP_SECONDS) }];
+  const store = createFakeToolStore({ memory, messages, state: stateSnapshot() });
+  store.status = "completed";
+  const { handler, jobs, reportJobs } = setup({ events, store });
+  const body = await result(await handler(toolCall("end_interview", { reason: "time_target" })));
+  assertEquals(body.accepted, true);
+  assertEquals(store.completions, [null]);
+  assertEquals([jobs.sent.length, reportJobs.requests.length], [0, 0]);
+});
+
+Deno.test("end_interview: a failed enqueue marks the report job failed but still closes the interview", async () => {
+  const events: VoiceEvent[] = [{ event_type: "connected", occurred_at: at(-VOICE_WRAP_UP_SECONDS) }];
+  const { handler, jobs, reportJobs } = setup({ events });
+  jobs.fail = new Error("inngest down");
+  const body = await quietly(async () => await result(await handler(toolCall("end_interview", { reason: "time_target" }))));
+  assertEquals(body, { ok: true, accepted: true, guidance: CLOSING_GUIDANCE });
+  assertEquals(reportJobs.failures, [{ jobId: "job-1", code: "enqueue_failed" }]);
 });
 
 Deno.test("end_interview: accepted with sufficient evidence before 30 minutes", async () => {
@@ -558,10 +611,11 @@ Deno.test("end_interview: accepted with sufficient evidence before 30 minutes", 
   for (let i = 0; i < 4; i++) {
     store.evaluations.push({ message_id: QUESTION_ID, category: "security", score: 3, rating: "proficient", strengths: [], gaps: [], repo_evidence: [], discrepancy: false, discrepancy_detail: "" });
   }
-  const { handler } = setup({ store });
+  const { handler, jobs } = setup({ store });
   const body = await result(await handler(toolCall("end_interview", { reason: "sufficient_evidence" })));
   assertEquals(body.accepted, true);
   assertEquals(store.status, "completed");
+  assertEquals(jobs.sent.length, 1);
 });
 
 // Units ---------------------------------------------------------------------------------------

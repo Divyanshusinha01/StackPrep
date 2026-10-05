@@ -3,6 +3,8 @@ import {
   apiErrorSchema,
   interviewEventAckSchema,
   type InterviewPlan,
+  type InterviewReport,
+  interviewReportResponseSchema,
   type PlanningState,
   realtimeSessionResponseSchema,
   VOICE_LIMIT_SECONDS,
@@ -11,13 +13,15 @@ import type { SupabaseClient, User } from "@supabase/supabase-js";
 import type { Authenticate } from "../_shared/auth.ts";
 import { CREDENTIAL_TTL_SECONDS, createRealtimeClient } from "../_shared/realtime/openai-realtime.ts";
 import { createFakeAIProvider } from "../_shared/testing.ts";
-import { createFakeGithub, createFakeToolStore } from "./testing.ts";
+import { createFakeGithub, createFakeJobQueue, createFakeReportJobs, createFakeToolStore } from "./testing.ts";
 import {
   createInterviewsHandler,
   type InterviewReader,
   type InterviewRow,
   type InterviewStore,
   type RecordResult,
+  type ReportJob,
+  type StoredReport,
   type TranscriptTurnRecord,
   type VoiceEvent,
   type VoiceEventRecord,
@@ -56,6 +60,8 @@ interface Setup {
   openai?: (req: Request) => Response | Promise<Response>;
   turnResult?: RecordResult;
   voiceResult?: RecordResult;
+  report?: StoredReport | null;
+  reportJob?: ReportJob | null;
 }
 
 function at(offsetSeconds: number): string {
@@ -70,6 +76,8 @@ function setup({
   openai = () => Response.json({ value: "ek_test_123", expires_at: NOW.getTime() / 1000 + 60, session: {} }),
   turnResult = { status: "created", sequence: 3 },
   voiceResult = { status: "created", sequence: 7 },
+  report = null,
+  reportJob = null,
 }: Setup = {}) {
   const rlsClient = { rls: true } as unknown as SupabaseClient;
   const openaiRequests: { url: string; headers: Headers; body: Record<string, unknown> }[] = [];
@@ -84,8 +92,12 @@ function setup({
     return {
       getInterview: (id) => Promise.resolve(interview && interview.id === id ? interview : null),
       getPlanningState: () => Promise.resolve(planning),
+      getReport: () => Promise.resolve(report),
+      getReportJob: () => Promise.resolve(reportJob),
     };
   };
+  const jobs = createFakeJobQueue();
+  const reportJobs = createFakeReportJobs();
   const store: InterviewStore = {
     ...createFakeToolStore(),
     getPlan: (id) => {
@@ -125,9 +137,11 @@ function setup({
     github: createFakeGithub({}),
     ai: createFakeAIProvider(() => new Error("unused")),
     evaluationModel: "gpt-eval",
+    jobs,
+    reportJobs,
     now: () => NOW,
   });
-  return { handler, openaiRequests, turns, voiceEvents };
+  return { handler, openaiRequests, turns, voiceEvents, jobs, reportJobs };
 }
 
 function post(path = `/interviews/${INTERVIEW_ID}/realtime/session`, auth = "Bearer valid", method = "POST") {
@@ -422,6 +436,115 @@ Deno.test("events: voice events get a server event_sequence and keep the client 
     409,
     "event_conflict",
   );
+});
+
+// GET /interviews/:id/report and POST /interviews/:id/report/retry ---------------------------------
+
+const completed: InterviewRow = { ...interviewRow, status: "completed" };
+
+const storedReport: InterviewReport = {
+  executive_summary: "Strong on architecture, shallow on data.",
+  categories: [{ name: "Architecture", rating: "proficient", narrative: "Traced the request flow." }],
+  strengths: ["Request lifecycle"],
+  gaps: ["Migrations"],
+  interview_evidence: [{ category: "Architecture", observation: "Explained src/server.ts." }],
+  repository_evidence: [{ path: "src/server.ts", note: "Discussed routing." }],
+  areas_to_improve: ["Migration rollback"],
+  struggled_questions: [],
+};
+
+function reportRequest(path = "report", method = "GET", auth = "Bearer valid") {
+  return new Request(`http://localhost:54321/functions/v1/interviews/${INTERVIEW_ID}/${path}`, {
+    method,
+    headers: { Authorization: auth, Origin: webOrigin },
+  });
+}
+
+async function reportBody(res: Response, status = 200) {
+  assertEquals(res.status, status);
+  return interviewReportResponseSchema.parse(await res.json());
+}
+
+Deno.test("report: auth, ownership, and completion are checked first", async () => {
+  await expectError(await setup({ interview: completed }).handler(reportRequest("report", "GET", "Bearer nope")), 401, "unauthorized");
+  await expectError(await setup({ interview: null }).handler(reportRequest()), 404, "interview_not_found");
+  for (const status of ["created", "in_progress", "terminated"] as const) {
+    const { handler } = setup({ interview: { ...interviewRow, status } });
+    await expectError(await handler(reportRequest()), 409, "interview_not_completed");
+    await expectError(await handler(reportRequest("report/retry", "POST")), 409, "interview_not_completed");
+  }
+  const res = await setup({ interview: completed }).handler(reportRequest("report", "POST"));
+  await expectError(res, 405, "method_not_allowed");
+  assertEquals(res.headers.get("allow"), "GET, OPTIONS");
+});
+
+Deno.test("report: pending while the job is queued or running", async () => {
+  for (const status of ["queued", "running"] as const) {
+    const { handler } = setup({ interview: completed, reportJob: { status, error_code: null } });
+    assertEquals(await reportBody(await handler(reportRequest())), { status: "pending" });
+  }
+});
+
+Deno.test("report: ready returns the validated report", async () => {
+  const generated_at = "2026-10-05T12:00:00.123456+00:00";
+  const { handler } = setup({
+    interview: completed,
+    report: { content: storedReport, generated_at },
+    reportJob: { status: "succeeded", error_code: null },
+  });
+  assertEquals(await reportBody(await handler(reportRequest())), { status: "ready", report: storedReport, generated_at });
+});
+
+Deno.test("report: failures carry a fixed code; unknown codes and invalid content are internal_error", async () => {
+  const failed = setup({ interview: completed, reportJob: { status: "failed", error_code: "ai_unavailable" } });
+  assertEquals(await reportBody(await failed.handler(reportRequest())), { status: "failed", error_code: "ai_unavailable" });
+
+  const odd = setup({ interview: completed, reportJob: { status: "failed", error_code: "db password=x" } });
+  assertEquals(await reportBody(await odd.handler(reportRequest())), { status: "failed", error_code: "internal_error" });
+
+  const missing = setup({ interview: completed });
+  assertEquals(await reportBody(await missing.handler(reportRequest())), { status: "failed", error_code: "enqueue_failed" });
+
+  const invalid = setup({ interview: completed, report: { content: { score: 5 }, generated_at: NOW.toISOString() } });
+  const { result } = await captureLogs(() => invalid.handler(reportRequest()));
+  assertEquals(await reportBody(result), { status: "failed", error_code: "internal_error" });
+});
+
+Deno.test("report retry: only failed reports can be retried", async () => {
+  const pending = setup({ interview: completed, reportJob: { status: "running", error_code: null } });
+  await expectError(await pending.handler(reportRequest("report/retry", "POST")), 409, "report_not_retryable");
+  const ready = setup({
+    interview: completed,
+    report: { content: storedReport, generated_at: NOW.toISOString() },
+    reportJob: { status: "succeeded", error_code: null },
+  });
+  await expectError(await ready.handler(reportRequest("report/retry", "POST")), 409, "report_not_retryable");
+  assertEquals([pending.jobs.sent.length, ready.jobs.sent.length], [0, 0]);
+});
+
+Deno.test("report retry: a failed report is queued again", async () => {
+  const { handler, jobs, reportJobs } = setup({ interview: completed, reportJob: { status: "failed", error_code: "ai_unavailable" } });
+  assertEquals(await reportBody(await handler(reportRequest("report/retry", "POST")), 202), { status: "pending" });
+  assertEquals(reportJobs.requests, [INTERVIEW_ID]);
+  assertEquals(jobs.sent, [{
+    name: "interview.report.requested",
+    payload: { interview_id: INTERVIEW_ID, workspace_id: WORKSPACE_ID, job_id: "job-1" },
+  }]);
+});
+
+Deno.test("report retry: a retry that cannot be queued reports the current state", async () => {
+  const skipped = setup({ interview: completed, reportJob: { status: "failed", error_code: "ai_unavailable" } });
+  skipped.reportJobs.skip = true;
+  const body = await reportBody(await skipped.handler(reportRequest("report/retry", "POST")));
+  assertEquals(body, { status: "failed", error_code: "ai_unavailable" });
+  assertEquals(skipped.jobs.sent.length, 0);
+
+  const down = setup({ interview: completed });
+  down.jobs.fail = new Error("inngest down");
+  const { result, lines } = await captureLogs(() => down.handler(reportRequest("report/retry", "POST")));
+  assertEquals((await reportBody(result)).status, "failed");
+  assertEquals(down.reportJobs.failures, [{ jobId: "job-1", code: "enqueue_failed" }]);
+  assert(!lines.join("\n").includes("inngest down"), "logs carry codes, not raw errors");
 });
 
 Deno.test("voiceSecondsUsed sums connected time and closes open segments", () => {
