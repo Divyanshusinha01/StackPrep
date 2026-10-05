@@ -145,12 +145,21 @@ Each task reads its model from an environment variable, so models can change wit
 | Task                                   | Model                        | Variable                 |
 | -------------------------------------- | ---------------------------- | ------------------------ |
 | Live voice interviewer                 | `gpt-realtime-2.1-mini`      | `OPENAI_REALTIME_MODEL`  |
-| Auxiliary extraction / classification  | `gpt-5.6-luna`               | `OPENAI_EXTRACTION_MODEL` |
-| Deep analysis, interview planning      | `gpt-5.6-terra`              | `OPENAI_PLANNING_MODEL`  |
+| Live candidate speech transcription    | `gpt-4o-mini-transcribe`     | `OPENAI_REALTIME_TRANSCRIPTION_MODEL` |
+| Interview planning                     | `gpt-5.6-terra`              | `OPENAI_PLANNING_MODEL`  |
+| Deep analysis (planned)                | `gpt-5.6-terra`              | `OPENAI_PLANNING_MODEL`  |
 | Answer evaluation, report generation   | `gpt-5.6-terra`              | `OPENAI_EVALUATION_MODEL` |
 | Integrity monitoring                   | `gpt-5.6-luna`               | `OPENAI_VISION_MODEL`    |
+| Auxiliary extraction / classification (planned) | `gpt-5.6-luna`      | `OPENAI_EXTRACTION_MODEL` (future) |
 
 Planning and evaluation use the same model today but keep separate variables, so either can change on its own.
+
+The transcription model is set on the Realtime session when the backend mints the credential. It transcribes only the candidate's speech for the persisted transcript; the interviewer's own transcript comes from the voice model.
+
+Two rows are planned and not implemented yet:
+
+- **Deep analysis** has no model-calling job yet; `deep_analysis` exists only as an `ai_usage` task type. When built, it will reuse `OPENAI_PLANNING_MODEL` rather than adding its own variable.
+- **Auxiliary extraction / classification** has no AI calls yet, and `OPENAI_EXTRACTION_MODEL` is not part of `openAIEnvSchema` or `.env.example`. The variable will be added, with default `gpt-5.6-luna`, when that capability is built.
 
 #### Cost controls
 
@@ -404,7 +413,7 @@ Analysis runs in two stages, matching the PRD's lightweight-then-deeper flow.
 
 **Baseline analysis** (`repository_indexing` job) is rule-based: file-tree analysis, metadata/dependency analysis, and lightweight fact extraction per file, with secret scrubbing. The workspace becomes `ready` when it completes.
 
-**Deep analysis** (`deep_analysis` job) starts after the baseline. It sends the scrubbed baseline facts to OpenAI and adds AI-derived repository memory:
+**Deep analysis** (`deep_analysis` job, planned — not implemented yet) starts after the baseline. It sends the scrubbed baseline facts to OpenAI using `OPENAI_PLANNING_MODEL` and adds AI-derived repository memory:
 
 - Architecture summary
 - Major modules
@@ -850,7 +859,7 @@ Use background jobs for:
 | Job type              | Trigger                                 | Output                                  |
 | --------------------- | --------------------------------------- | --------------------------------------- |
 | `repository_indexing` | Workspace created / analysis retried    | Baseline repository memory; workspace `ready` |
-| `deep_analysis`       | Baseline analysis succeeded             | AI-derived repository memory            |
+| `deep_analysis` (planned) | Baseline analysis succeeded         | AI-derived repository memory            |
 | `interview_planning`  | `POST /workspaces/:id/interviews`       | Coverage map, plan, strategy in `interview_state` |
 | `report_generation`   | Backend marks interview complete        | Interview report                        |
 
@@ -954,7 +963,7 @@ Each integration has its own Zod schema in `@stackprep/shared` (`packages/shared
 | `edgeEnvSchema` (required) | `WEB_ORIGIN`                                                                                  |
 | `edgeSupabaseEnvSchema`    | `SUPABASE_URL`, `SUPABASE_ANON_KEY`, `SUPABASE_SERVICE_ROLE_KEY` (injected by the runtime)     |
 | `inngestEnvSchema`         | `INNGEST_EVENT_KEY`, `INNGEST_SIGNING_KEY`                                                    |
-| `openAIEnvSchema`          | `OPENAI_API_KEY`, `OPENAI_REALTIME_MODEL`, `OPENAI_EXTRACTION_MODEL`, `OPENAI_PLANNING_MODEL`, `OPENAI_EVALUATION_MODEL`, `OPENAI_VISION_MODEL` |
+| `openAIEnvSchema`          | `OPENAI_API_KEY`, `OPENAI_REALTIME_MODEL`, `OPENAI_REALTIME_TRANSCRIPTION_MODEL`, `OPENAI_PLANNING_MODEL`, `OPENAI_EVALUATION_MODEL`, `OPENAI_VISION_MODEL`. `OPENAI_EXTRACTION_MODEL` (default `gpt-5.6-luna`) will be added when auxiliary extraction is implemented. |
 | `githubAppEnvSchema`       | `GITHUB_APP_ID`, `GITHUB_APP_CLIENT_ID`, `GITHUB_APP_CLIENT_SECRET`, `GITHUB_APP_PRIVATE_KEY`, `GITHUB_APP_WEBHOOK_SECRET` |
 | `edgeSentryEnvSchema`      | `SENTRY_DSN`, `SENTRY_ENVIRONMENT`                                                            |
 
