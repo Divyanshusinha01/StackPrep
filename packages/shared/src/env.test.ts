@@ -94,8 +94,18 @@ describe("integration env schemas", () => {
   });
 
   it("parses and rejects OpenAI env", () => {
-    expect(parseEnv("openai", openAIEnvSchema, { OPENAI_API_KEY: "sk-test" })).toEqual({ OPENAI_API_KEY: "sk-test" });
+    expect(parseEnv("openai", openAIEnvSchema, { OPENAI_API_KEY: "sk-test" })).toEqual({
+      OPENAI_API_KEY: "sk-test",
+      OPENAI_PLANNING_MODEL: "gpt-5.6-terra",
+    });
+    expect(
+      parseEnv("openai", openAIEnvSchema, { OPENAI_API_KEY: "sk-test", OPENAI_PLANNING_MODEL: "gpt-custom" })
+        .OPENAI_PLANNING_MODEL,
+    ).toBe("gpt-custom");
     expect(() => parseEnv("openai", openAIEnvSchema, { OPENAI_API_KEY: "" })).toThrowError(/OPENAI_API_KEY/);
+    expect(() =>
+      parseEnv("openai", openAIEnvSchema, { OPENAI_API_KEY: "sk-test", OPENAI_PLANNING_MODEL: " " })
+    ).toThrowError(/OPENAI_PLANNING_MODEL/);
   });
 
   it("parses and rejects GitHub App env", () => {

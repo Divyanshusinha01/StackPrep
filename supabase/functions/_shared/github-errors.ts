@@ -1,4 +1,4 @@
-import type { ApiErrorCode, ConnectionErrorCode } from "@stackprep/shared";
+import type { ApiError, ApiErrorCode, ConnectionErrorCode } from "@stackprep/shared";
 import { GithubError, GithubOAuthCodeError, GithubRateLimitedError, GithubUnavailableError } from "./github-app.ts";
 import { type Cors, json } from "./http.ts";
 
@@ -16,6 +16,8 @@ const ERROR_MESSAGES: Record<ApiErrorCode, string> = {
   repository_not_accessible: "The repository is not accessible through this GitHub connection",
   workspace_not_found: "Workspace not found",
   analysis_not_retryable: "Repository analysis can only be retried after it fails",
+  workspace_not_ready: "The workspace is not ready for interviews yet",
+  interview_limit_reached: "You have reached the limit of 5 interviews in 24 hours",
   github_rate_limited: "GitHub rate limit exceeded",
   github_unavailable: "GitHub is unavailable",
   github_unexpected_response: "Unexpected response from GitHub",
@@ -36,6 +38,8 @@ const ERROR_STATUS: Record<ApiErrorCode, number> = {
   repository_not_accessible: 403,
   workspace_not_found: 404,
   analysis_not_retryable: 409,
+  workspace_not_ready: 409,
+  interview_limit_reached: 429,
   github_rate_limited: 503,
   github_unavailable: 502,
   github_unexpected_response: 502,
@@ -43,9 +47,14 @@ const ERROR_STATUS: Record<ApiErrorCode, number> = {
 };
 
 /** `{ error, code }` response with the status defined for `code`. */
-export function apiError(code: ApiErrorCode, cors: Cors, headers: Record<string, string> = {}): Response {
+export function apiError(
+  code: ApiErrorCode,
+  cors: Cors,
+  headers: Record<string, string> = {},
+  extra: Omit<ApiError, "error" | "code"> = {},
+): Response {
   return json(
-    { error: ERROR_MESSAGES[code], code },
+    { error: ERROR_MESSAGES[code], code, ...extra },
     { status: ERROR_STATUS[code], headers: { ...cors.headers, ...headers } },
   );
 }
@@ -81,6 +90,7 @@ export interface LogContext {
   installation_id?: number;
   connection_id?: string;
   workspace_id?: string;
+  interview_id?: string;
 }
 
 /** One JSON line with an allow-listed set of keys; never headers, bodies, tokens, or messages. */
@@ -106,6 +116,9 @@ export function logGithubError(fn: string, err: unknown, ctx: LogContext = {}): 
   }
   if (ctx.workspace_id !== undefined) {
     entry.workspace_id = ctx.workspace_id;
+  }
+  if (ctx.interview_id !== undefined) {
+    entry.interview_id = ctx.interview_id;
   }
   console.error(JSON.stringify(entry));
 }

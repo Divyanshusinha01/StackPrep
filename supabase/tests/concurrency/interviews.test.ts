@@ -67,6 +67,43 @@ Deno.test({
 });
 
 Deno.test({
+  name: "concurrent start_interview calls are serialized and each gets its own planning job",
+  ignore: !dbUrl,
+  async fn() {
+    await withFixture(async ({ a, b, userId, workspaceId }) => {
+      const started = Promise.withResolvers<void>();
+      const release = Promise.withResolvers<void>();
+
+      const first = a.begin(async (tx) => {
+        const [row] = await tx`
+          select interview_number, job_id from public.start_interview(${workspaceId}, ${userId}, ${sha})`;
+        started.resolve();
+        await release.promise;
+        return row as { interview_number: number; job_id: string };
+      });
+
+      await started.promise;
+      const second = b`
+        select interview_number, job_id from public.start_interview(${workspaceId}, ${userId}, ${sha})`
+        .then(([row]) => row as { interview_number: number; job_id: string });
+      const secondState = settled(second);
+
+      await delay(300);
+      assertEquals(secondState.done, false, "second call should wait for the per-user lock");
+
+      release.resolve();
+      const rows = await Promise.all([first, second]);
+      assertEquals(rows.map((r) => r.interview_number), [1, 2]);
+
+      const [{ count }] = await a`
+        select count(*)::int as count from public.jobs
+        where workspace_id = ${workspaceId} and type = 'interview_planning' and status = 'queued'`;
+      assertEquals(count, 2);
+    });
+  },
+});
+
+Deno.test({
   name: "concurrent updates with the same expected version: one wins, the other gets P0409",
   ignore: !dbUrl,
   async fn() {

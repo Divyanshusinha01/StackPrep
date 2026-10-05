@@ -40,6 +40,7 @@ export const inngestEnvSchema = z.object({
 
 export const openAIEnvSchema = z.object({
   OPENAI_API_KEY: secret,
+  OPENAI_PLANNING_MODEL: secret.default("gpt-5.6-terra"),
 });
 
 export const githubAppEnvSchema = z.object({

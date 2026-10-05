@@ -5,12 +5,14 @@ import { ExternalLink, GitBranch, Lock } from "lucide-react";
 import { type ApiErrorCode, apiErrorCodeSchema } from "@stackprep/shared";
 import { AnalysisProgress } from "@/components/app/analysis-progress";
 import { AppShell } from "@/components/app/app-shell";
+import { InterviewStatusBadge } from "@/components/app/interview-status";
 import { Notice } from "@/components/app/notice";
+import { SubmitButton } from "@/components/app/submit-button";
 import { WorkspaceStatusBadge } from "@/components/app/workspace-status";
 import { Button } from "@/components/ui/button";
 import { getWorkspace } from "@/lib/api";
 import { requireUser } from "@/lib/auth";
-import { retryAnalysis } from "./actions";
+import { retryAnalysis, startInterview } from "./actions";
 
 export const metadata: Metadata = {
   title: "Workspace · StackPrep",
@@ -23,17 +25,51 @@ const RETRY_ERROR_MESSAGES: Partial<Record<ApiErrorCode, string>> = {
   installation_suspended: "The GitHub App installation is suspended. Re-enable it on GitHub to retry.",
 };
 
-function retryErrorMessage(value: string | string[] | undefined): string | null {
+const INTERVIEW_ERROR_MESSAGES: Partial<Record<ApiErrorCode, string>> = {
+  workspace_not_ready: "The repository analysis has to finish before you can start an interview.",
+  interview_limit_reached: "You have started 5 interviews in the last 24 hours.",
+};
+
+const dateFormat = new Intl.DateTimeFormat("en", { dateStyle: "medium", timeZone: "UTC" });
+const dateTimeFormat = new Intl.DateTimeFormat("en", { dateStyle: "medium", timeStyle: "short", timeZone: "UTC" });
+
+function errorCode(value: string | string[] | undefined): ApiErrorCode | "unknown" | null {
   if (typeof value !== "string") {
     return null;
   }
   const parsed = apiErrorCodeSchema.safeParse(value);
-  return (parsed.success && RETRY_ERROR_MESSAGES[parsed.data]) || "Could not retry the analysis. Try again.";
+  return parsed.success ? parsed.data : "unknown";
+}
+
+function retryErrorMessage(value: string | string[] | undefined): string | null {
+  const code = errorCode(value);
+  if (code === null) {
+    return null;
+  }
+  return (code !== "unknown" && RETRY_ERROR_MESSAGES[code]) || "Could not retry the analysis. Try again.";
+}
+
+function interviewErrorMessage(
+  value: string | string[] | undefined,
+  nextAvailableAt: string | string[] | undefined,
+): string | null {
+  const code = errorCode(value);
+  if (code === null) {
+    return null;
+  }
+  const message = (code !== "unknown" && INTERVIEW_ERROR_MESSAGES[code]) || "Could not start the interview. Try again.";
+  const next = typeof nextAvailableAt === "string" ? new Date(nextAvailableAt) : null;
+  if (code === "interview_limit_reached" && next && !Number.isNaN(next.getTime())) {
+    return `${message} You can start another after ${dateTimeFormat.format(next)} UTC.`;
+  }
+  return message;
 }
 
 export default async function WorkspacePage({ params, searchParams }: PageProps<"/workspaces/[id]">) {
   const { id } = await params;
-  const retryError = retryErrorMessage((await searchParams).retry_error);
+  const query = await searchParams;
+  const retryError = retryErrorMessage(query.retry_error);
+  const interviewError = interviewErrorMessage(query.interview_error, query.next_available_at);
   const user = await requireUser(`/workspaces/${encodeURIComponent(id)}`);
   const result = await getWorkspace(id);
 
@@ -55,6 +91,7 @@ export default async function WorkspacePage({ params, searchParams }: PageProps<
   }
 
   const { workspace, repository, interviews } = result.data;
+  const ready = workspace.status === "ready";
 
   return (
     <AppShell user={user}>
@@ -92,11 +129,13 @@ export default async function WorkspacePage({ params, searchParams }: PageProps<
         retryAction={retryAnalysis}
       />
 
-      <div className="mt-8">
-        <Button disabled aria-disabled>
+      {interviewError ? <Notice tone="error">{interviewError}</Notice> : null}
+      <form action={startInterview} className="mt-8">
+        <input type="hidden" name="workspace_id" value={workspace.id} />
+        <SubmitButton disabled={!ready} pendingLabel="Starting…">
           Start Interview
-        </Button>
-      </div>
+        </SubmitButton>
+      </form>
 
       <section className="mt-10" aria-labelledby="interview-history">
         <h2 id="interview-history" className="font-display text-lg font-semibold">
@@ -104,7 +143,23 @@ export default async function WorkspacePage({ params, searchParams }: PageProps<
         </h2>
         {interviews.length === 0 ? (
           <p className="mt-2 text-sm text-muted-foreground">No interviews yet.</p>
-        ) : null}
+        ) : (
+          <ul className="mt-4 divide-y rounded-lg border bg-panel/60" data-testid="interview-history">
+            {interviews.map((interview) => (
+              <li key={interview.id} className="flex items-center gap-3 px-4 py-3 text-sm">
+                <Link href={`/interviews/${interview.id}`} className="font-medium hover:underline">
+                  Interview {interview.interview_number}
+                </Link>
+                <time dateTime={interview.created_at} className="text-xs text-muted-foreground">
+                  {dateFormat.format(new Date(interview.created_at))}
+                </time>
+                <span className="ml-auto">
+                  <InterviewStatusBadge status={interview.status} />
+                </span>
+              </li>
+            ))}
+          </ul>
+        )}
       </section>
     </AppShell>
   );

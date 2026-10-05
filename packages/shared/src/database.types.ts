@@ -300,12 +300,17 @@ isOneToOne: false
 "retry_repository_analysis":
 { Args: { "p_user_id": string,"p_workspace_id": string }; Returns: string
                            },
+"start_interview":
+{ Args: { "p_commit_sha": string,"p_user_id": string,"p_workspace_id": string }; Returns: {
+              "created_at": string,"interview_id": string,"interview_number": number,"job_id": string,"status": Database["public"]['Enums']["interview_status"]
+            }[]
+                           },
 "update_interview_state":
 { Args: { "p_coverage_map": Json,"p_expected_version": number,"p_interview_id": string,"p_plan": Json,"p_strategy": Json }; Returns: number
                            }
           }
           Enums: {
-            "event_type": "start"|"integrity_warning"|"pause"|"resume"|"termination"|"completion"|"evidence_examined"|"tool_call"|"connected"|"disconnected","interview_status": "created"|"in_progress"|"paused"|"completed"|"terminated"|"failed","job_status": "queued"|"running"|"succeeded"|"failed","job_type": "repository_indexing"|"deep_analysis"|"report_generation","message_role": "ai"|"user"|"system","termination_reason": "integrity_violation"|"completed_early"|"time_limit"|"technical_failure"|"user_abandoned","workspace_status": "analyzing"|"ready"|"failed"
+            "event_type": "start"|"integrity_warning"|"pause"|"resume"|"termination"|"completion"|"evidence_examined"|"tool_call"|"connected"|"disconnected","interview_status": "created"|"in_progress"|"paused"|"completed"|"terminated"|"failed","job_status": "queued"|"running"|"succeeded"|"failed","job_type": "repository_indexing"|"deep_analysis"|"report_generation"|"interview_planning","message_role": "ai"|"user"|"system","termination_reason": "integrity_violation"|"completed_early"|"time_limit"|"technical_failure"|"user_abandoned","workspace_status": "analyzing"|"ready"|"failed"
           }
           CompositeTypes: {
             [_ in never]: never
@@ -421,7 +426,7 @@ export type CompositeTypes<
 export const Constants = {
   "public": {
           Enums: {
-            "event_type": ["start", "integrity_warning", "pause", "resume", "termination", "completion", "evidence_examined", "tool_call", "connected", "disconnected"],"interview_status": ["created", "in_progress", "paused", "completed", "terminated", "failed"],"job_status": ["queued", "running", "succeeded", "failed"],"job_type": ["repository_indexing", "deep_analysis", "report_generation"],"message_role": ["ai", "user", "system"],"termination_reason": ["integrity_violation", "completed_early", "time_limit", "technical_failure", "user_abandoned"],"workspace_status": ["analyzing", "ready", "failed"]
+            "event_type": ["start", "integrity_warning", "pause", "resume", "termination", "completion", "evidence_examined", "tool_call", "connected", "disconnected"],"interview_status": ["created", "in_progress", "paused", "completed", "terminated", "failed"],"job_status": ["queued", "running", "succeeded", "failed"],"job_type": ["repository_indexing", "deep_analysis", "report_generation", "interview_planning"],"message_role": ["ai", "user", "system"],"termination_reason": ["integrity_violation", "completed_early", "time_limit", "technical_failure", "user_abandoned"],"workspace_status": ["analyzing", "ready", "failed"]
           }
         }
 } as const

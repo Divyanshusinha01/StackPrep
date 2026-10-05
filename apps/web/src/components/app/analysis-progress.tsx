@@ -1,14 +1,11 @@
 "use client";
 
-import { useEffect } from "react";
-import { useRouter } from "next/navigation";
 import { Check, Circle, Loader2 } from "lucide-react";
 import type { AnalysisErrorCode, AnalysisStage, WorkspaceAnalysis, WorkspaceStatus } from "@stackprep/shared";
 import { Notice } from "@/components/app/notice";
 import { SubmitButton } from "@/components/app/submit-button";
+import { usePollWhile } from "@/components/app/use-poll-while";
 import { cn } from "@/lib/utils";
-
-const POLL_INTERVAL_MS = 4000;
 
 const STAGES: { stage: AnalysisStage; label: string }[] = [
   { stage: "scanning", label: "Scanning files" },
@@ -25,22 +22,6 @@ const FAILURE_MESSAGES: Record<AnalysisErrorCode, string> = {
   enqueue_failed: "The analysis could not be started.",
   internal_error: "Something went wrong while analyzing the repository.",
 };
-
-/** Re-renders the server page while analysis runs; progress always comes from persisted job state. */
-function usePollWhile(active: boolean) {
-  const router = useRouter();
-  useEffect(() => {
-    if (!active) {
-      return;
-    }
-    const id = window.setInterval(() => {
-      if (document.visibilityState === "visible") {
-        router.refresh();
-      }
-    }, POLL_INTERVAL_MS);
-    return () => window.clearInterval(id);
-  }, [active, router]);
-}
 
 export function AnalysisProgress({
   workspaceId,
