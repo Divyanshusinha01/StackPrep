@@ -1,11 +1,14 @@
-import { edgeEnvSchema, edgeSupabaseEnvSchema, githubAppEnvSchema, openAIEnvSchema } from "@stackprep/shared";
+import { edgeEnvSchema, edgeSupabaseEnvSchema, githubAppEnvSchema, inngestEnvSchema, openAIEnvSchema } from "@stackprep/shared";
 import { createClient } from "@supabase/supabase-js";
 import { createOpenAIProvider } from "../_shared/ai/openai.ts";
 import { createSupabaseAuthenticator } from "../_shared/auth.ts";
 import { readEnv } from "../_shared/env.ts";
 import { createGithubApp } from "../_shared/github-app.ts";
+import { createInngestClient } from "../_shared/inngest.ts";
+import { createInngestJobQueue } from "../_shared/jobs.ts";
 import { createRealtimeClient } from "../_shared/realtime/openai-realtime.ts";
 import { createInterviewReader, createInterviewsHandler, createInterviewStore } from "./handler.ts";
+import { createReportJobStore } from "./report-request.ts";
 
 /** evaluate_answer runs while the candidate waits for the interviewer to speak. */
 const EVALUATION_TIMEOUT_MS = 20_000;
@@ -15,6 +18,7 @@ const env = readEnv(
   edgeEnvSchema
     .extend(edgeSupabaseEnvSchema.shape)
     .extend(openAIEnvSchema.shape)
+    .extend(inngestEnvSchema.shape)
     .extend(
       githubAppEnvSchema.pick({
         GITHUB_APP_ID: true,
@@ -46,5 +50,7 @@ Deno.serve(
     }),
     ai: createOpenAIProvider({ apiKey: env.OPENAI_API_KEY, timeoutMs: EVALUATION_TIMEOUT_MS }),
     evaluationModel: env.OPENAI_EVALUATION_MODEL,
+    jobs: createInngestJobQueue(createInngestClient(env)),
+    reportJobs: createReportJobStore(serviceClient),
   }),
 );

@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import { notFound } from "next/navigation";
+import { notFound, redirect } from "next/navigation";
 import { ArrowLeft } from "lucide-react";
 import { AppShell } from "@/components/app/app-shell";
 import { InterviewSession } from "@/components/app/interview-session";
@@ -19,6 +19,9 @@ export default async function InterviewPage({ params }: PageProps<"/interviews/[
   const interview = await getInterview(id);
   if (!interview) {
     notFound();
+  }
+  if (interview.status === "completed" || interview.status === "terminated" || interview.status === "failed") {
+    redirect(`/interviews/${encodeURIComponent(interview.id)}/report`);
   }
 
   return (

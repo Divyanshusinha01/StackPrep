@@ -26,9 +26,9 @@ export async function endInterview(ctx: ToolContext, input: EndInterviewInput): 
   const timeTarget = ctx.elapsedSeconds >= VOICE_WRAP_UP_SECONDS;
   const accepted = sufficient || timeTarget;
 
-  if (accepted) {
-    // false means a concurrent call already completed it; the outcome is the same.
-    await store.completeInterview(interview.id, ctx.userId, null);
+  // false means a concurrent call already completed it (and queued the report); the outcome is the same.
+  if (accepted && await store.completeInterview(interview.id, ctx.userId, null)) {
+    await ctx.requestReport();
   }
   const output: EndInterviewOutput = {
     ok: true,

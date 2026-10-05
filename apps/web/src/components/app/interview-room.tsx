@@ -171,7 +171,9 @@ export function InterviewRoom({
       </div>
       <ExaminingIndicator items={live ? examining : null} />
 
-      {ended ? <Notice tone="info">The interview is complete. Thanks for walking through your code.</Notice> : null}
+      {ended ? (
+        <Notice tone="info">The interview is complete. Thanks for walking through your code. Taking you to your report…</Notice>
+      ) : null}
       {wrappingUp && !ended ? (
         <Notice tone="info">Wrapping up: the interviewer will finish the current question.</Notice>
       ) : null}

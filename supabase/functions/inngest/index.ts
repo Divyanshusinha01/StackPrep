@@ -8,6 +8,8 @@ import { createRepositoryAnalysisFunction } from "./function.ts";
 import { createInngestHandler } from "./handler.ts";
 import { createInterviewPlanningFunction } from "./planning.ts";
 import { createPlanningStore } from "./planning-store.ts";
+import { createInterviewReportFunction } from "./report.ts";
+import { createReportStore } from "./report-store.ts";
 import { createAnalysisStore } from "./store.ts";
 
 const env = readEnv(
@@ -27,14 +29,20 @@ const github = createGithubApp({
 });
 
 const inngest = createInngestClient(env);
+const ai = createOpenAIProvider({ apiKey: env.OPENAI_API_KEY });
 
 Deno.serve(
   createInngestHandler(inngest, [
     createRepositoryAnalysisFunction(inngest, { github, store: createAnalysisStore(serviceClient) }),
     createInterviewPlanningFunction(inngest, {
-      ai: createOpenAIProvider({ apiKey: env.OPENAI_API_KEY }),
+      ai,
       model: env.OPENAI_PLANNING_MODEL,
       store: createPlanningStore(serviceClient),
+    }),
+    createInterviewReportFunction(inngest, {
+      ai,
+      model: env.OPENAI_EVALUATION_MODEL,
+      store: createReportStore(serviceClient),
     }),
   ]),
 );

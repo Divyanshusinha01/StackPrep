@@ -15,6 +15,12 @@ export interface JobEvents {
     /** The interview's pinned commit. */
     commit_sha: string;
   };
+  "interview.report.requested": {
+    interview_id: string;
+    workspace_id: string;
+    /** The `report_generation` jobs row that projects this run's progress. */
+    job_id: string;
+  };
 }
 
 export type JobEventName = keyof JobEvents;

@@ -4,9 +4,13 @@ import {
   interviewEventRequestSchema,
   interviewIdParamSchema,
   interviewPlanSchema,
+  type InterviewReportResponse,
+  interviewReportResponseSchema,
+  interviewReportSchema,
   type InterviewStatus,
   type PlanningState,
   realtimeSessionResponseSchema,
+  reportErrorCodeSchema,
   toolCallRequestSchema,
   type ToolCallResponse,
   toolCallResponseSchema,
@@ -18,9 +22,11 @@ import type { Authenticate } from "../_shared/auth.ts";
 import type { GithubApp } from "../_shared/github-app.ts";
 import { apiError, logGithubError } from "../_shared/github-errors.ts";
 import { createCors, json } from "../_shared/http.ts";
+import type { JobQueue } from "../_shared/jobs.ts";
 import { buildRealtimeInstructions, type InstructionsMemory } from "../_shared/realtime/instructions.ts";
 import type { RealtimeClient } from "../_shared/realtime/openai-realtime.ts";
 import { buildRealtimeTools } from "../_shared/realtime/tools.ts";
+import { type ReportInterview, type ReportJobStore, requestReport } from "./report-request.ts";
 import { createTreeCache, type TreeCache } from "./tools/get-file.ts";
 import { parseToolCall, READ_TOOLS, runTool } from "./tools/index.ts";
 import { createToolStore } from "./tools/store.ts";
@@ -51,6 +57,19 @@ export interface InterviewReader {
   getInterview(interviewId: string): Promise<InterviewRow | null>;
   /** Status of the newest interview_planning job, or null if there is none. */
   getPlanningState(interviewId: string): Promise<PlanningState | null>;
+  getReport(interviewId: string): Promise<StoredReport | null>;
+  /** The newest report_generation job, or null if there is none. */
+  getReportJob(interviewId: string): Promise<ReportJob | null>;
+}
+
+export interface StoredReport {
+  content: unknown;
+  generated_at: string;
+}
+
+export interface ReportJob {
+  status: "queued" | "running" | "succeeded" | "failed";
+  error_code: string | null;
 }
 
 export interface VoiceEvent {
@@ -111,6 +130,8 @@ export interface InterviewsHandlerOptions {
   github: GithubApp;
   ai: AIProvider;
   evaluationModel: string;
+  jobs: JobQueue;
+  reportJobs: ReportJobStore;
   trees?: TreeCache;
   now?: () => Date;
 }
@@ -143,6 +164,27 @@ export function createInterviewReader(client: SupabaseClient): InterviewReader {
         .maybeSingle();
       check("load interview planning", error);
       return (data?.status ?? null) as PlanningState | null;
+    },
+    async getReport(interviewId) {
+      const { data, error } = await client
+        .from("reports")
+        .select("content, generated_at")
+        .eq("interview_id", interviewId)
+        .maybeSingle();
+      check("load report", error);
+      return (data ?? null) as StoredReport | null;
+    },
+    async getReportJob(interviewId) {
+      const { data, error } = await client
+        .from("jobs")
+        .select("status, error_code")
+        .eq("interview_id", interviewId)
+        .eq("type", "report_generation")
+        .order("created_at", { ascending: false })
+        .limit(1)
+        .maybeSingle();
+      check("load report job", error);
+      return (data ?? null) as ReportJob | null;
     },
   };
 }
@@ -269,6 +311,8 @@ function stableJson(value: unknown): string {
 const SESSION_ROUTE = /\/interviews\/([^/]+)\/realtime\/session\/?$/;
 const EVENTS_ROUTE = /\/interviews\/([^/]+)\/events\/?$/;
 const TOOL_CALLS_ROUTE = /\/interviews\/([^/]+)\/tool-calls\/?$/;
+const REPORT_ROUTE = /\/interviews\/([^/]+)\/report\/?$/;
+const REPORT_RETRY_ROUTE = /\/interviews\/([^/]+)\/report\/retry\/?$/;
 
 export function createInterviewsHandler({
   webOrigin,
@@ -281,14 +325,91 @@ export function createInterviewsHandler({
   github,
   ai,
   evaluationModel,
+  jobs,
+  reportJobs,
   trees = createTreeCache(),
   now = () => new Date(),
 }: InterviewsHandlerOptions) {
-  const cors = createCors(webOrigin, ["POST"]);
+  const cors = createCors(webOrigin, ["GET", "POST"]);
   const tools = buildRealtimeTools();
 
   function toolResponse(body: ToolCallResponse): Response {
     return json(toolCallResponseSchema.parse(body), { status: 200, headers: cors.headers });
+  }
+
+  function queueReport(interview: ReportInterview, userId: string) {
+    return requestReport({ jobs, store: reportJobs }, interview, userId);
+  }
+
+  /** Report state as the owner sees it, derived from the report row and the newest report job. */
+  async function reportStatus(userReader: InterviewReader, interviewId: string): Promise<InterviewReportResponse> {
+    const [report, job] = await Promise.all([userReader.getReport(interviewId), userReader.getReportJob(interviewId)]);
+    if (report) {
+      const parsed = interviewReportSchema.safeParse(report.content);
+      if (parsed.success) {
+        return { status: "ready", report: parsed.data, generated_at: report.generated_at };
+      }
+      logGithubError(FN, null, { event: "report_content_invalid", code: "internal_error", interview_id: interviewId });
+      return { status: "failed", error_code: "internal_error" };
+    }
+    if (!job) {
+      // Completed without a job: the request itself failed before anything was queued.
+      return { status: "failed", error_code: "enqueue_failed" };
+    }
+    if (job.status === "queued" || job.status === "running") {
+      return { status: "pending" };
+    }
+    const code = reportErrorCodeSchema.safeParse(job.error_code);
+    return { status: "failed", error_code: job.status === "failed" && code.success ? code.data : "internal_error" };
+  }
+
+  type CompletedInterview =
+    | { ok: false; response: Response }
+    | { ok: true; userId: string; userReader: InterviewReader; interview: InterviewRow };
+
+  async function loadCompletedInterview(req: Request, id: string): Promise<CompletedInterview> {
+    const ctx = await authenticate(req);
+    if (!ctx) {
+      return { ok: false, response: apiError("unauthorized", cors) };
+    }
+    if (!interviewIdParamSchema.safeParse(id).success) {
+      return { ok: false, response: apiError("interview_not_found", cors) };
+    }
+    const userReader = reader(ctx.supabase);
+    const interview = await userReader.getInterview(id);
+    if (!interview) {
+      return { ok: false, response: apiError("interview_not_found", cors) };
+    }
+    if (interview.status !== "completed") {
+      return { ok: false, response: apiError("interview_not_completed", cors) };
+    }
+    return { ok: true, userId: ctx.user.id, userReader, interview };
+  }
+
+  async function getReport(req: Request, id: string): Promise<Response> {
+    const loaded = await loadCompletedInterview(req, id);
+    if (!loaded.ok) {
+      return loaded.response;
+    }
+    const body = interviewReportResponseSchema.parse(await reportStatus(loaded.userReader, loaded.interview.id));
+    return json(body, { headers: cors.headers });
+  }
+
+  /** Re-queues a failed report. A concurrent retry that already queued one answers with its state. */
+  async function retryReport(req: Request, id: string): Promise<Response> {
+    const loaded = await loadCompletedInterview(req, id);
+    if (!loaded.ok) {
+      return loaded.response;
+    }
+    const { userId, userReader, interview } = loaded;
+    if ((await reportStatus(userReader, interview.id)).status !== "failed") {
+      return apiError("report_not_retryable", cors);
+    }
+    const outcome = await queueReport(interview, userId);
+    const body = interviewReportResponseSchema.parse(
+      outcome === "queued" ? { status: "pending" } : await reportStatus(userReader, interview.id),
+    );
+    return json(body, { status: outcome === "queued" ? 202 : 200, headers: cors.headers });
   }
 
   /**
@@ -340,7 +461,9 @@ export function createInterviewsHandler({
     }
     const elapsedSeconds = voiceSecondsUsed(await store.listVoiceEvents(interview.id), now());
     if (elapsedSeconds >= VOICE_LIMIT_SECONDS) {
-      await store.completeInterview(interview.id, ctx.user.id, "time_limit");
+      if (await store.completeInterview(interview.id, ctx.user.id, "time_limit")) {
+        await queueReport(interview, ctx.user.id);
+      }
       return toolResponse(toolError("interview_not_active", TIME_UP_GUIDANCE));
     }
     if (!existing && READ_TOOLS.includes(call.tool)) {
@@ -359,6 +482,9 @@ export function createInterviewsHandler({
       ai,
       evaluationModel,
       elapsedSeconds,
+      requestReport: async () => {
+        await queueReport(interview, ctx.user.id);
+      },
       log: (entry) => console.log(JSON.stringify({ fn: FN, interview_id: interview.id, tool: call.tool, ...entry })),
     };
     const outcome = await runTool(call.tool, call.args, toolCtx);
@@ -532,25 +658,30 @@ export function createInterviewsHandler({
     }
 
     const path = new URL(req.url).pathname;
-    const session = path.match(SESSION_ROUTE);
-    const events = path.match(EVENTS_ROUTE);
-    const toolCalls = path.match(TOOL_CALLS_ROUTE);
-    const route = session
-      ? () => createSession(req, session[1])
-      : events
-      ? () => recordEvent(req, events[1])
-      : toolCalls
-      ? () => callTool(req, toolCalls[1])
-      : null;
-    if (!route) {
+    const routes = [
+      { pattern: SESSION_ROUTE, method: "POST", run: createSession },
+      { pattern: EVENTS_ROUTE, method: "POST", run: recordEvent },
+      { pattern: TOOL_CALLS_ROUTE, method: "POST", run: callTool },
+      { pattern: REPORT_ROUTE, method: "GET", run: getReport },
+      { pattern: REPORT_RETRY_ROUTE, method: "POST", run: retryReport },
+    ] as const;
+    let matched: { route: (typeof routes)[number]; id: string } | null = null;
+    for (const route of routes) {
+      const match = path.match(route.pattern);
+      if (match) {
+        matched = { route, id: match[1] };
+        break;
+      }
+    }
+    if (!matched) {
       return apiError("not_found", cors);
     }
-    if (req.method !== "POST") {
-      return apiError("method_not_allowed", cors, { Allow: "POST, OPTIONS" });
+    if (req.method !== matched.route.method) {
+      return apiError("method_not_allowed", cors, { Allow: `${matched.route.method}, OPTIONS` });
     }
 
     try {
-      return await route();
+      return await matched.route.run(req, matched.id);
     } catch (err) {
       logGithubError(FN, err, { code: "internal_error" });
       return apiError("internal_error", cors);
