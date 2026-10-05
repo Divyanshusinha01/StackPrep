@@ -51,13 +51,13 @@ isOneToOne: false
                   ]
                 },"interview_events": {
                   Row: {
-                    "created_at": string,"event_type": Database["public"]['Enums']["event_type"],"id": string,"interview_id": string,"occurred_at": string,"payload": NonNullable<Json>,"sequence": number,"user_id": string
+                    "client_event_id": string | null,"created_at": string,"event_type": Database["public"]['Enums']["event_type"],"id": string,"interview_id": string,"occurred_at": string,"payload": NonNullable<Json>,"sequence": number,"user_id": string
                   }
                   Insert: {
-                    "created_at"?: string,"event_type": Database["public"]['Enums']["event_type"],"id"?: string,"interview_id": string,"occurred_at"?: string,"payload"?: NonNullable<Json>,"sequence": number,"user_id": string
+                    "client_event_id"?: string | null,"created_at"?: string,"event_type": Database["public"]['Enums']["event_type"],"id"?: string,"interview_id": string,"occurred_at"?: string,"payload"?: NonNullable<Json>,"sequence": number,"user_id": string
                   }
                   Update: {
-                    "created_at"?: string,"event_type"?: Database["public"]['Enums']["event_type"],"id"?: string,"interview_id"?: string,"occurred_at"?: string,"payload"?: NonNullable<Json>,"sequence"?: number,"user_id"?: string
+                    "client_event_id"?: string | null,"created_at"?: string,"event_type"?: Database["public"]['Enums']["event_type"],"id"?: string,"interview_id"?: string,"occurred_at"?: string,"payload"?: NonNullable<Json>,"sequence"?: number,"user_id"?: string
                   }
                   Relationships: [
                     {
@@ -295,6 +295,16 @@ isOneToOne: false
 "match_repository_memory":
 { Args: { "p_commit_sha": string,"p_match_count"?: number,"p_query_embedding": string,"p_workspace_id": string }; Returns: {
               "content": string,"id": string,"kind": string,"metadata": Json,"similarity": number,"structured": Json
+            }[]
+                           },
+"record_transcript_turn":
+{ Args: { "p_client_event_id": string,"p_content": string,"p_interview_id": string,"p_metadata": Json,"p_role": Database["public"]['Enums']["message_role"],"p_user_id": string }; Returns: {
+              "sequence": number,"status": string
+            }[]
+                           },
+"record_voice_event":
+{ Args: { "p_client_event_id": string,"p_event_type": Database["public"]['Enums']["event_type"],"p_interview_id": string,"p_payload": Json,"p_user_id": string }; Returns: {
+              "sequence": number,"status": string
             }[]
                            },
 "retry_repository_analysis":

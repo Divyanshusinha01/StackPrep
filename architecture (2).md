@@ -362,7 +362,7 @@ The backend persists:
 Do not rely on the browser uploading a single final transcript at the end of the interview.
 
 - **Incremental capture.** The browser sends each completed transcript turn and important realtime event to the backend as it happens, not only at the end.
-- **Idempotent writes.** Each transcript turn carries a client-generated `client_event_id` (UUID) and a turn `sequence`. A retry with the same `client_event_id` returns the original acknowledgement; a different `client_event_id` at an existing `sequence` is rejected as a conflict. Gaps in `sequence` are detectable.
+- **Idempotent writes.** Each transcript turn carries a client-generated `client_event_id` (UUID); the backend assigns the turn `sequence`. A retry with the same `client_event_id` returns the original acknowledgement, including its sequence; reusing a `client_event_id` for a different payload is rejected as a conflict. Because the client holds no sequence state, clearing browser storage or continuing on another device cannot collide with stored turns.
 - **Client buffering.** Events that fail to send are queued locally and retried until acknowledged.
 - **Server-owned state.** Interview progress (current question, turns, plan coverage) lives in PostgreSQL, so the interview can resume from the last persisted turn.
 - **Reconnection.** On disconnect, the browser requests a new ephemeral credential. The backend builds the new Realtime session from persisted interview state so the conversation continues where it stopped.
@@ -784,7 +784,7 @@ Realtime transcription events (user + interviewer turns)
        ↓
 Browser (buffer + retry until acknowledged)
        ↓
-POST /interviews/:id/events   (idempotent: client event ID + sequence)
+POST /interviews/:id/events   (idempotent: client event ID; backend assigns sequence)
        ↓
 interview_messages / interview_events (append-only)
        ↓
@@ -802,14 +802,16 @@ This uses the existing tables rather than separate voice-session tables:
 
 Sequence ownership:
 
-- `interview_messages.sequence` is assigned by the **browser** (transcript turns originate from Realtime transcription events on the client).
-- `interview_events.sequence` is assigned by the **backend** for every event, including connect/reconnect events reported by the browser. The browser never supplies an event sequence.
+- `interview_messages.sequence` and `interview_events.sequence` are both assigned by the **backend** as `max + 1` under a per-interview advisory lock. The browser never supplies a sequence; it only supplies `client_event_id`.
+- The browser sends events one at a time in the order they were finalized, so server-assigned sequences follow conversation order.
 
-`unique (interview_id, client_event_id)` makes transcript retries idempotent, and `unique (interview_id, sequence)` prevents two different turns from claiming the same position. Gaps in `sequence` are detectable.
+`unique (interview_id, client_event_id)` makes retries idempotent, and `unique (interview_id, sequence)` guarantees no two rows share a position.
 
 Tool calls are idempotent per `call_id`: a partial unique index on `(interview_id, payload->>'call_id')` for `tool_call` events ensures a relayed retry is executed once.
 
-Schema: `tool_call`, `connected`, and `disconnected` event types, `interview_messages.client_event_id`, and the `call_id` index are added in migrations `20261004140000_realtime_event_types.sql` and `20261004140100_realtime_idempotency.sql`.
+Schema: `tool_call`, `connected`, and `disconnected` event types, `interview_messages.client_event_id`, and the `call_id` index are added in migrations `20261004140000_realtime_event_types.sql` and `20261004140100_realtime_idempotency.sql`. Migration `20261005120000_transcript_events.sql` adds `interview_events.client_event_id` (partial unique index on `(interview_id, client_event_id)`) and the service-role-only functions `record_transcript_turn` and `record_voice_event` behind `POST /interviews/:id/events`. Connected/disconnected events are stored with the server's time; the browser's timestamp is kept in the payload.
+
+The events endpoint returns `201` for a new row and `200` for a duplicate retry. A reused `client_event_id` with a different payload returns `409 event_conflict`. The acknowledgement returns `turn_sequence` (the assigned `interview_messages.sequence`) for transcript turns and `event_sequence` (the assigned `interview_events.sequence`) for voice events; both are informational for the browser. Turns are accepted after the interview has ended so buffered turns are not lost.
 
 ---
 

@@ -3,9 +3,18 @@
 import { useCallback, useEffect, useReducer, useRef, useState } from "react";
 import { type ApiErrorCode, apiErrorSchema, realtimeSessionResponseSchema, VOICE_LIMIT_SECONDS } from "@stackprep/shared";
 import { FunctionsHttpError } from "@supabase/supabase-js";
+import { sendEvent } from "@/lib/interview-events";
 import { createSupabaseBrowserClient } from "@/lib/supabase/client";
 import { relayToolCall } from "./realtime-tool-relay";
 import { EMPTY_TRANSCRIPT, type RealtimeServerEvent, transcriptReducer } from "./realtime-transcript";
+import {
+  browserWakeSignals,
+  createTranscriptOutbox,
+  newlyFinalTurns,
+  type OutboxStorage,
+  outboxStorageKey,
+  type TranscriptOutbox,
+} from "./transcript-outbox";
 
 const REALTIME_CALLS_URL = "https://api.openai.com/v1/realtime/calls";
 
@@ -59,19 +68,32 @@ async function requestSession(interviewId: string) {
   throw new RealtimeStartError("realtime_unavailable");
 }
 
+function localStorageOrNull(): OutboxStorage | null {
+  try {
+    return window.localStorage;
+  } catch {
+    return null;
+  }
+}
+
 /**
  * Live voice session: the backend mints a short-lived credential, then the browser opens a
- * WebRTC call straight to OpenAI. Transcripts are display-only and lost on refresh.
+ * WebRTC call straight to OpenAI. Finalized transcript turns and connected/disconnected events
+ * go through a persistent outbox, so unsent ones survive a refresh and are retried until acked.
  */
 export function useRealtimeInterview(interviewId: string) {
   const [status, setStatus] = useState<RealtimeStatus>("idle");
   const [error, setError] = useState<RealtimeErrorCode | null>(null);
   const [timeUp, setTimeUp] = useState(false);
   const [clock, setClock] = useState<VoiceClock | null>(null);
+  /** Code of the last event the backend refused; that event was dropped. */
+  const [syncError, setSyncError] = useState<string | null>(null);
   const [transcript, dispatch] = useReducer(transcriptReducer, EMPTY_TRANSCRIPT);
   const cleanupRef = useRef<(() => void) | null>(null);
   /** Bumped on every start/stop so a superseded start cannot touch state. */
   const attemptRef = useRef(0);
+  const outboxRef = useRef<TranscriptOutbox | null>(null);
+  const seenTurnsRef = useRef(new Set<string>());
 
   const teardown = useCallback(() => {
     cleanupRef.current?.();
@@ -92,6 +114,37 @@ export function useRealtimeInterview(interviewId: string) {
     [teardown],
   );
 
+  // Declared after the teardown effect so, on unmount, the final `disconnected` is enqueued
+  // before this outbox is flushed and disposed.
+  useEffect(() => {
+    const outbox = createTranscriptOutbox({
+      storageKey: outboxStorageKey(interviewId),
+      storage: localStorageOrNull(),
+      send: (event) => sendEvent(interviewId, event),
+      subscribeWake: browserWakeSignals,
+      onDrop: (item, code) => {
+        console.warn(`Dropped interview ${item.type} event: ${code}`);
+        setSyncError(code);
+      },
+    });
+    outboxRef.current = outbox;
+    return () => {
+      void outbox.flush();
+      outbox.dispose();
+      outboxRef.current = null;
+    };
+  }, [interviewId]);
+
+  useEffect(() => {
+    const outbox = outboxRef.current;
+    if (!outbox) {
+      return;
+    }
+    for (const turn of newlyFinalTurns(transcript, seenTurnsRef.current)) {
+      outbox.enqueue(turn);
+    }
+  }, [transcript]);
+
   const start = useCallback(async () => {
     attemptRef.current++;
     const attempt = attemptRef.current;
@@ -105,8 +158,14 @@ export function useRealtimeInterview(interviewId: string) {
     let pc: RTCPeerConnection | null = null;
     let audio: HTMLAudioElement | null = null;
     let hardStop = 0;
+    let connected = false;
     const cleanup = () => {
       window.clearTimeout(hardStop);
+      if (connected) {
+        connected = false;
+        outboxRef.current?.enqueue({ type: "disconnected" });
+        void outboxRef.current?.flush();
+      }
       pc?.close();
       mic?.getTracks().forEach((t) => t.stop());
       if (audio) {
@@ -178,6 +237,8 @@ export function useRealtimeInterview(interviewId: string) {
         if (!current()) {
           return;
         }
+        connected = true;
+        outboxRef.current?.enqueue({ type: "connected" });
         const usedSeconds = VOICE_LIMIT_SECONDS - session.remaining_voice_seconds;
         setClock({ usedSeconds, connectedAt: Date.now() });
         setStatus("live");
@@ -226,5 +287,5 @@ export function useRealtimeInterview(interviewId: string) {
     }
   }, [interviewId, stop, teardown]);
 
-  return { status, error, timeUp, clock, transcript, start, stop };
+  return { status, error, timeUp, clock, transcript, syncError, start, stop };
 }
