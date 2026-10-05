@@ -173,7 +173,52 @@ Deno.test({
 
       release.resolve();
       const rows = await Promise.all([first, second]);
-      assertEquals(rows.map((r) => `${r.status}:${r.sequence}`), ["created:1", "created:2"]);
+      // The first connected also writes the interview's `start` event at sequence 2.
+      assertEquals(rows.map((r) => `${r.status}:${r.sequence}`), ["created:1", "created:3"]);
+    });
+  },
+});
+
+Deno.test({
+  name: "concurrent tool calls with the same call_id execute once; concurrent completions complete once",
+  ignore: !dbUrl,
+  async fn() {
+    await withFixture(async ({ a, b, userId, workspaceId }) => {
+      const [{ id: interviewId }] = await a`
+        select id from public.create_interview(${workspaceId}, ${userId}, ${sha}, '{}'::jsonb, '{}'::jsonb, '{}'::jsonb)`;
+      await a`select * from public.record_voice_event(${interviewId}, ${userId}, ${crypto.randomUUID()}, 'connected', '{}'::jsonb)`;
+
+      const tool = (sql: postgres.Sql | postgres.TransactionSql) =>
+        sql`
+          select status from public.record_tool_call(
+            ${interviewId}, ${userId}, 'call_1', 'end_interview', '{"reason": "time_target"}'::jsonb,
+            '{"accepted": true}'::jsonb, '{"ok": true, "accepted": true, "guidance": "Close."}'::jsonb, null, null)`
+          .then(([row]) => row.status as string);
+      const complete = (sql: postgres.Sql | postgres.TransactionSql) =>
+        sql`select public.complete_interview(${interviewId}, ${userId}, null) as done`.then(([row]) => row.done as boolean);
+
+      const held = Promise.withResolvers<void>();
+      const release = Promise.withResolvers<void>();
+      const first = a.begin(async (tx) => {
+        const result = [await complete(tx), await tool(tx)];
+        held.resolve();
+        await release.promise;
+        return result;
+      });
+
+      await held.promise;
+      const second = Promise.all([complete(b), tool(b)]);
+      const secondState = settled(second);
+      await delay(300);
+      assertEquals(secondState.done, false, "second caller should wait for the per-interview lock");
+
+      release.resolve();
+      assertEquals(await first, [true, "created"]);
+      assertEquals(await second, [false, "duplicate"]);
+      const [{ count }] = await a`
+        select count(*)::int as count from public.interview_events
+        where interview_id = ${interviewId} and event_type = 'completion'`;
+      assertEquals(count, 1);
     });
   },
 });

@@ -10,6 +10,8 @@ import {
 import type { SupabaseClient, User } from "@supabase/supabase-js";
 import type { Authenticate } from "../_shared/auth.ts";
 import { CREDENTIAL_TTL_SECONDS, createRealtimeClient } from "../_shared/realtime/openai-realtime.ts";
+import { createFakeAIProvider } from "../_shared/testing.ts";
+import { createFakeGithub, createFakeToolStore } from "./testing.ts";
 import {
   createInterviewsHandler,
   type InterviewReader,
@@ -85,6 +87,7 @@ function setup({
     };
   };
   const store: InterviewStore = {
+    ...createFakeToolStore(),
     getPlan: (id) => {
       assertEquals(id, INTERVIEW_ID);
       return Promise.resolve(storedPlan);
@@ -119,6 +122,9 @@ function setup({
     realtime: createRealtimeClient({ apiKey: API_KEY, fetch: fakeFetch }),
     model: "gpt-realtime-2.1-mini",
     transcriptionModel: "gpt-4o-mini-transcribe",
+    github: createFakeGithub({}),
+    ai: createFakeAIProvider(() => new Error("unused")),
+    evaluationModel: "gpt-eval",
     now: () => NOW,
   });
   return { handler, openaiRequests, turns, voiceEvents };

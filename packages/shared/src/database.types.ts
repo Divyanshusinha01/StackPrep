@@ -263,7 +263,10 @@ isOneToOne: false
             [_ in never]: never
           }
           Functions: {
-            "complete_repository_analysis":
+            "complete_interview":
+{ Args: { "p_interview_id": string,"p_reason": Database["public"]['Enums']["termination_reason"] | null,"p_user_id": string }; Returns: boolean
+                           },
+"complete_repository_analysis":
 { Args: { "p_commit_sha": string,"p_job_id": string,"p_memory": Json,"p_workspace_id": string }; Returns: boolean
                            },
 "create_interview":
@@ -295,6 +298,14 @@ isOneToOne: false
 "match_repository_memory":
 { Args: { "p_commit_sha": string,"p_match_count"?: number,"p_query_embedding": string,"p_workspace_id": string }; Returns: {
               "content": string,"id": string,"kind": string,"metadata": Json,"similarity": number,"structured": Json
+            }[]
+                           },
+"record_evidence_examined":
+{ Args: { "p_evidence": Json,"p_interview_id": string,"p_user_id": string }; Returns: number
+                           },
+"record_tool_call":
+{ Args: { "p_args": Json,"p_call_id": string,"p_evaluation": Json,"p_evidence": Json,"p_interview_id": string,"p_result": Json,"p_result_summary": Json,"p_tool": string,"p_user_id": string }; Returns: {
+              "result": Json,"sequence": number,"status": string
             }[]
                            },
 "record_transcript_turn":

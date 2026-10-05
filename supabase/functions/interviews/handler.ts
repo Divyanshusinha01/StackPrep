@@ -7,17 +7,33 @@ import {
   type InterviewStatus,
   type PlanningState,
   realtimeSessionResponseSchema,
+  toolCallRequestSchema,
+  type ToolCallResponse,
+  toolCallResponseSchema,
   VOICE_LIMIT_SECONDS,
 } from "@stackprep/shared";
 import type { SupabaseClient } from "@supabase/supabase-js";
+import type { AIProvider } from "../_shared/ai/provider.ts";
 import type { Authenticate } from "../_shared/auth.ts";
+import type { GithubApp } from "../_shared/github-app.ts";
 import { apiError, logGithubError } from "../_shared/github-errors.ts";
 import { createCors, json } from "../_shared/http.ts";
 import { buildRealtimeInstructions, type InstructionsMemory } from "../_shared/realtime/instructions.ts";
 import type { RealtimeClient } from "../_shared/realtime/openai-realtime.ts";
 import { buildRealtimeTools } from "../_shared/realtime/tools.ts";
+import { createTreeCache, type TreeCache } from "./tools/get-file.ts";
+import { parseToolCall, READ_TOOLS, runTool } from "./tools/index.ts";
+import { createToolStore } from "./tools/store.ts";
+import { type ToolContext, toolError, type ToolStore } from "./tools/types.ts";
 
 const FN = "interviews";
+
+/** Read tools allowed per interview in a sliding window, counted from stored tool_call events. */
+export const READ_TOOL_LIMIT = 20;
+export const READ_TOOL_WINDOW_MS = 60_000;
+
+export const TIME_UP_GUIDANCE =
+  "The interview time is over. Give a one-sentence closing statement now and end the conversation.";
 
 const MAX_FILE_SUMMARIES = 20;
 
@@ -74,7 +90,7 @@ export interface RecordResult {
  * Service-role reads of hidden state. Every call is keyed by ids taken from an interview the
  * caller has already been shown to own.
  */
-export interface InterviewStore {
+export interface InterviewStore extends ToolStore {
   /** Raw `interview_state.plan`; `{}` until planning writes it. */
   getPlan(interviewId: string): Promise<unknown>;
   /** Connected / disconnected events in sequence order. */
@@ -92,6 +108,10 @@ export interface InterviewsHandlerOptions {
   realtime: RealtimeClient;
   model: string;
   transcriptionModel: string;
+  github: GithubApp;
+  ai: AIProvider;
+  evaluationModel: string;
+  trees?: TreeCache;
   now?: () => Date;
 }
 
@@ -129,6 +149,7 @@ export function createInterviewReader(client: SupabaseClient): InterviewReader {
 
 export function createInterviewStore(serviceClient: SupabaseClient): InterviewStore {
   return {
+    ...createToolStore(serviceClient),
     async getPlan(interviewId) {
       const { data, error } = await serviceClient
         .from("interview_state")
@@ -233,8 +254,21 @@ async function safetyIdentifier(userId: string): Promise<string> {
   return Array.from(new Uint8Array(digest), (b) => b.toString(16).padStart(2, "0")).join("");
 }
 
+/** Key-order-independent JSON, to compare stored (jsonb) and replayed tool arguments. */
+function stableJson(value: unknown): string {
+  if (Array.isArray(value)) {
+    return `[${value.map(stableJson).join(",")}]`;
+  }
+  if (value !== null && typeof value === "object") {
+    const entries = Object.entries(value as Record<string, unknown>).sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0));
+    return `{${entries.map(([k, v]) => `${JSON.stringify(k)}:${stableJson(v)}`).join(",")}}`;
+  }
+  return JSON.stringify(value);
+}
+
 const SESSION_ROUTE = /\/interviews\/([^/]+)\/realtime\/session\/?$/;
 const EVENTS_ROUTE = /\/interviews\/([^/]+)\/events\/?$/;
+const TOOL_CALLS_ROUTE = /\/interviews\/([^/]+)\/tool-calls\/?$/;
 
 export function createInterviewsHandler({
   webOrigin,
@@ -244,10 +278,122 @@ export function createInterviewsHandler({
   realtime,
   model,
   transcriptionModel,
+  github,
+  ai,
+  evaluationModel,
+  trees = createTreeCache(),
   now = () => new Date(),
 }: InterviewsHandlerOptions) {
   const cors = createCors(webOrigin, ["POST"]);
   const tools = buildRealtimeTools();
+
+  function toolResponse(body: ToolCallResponse): Response {
+    return json(toolCallResponseSchema.parse(body), { status: 200, headers: cors.headers });
+  }
+
+  /**
+   * Executes a Realtime tool call relayed by the browser. Tool-level failures are HTTP 200 tool
+   * errors so the interviewer can recover; auth, ownership, and malformed envelopes are HTTP errors.
+   */
+  async function callTool(req: Request, id: string): Promise<Response> {
+    const ctx = await authenticate(req);
+    if (!ctx) {
+      return apiError("unauthorized", cors);
+    }
+    if (!interviewIdParamSchema.safeParse(id).success) {
+      return apiError("interview_not_found", cors);
+    }
+    const interview = await reader(ctx.supabase).getInterview(id);
+    if (!interview) {
+      return apiError("interview_not_found", cors);
+    }
+
+    let raw: unknown;
+    try {
+      raw = await req.json();
+    } catch {
+      return apiError("invalid_request", cors);
+    }
+    const request = toolCallRequestSchema.safeParse(raw);
+    if (!request.success) {
+      return apiError("invalid_request", cors);
+    }
+    const { call_id: callId } = request.data;
+    const call = parseToolCall(request.data.name, request.data.arguments);
+    if (!call.ok) {
+      return toolResponse(toolError(call.code));
+    }
+
+    // A replay returns the stored answer even after the interview has ended.
+    const existing = await store.findToolCall(interview.id, callId);
+    if (existing) {
+      if (existing.tool !== call.tool || stableJson(existing.args) !== stableJson(call.args)) {
+        return apiError("event_conflict", cors);
+      }
+      if (existing.result !== null) {
+        return toolResponse(existing.result as ToolCallResponse);
+      }
+    }
+
+    if (interview.status !== "in_progress") {
+      return toolResponse(toolError("interview_not_active"));
+    }
+    const elapsedSeconds = voiceSecondsUsed(await store.listVoiceEvents(interview.id), now());
+    if (elapsedSeconds >= VOICE_LIMIT_SECONDS) {
+      await store.completeInterview(interview.id, ctx.user.id, "time_limit");
+      return toolResponse(toolError("interview_not_active", TIME_UP_GUIDANCE));
+    }
+    if (!existing && READ_TOOLS.includes(call.tool)) {
+      const since = new Date(now().getTime() - READ_TOOL_WINDOW_MS);
+      if (await store.countToolCallsSince(interview.id, [...READ_TOOLS], since) >= READ_TOOL_LIMIT) {
+        return toolResponse(toolError("rate_limited"));
+      }
+    }
+
+    const toolCtx: ToolContext = {
+      interview,
+      userId: ctx.user.id,
+      store,
+      github,
+      trees,
+      ai,
+      evaluationModel,
+      elapsedSeconds,
+      log: (entry) => console.log(JSON.stringify({ fn: FN, interview_id: interview.id, tool: call.tool, ...entry })),
+    };
+    const outcome = await runTool(call.tool, call.args, toolCtx);
+    const output = toolCallResponseSchema.parse(outcome.output);
+    if (existing || outcome.record === false) {
+      return toolResponse(output);
+    }
+
+    const recorded = await store.recordToolCall({
+      interviewId: interview.id,
+      userId: ctx.user.id,
+      callId,
+      tool: call.tool,
+      args: call.args,
+      resultSummary: outcome.summary,
+      result: outcome.persist ? output : null,
+      evidence: outcome.evidence ?? [],
+      evaluation: outcome.evaluation ?? null,
+    });
+    if (recorded.status === "event_conflict") {
+      return apiError("event_conflict", cors);
+    }
+    if (recorded.status === "duplicate") {
+      // A concurrent relay of the same call won; answer consistently with it.
+      return toolResponse((recorded.result ?? output) as ToolCallResponse);
+    }
+    if (outcome.afterRecord) {
+      try {
+        await outcome.afterRecord();
+      } catch (err) {
+        logGithubError(FN, err, { event: "tool_state_update_failed", code: "internal_error", interview_id: interview.id });
+      }
+    }
+    return toolResponse(output);
+  }
 
   async function createSession(req: Request, id: string): Promise<Response> {
     const ctx = await authenticate(req);
@@ -388,10 +534,13 @@ export function createInterviewsHandler({
     const path = new URL(req.url).pathname;
     const session = path.match(SESSION_ROUTE);
     const events = path.match(EVENTS_ROUTE);
+    const toolCalls = path.match(TOOL_CALLS_ROUTE);
     const route = session
       ? () => createSession(req, session[1])
       : events
       ? () => recordEvent(req, events[1])
+      : toolCalls
+      ? () => callTool(req, toolCalls[1])
       : null;
     if (!route) {
       return apiError("not_found", cors);

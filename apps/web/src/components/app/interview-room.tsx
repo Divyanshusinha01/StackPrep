@@ -1,8 +1,9 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { Bot, Loader2, Mic } from "lucide-react";
+import { Bot, FileSearch, Loader2, Mic } from "lucide-react";
 import { VOICE_WRAP_UP_SECONDS } from "@stackprep/shared";
+import { type ExaminedItem, examiningLabel } from "@/components/app/examining";
 import { Notice } from "@/components/app/notice";
 import type { TranscriptTurn } from "@/components/app/realtime-transcript";
 import type { RealtimeErrorCode, RealtimeStatus, VoiceClock } from "@/components/app/use-realtime-interview";
@@ -102,10 +103,31 @@ function TranscriptPane({
   );
 }
 
+/** Which file or module the interviewer is looking at; paths only, never content or reasoning. */
+function ExaminingIndicator({ items }: { items: ExaminedItem[] | null }) {
+  const label = items ? examiningLabel(items) : "";
+  return (
+    <p
+      aria-live="polite"
+      title={items?.map((item) => item.path).join("\n")}
+      className="mt-2 flex h-5 items-center gap-2 text-xs text-muted-foreground"
+    >
+      {label ? (
+        <>
+          <FileSearch className="size-3.5 shrink-0" aria-hidden />
+          <span className="truncate font-mono">{label}</span>
+        </>
+      ) : null}
+    </p>
+  );
+}
+
 export function InterviewRoom({
   status,
   error,
   timeUp,
+  ended,
+  examining,
   clock,
   transcript,
   onReconnect,
@@ -113,6 +135,8 @@ export function InterviewRoom({
   status: RealtimeStatus;
   error: RealtimeErrorCode | null;
   timeUp: boolean;
+  ended: boolean;
+  examining: ExaminedItem[] | null;
   clock: VoiceClock | null;
   transcript: { ai: TranscriptTurn[]; user: TranscriptTurn[] };
   onReconnect: () => void;
@@ -120,7 +144,8 @@ export function InterviewRoom({
   const live = status === "live";
   const elapsed = useElapsed(clock, live);
   const wrappingUp = live && elapsed >= VOICE_WRAP_UP_SECONDS;
-  const canReconnect = !timeUp && (status === "closed" || (status === "error" && error !== null && !NOT_RETRYABLE.has(error)));
+  const canReconnect =
+    !timeUp && !ended && (status === "closed" || (status === "error" && error !== null && !NOT_RETRYABLE.has(error)));
 
   return (
     <div className="mt-6">
@@ -136,14 +161,20 @@ export function InterviewRoom({
             Live
           </span>
         ) : status === "closed" ? (
-          <span className="text-muted-foreground">{timeUp ? "Interview time is over" : "Disconnected"}</span>
+          <span className="text-muted-foreground">
+            {ended ? "Interview complete" : timeUp ? "Interview time is over" : "Disconnected"}
+          </span>
         ) : null}
         <span className="ml-auto font-mono tabular-nums text-muted-foreground" aria-label="Elapsed time">
           {formatClock(elapsed)}
         </span>
       </div>
+      <ExaminingIndicator items={live ? examining : null} />
 
-      {wrappingUp ? <Notice tone="info">Wrapping up: the interviewer will finish the current question.</Notice> : null}
+      {ended ? <Notice tone="info">The interview is complete. Thanks for walking through your code.</Notice> : null}
+      {wrappingUp && !ended ? (
+        <Notice tone="info">Wrapping up: the interviewer will finish the current question.</Notice>
+      ) : null}
       {timeUp ? <Notice tone="info">The voice session reached its time limit.</Notice> : null}
       {status === "error" && error ? (
         <Notice tone="error">{ROOM_ERRORS[error] ?? "Something went wrong with the voice session."}</Notice>

@@ -11,7 +11,7 @@ const PREPARING_RETRY_MS = 4000;
 /** Lobby until the candidate enters, then the live room. */
 export function InterviewSession({ interviewId, planning }: { interviewId: string; planning: InterviewPlanning | null }) {
   const [entered, setEntered] = useState(false);
-  const { status, error, timeUp, clock, transcript, start } = useRealtimeInterview(interviewId);
+  const { status, error, timeUp, ended, examining, clock, transcript, start } = useRealtimeInterview(interviewId);
 
   const preparing = entered && status === "error" && error === "interview_preparing";
   useEffect(() => {
@@ -38,6 +38,8 @@ export function InterviewSession({ interviewId, planning }: { interviewId: strin
       status={status}
       error={error}
       timeUp={timeUp}
+      ended={ended}
+      examining={examining}
       clock={clock}
       transcript={transcript}
       onReconnect={() => void start()}
