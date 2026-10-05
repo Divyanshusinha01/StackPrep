@@ -3,13 +3,22 @@ import {
   apiErrorSchema,
   type ConnectGithubRequest,
   connectGithubResponseSchema,
+  createInterviewResponseSchema,
   type CreateWorkspaceRequest,
   createWorkspaceResponseSchema,
+  gitCommitShaSchema,
   healthResponseSchema,
+  interviewHistoryItemSchema,
+  type InterviewPlanning,
+  planningErrorCodeSchema,
+  planningStateSchema,
   repositoryListResponseSchema,
   retryAnalysisResponseSchema,
   workspaceDetailResponseSchema,
+  workspaceIdParamSchema,
   workspaceListResponseSchema,
+  workspaceRepositorySchema,
+  workspaceSchema,
 } from "@stackprep/shared";
 import { FunctionsHttpError } from "@supabase/supabase-js";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
@@ -18,7 +27,9 @@ interface Schema<T> {
   parse(data: unknown): T;
 }
 
-export type ApiResult<T> = { ok: true; data: T } | { ok: false; code: ApiErrorCode };
+export type ApiResult<T> =
+  | { ok: true; data: T }
+  | { ok: false; code: ApiErrorCode; nextAvailableAt?: string };
 
 async function functionGet<T>(name: string, schema: Schema<T>): Promise<T> {
   const supabase = await createSupabaseServerClient();
@@ -44,7 +55,8 @@ async function functionRequest<T>(
     const body = await (error.context as Response).json().catch(() => null);
     const parsed = apiErrorSchema.safeParse(body);
     if (parsed.success) {
-      return { ok: false, code: parsed.data.code };
+      const { code, next_available_at: nextAvailableAt } = parsed.data;
+      return nextAvailableAt ? { ok: false, code, nextAvailableAt } : { ok: false, code };
     }
   }
   return { ok: false, code: "github_unavailable" };
@@ -76,6 +88,72 @@ export function getWorkspace(id: string) {
 
 export function retryWorkspaceAnalysis(id: string) {
   return functionRequest(`workspaces/${encodeURIComponent(id)}/analysis/retry`, retryAnalysisResponseSchema, {
+    method: "POST",
+  });
+}
+
+const interviewRowSchema = interviewHistoryItemSchema.extend({
+  workspace_id: workspaceIdParamSchema,
+  repository_commit_sha: gitCommitShaSchema,
+  workspace: workspaceSchema.pick({}).extend({ repository: workspaceRepositorySchema.pick({ full_name: true }) }),
+});
+
+export type InterviewDetail = Omit<ReturnType<typeof interviewRowSchema.parse>, "workspace"> & {
+  repository_full_name: string;
+  /** Null only if the planning job row is missing. */
+  planning: InterviewPlanning | null;
+};
+
+/**
+ * Reads the interview and its latest planning job with the user's own session, so RLS limits it
+ * to their rows. There is no documented `GET /interviews/:id`; hidden state is never selectable.
+ */
+export async function getInterview(id: string): Promise<InterviewDetail | null> {
+  if (!workspaceIdParamSchema.safeParse(id).success) {
+    return null;
+  }
+  const supabase = await createSupabaseServerClient();
+  const [interview, job] = await Promise.all([
+    supabase
+      .from("interviews")
+      .select(
+        "id, workspace_id, interview_number, status, started_at, ended_at, created_at, repository_commit_sha, " +
+          "workspace:workspaces!interviews_workspace_id_user_id_fkey" +
+          "(repository:repositories!workspaces_repository_id_user_id_fkey(full_name))",
+      )
+      .eq("id", id)
+      .maybeSingle(),
+    supabase
+      .from("jobs")
+      .select("status, error_code")
+      .eq("interview_id", id)
+      .eq("type", "interview_planning")
+      .order("created_at", { ascending: false })
+      .limit(1)
+      .maybeSingle(),
+  ]);
+  if (interview.error) {
+    throw new Error(`Failed to load interview: ${interview.error.message}`);
+  }
+  if (job.error) {
+    throw new Error(`Failed to load interview planning: ${job.error.message}`);
+  }
+  if (!interview.data) {
+    return null;
+  }
+  const { workspace, ...row } = interviewRowSchema.parse(interview.data);
+  let planning: InterviewPlanning | null = null;
+  if (job.data) {
+    const { status, error_code: errorCode } = job.data as { status: unknown; error_code: unknown };
+    const state = planningStateSchema.parse(status);
+    const code = planningErrorCodeSchema.safeParse(errorCode);
+    planning = { state, error_code: state === "failed" ? (code.success ? code.data : "internal_error") : null };
+  }
+  return { ...row, repository_full_name: workspace.repository.full_name, planning };
+}
+
+export function createInterview(workspaceId: string) {
+  return functionRequest(`workspaces/${encodeURIComponent(workspaceId)}/interviews`, createInterviewResponseSchema, {
     method: "POST",
   });
 }

@@ -1,7 +1,9 @@
 import { assert, assertEquals } from "@std/assert";
 import {
   apiErrorSchema,
+  createInterviewResponseSchema,
   createWorkspaceResponseSchema,
+  type InterviewHistoryItem,
   retryAnalysisResponseSchema,
   workspaceDetailResponseSchema,
   workspaceListResponseSchema,
@@ -22,6 +24,8 @@ import { assertNoSecrets } from "../_shared/testing.ts";
 import {
   type ConnectionRow,
   createWorkspacesHandler,
+  type StartedInterview,
+  type StartInterviewResult,
   toAnalysis,
   type WorkspaceReader,
   type WorkspaceRow,
@@ -85,7 +89,20 @@ interface Setup {
   /** Simulates a concurrent request creating the workspace between the existence check and the insert. */
   raceWith?: WorkspaceRow;
   readerError?: boolean;
+  interviews?: InterviewHistoryItem[];
+  /** What the atomic start_interview RPC decides; defaults to creating interview 1. */
+  startResult?: StartInterviewResult;
 }
+
+const INTERVIEW_ID = "ffffffff-0000-4000-8000-000000000001";
+const PLANNING_JOB = "99999999-0000-4000-8000-000000000001";
+const startedInterview: StartedInterview = {
+  interview_id: INTERVIEW_ID,
+  interview_number: 1,
+  status: "created",
+  created_at: "2026-10-05T10:00:00.123456+00:00",
+  job_id: PLANNING_JOB,
+};
 
 function setup({
   connections = [conn],
@@ -98,11 +115,13 @@ function setup({
   eventId = null,
   raceWith,
   readerError = false,
+  interviews = [],
+  startResult = { ok: true, interview: startedInterview },
 }: Setup = {}) {
   const state = { workspaces: [...workspaces] };
   const writes: unknown[][] = [];
   const githubCalls: string[] = [];
-  const enqueued: [string, JobEvents["repository.analysis.requested"]][] = [];
+  const enqueued: [string, JobEvents[keyof JobEvents]][] = [];
   const rlsClient = { rls: true } as unknown as SupabaseClient;
 
   const authenticate: Authenticate = (req) =>
@@ -119,6 +138,7 @@ function setup({
       getWorkspace: (id) => guard(state.workspaces.find((w) => w.id === id) ?? null),
       findWorkspaceByGithubRepo: (githubRepoId) =>
         guard(state.workspaces.find((w) => w.repository.github_repo_id === githubRepoId) ?? null),
+      listInterviews: () => guard([...interviews]),
     };
   };
 
@@ -190,6 +210,16 @@ function setup({
       row.status = "analyzing";
       row.analysis_jobs = [{ status: "queued", stage: null, error_code: null }];
       return Promise.resolve("job-2");
+    },
+    startInterview(uid, workspaceId, sha) {
+      assertEquals(uid, userId);
+      writes.push(["startInterview", workspaceId, sha]);
+      return Promise.resolve(startResult);
+    },
+    failPlanningJob(uid, jobId, code) {
+      assertEquals(uid, userId);
+      writes.push(["failPlanningJob", jobId, code]);
+      return Promise.resolve();
     },
   };
 
@@ -530,6 +560,32 @@ Deno.test("returns workspace detail with an empty interview history", async () =
   assertEquals(body.workspace.status, "ready");
 });
 
+Deno.test("workspace detail includes the interview history", async () => {
+  const row = workspaceRow(1, 1, { status: "ready", indexed_commit_sha: SHA, ready_at: "2026-10-01T01:00:00+00:00" });
+  const history: InterviewHistoryItem[] = [
+    {
+      id: "ffffffff-0000-4000-8000-000000000002",
+      interview_number: 2,
+      status: "created",
+      started_at: null,
+      ended_at: null,
+      created_at: "2026-10-05T10:00:00.123456+00:00",
+    },
+    {
+      id: INTERVIEW_ID,
+      interview_number: 1,
+      status: "completed",
+      started_at: "2026-10-04T10:00:00+00:00",
+      ended_at: "2026-10-04T10:30:00+00:00",
+      created_at: "2026-10-04T09:59:00+00:00",
+    },
+  ];
+  const { handler } = setup({ workspaces: [row], interviews: history });
+  const res = await request(handler, `/workspaces/${row.id}`);
+  await assertNoSecrets(res);
+  assertEquals(workspaceDetailResponseSchema.parse(await res.json()).interviews, history);
+});
+
 Deno.test("workspace detail includes the analysis stage while running", async () => {
   const row = workspaceRow(1, 1, { analysis_jobs: [{ status: "running", stage: "analyzing", error_code: null }] });
   const { handler } = setup({ workspaces: [row] });
@@ -634,4 +690,114 @@ Deno.test("unknown, other users', and malformed workspace ids return 404", async
   const { handler } = setup({ workspaces: [workspaceRow(1, 1)] });
   await expectError(await request(handler, `/workspaces/${crypto.randomUUID()}`), 404, "workspace_not_found");
   await expectError(await request(handler, "/workspaces/not-a-uuid"), 404, "workspace_not_found");
+});
+
+// POST /workspaces/:id/interviews ----------------------------------------------------
+
+const INDEXED_SHA = "fedcba9876543210fedcba9876543210fedcba98";
+
+function readyRow(n = 1) {
+  return workspaceRow(n, n, {
+    status: "ready",
+    target_commit_sha: SHA,
+    indexed_commit_sha: INDEXED_SHA,
+    ready_at: "2026-10-01T01:00:00+00:00",
+    analysis_jobs: [{ status: "succeeded", stage: null, error_code: null }],
+  });
+}
+
+const startInterview = (handler: Handler, id: string, auth = "Bearer valid") =>
+  request(handler, `/workspaces/${id}/interviews`, { method: "POST" }, auth);
+
+Deno.test("interviews route only allows POST", async () => {
+  const { handler, writes } = setup({ workspaces: [readyRow()] });
+  const res = await request(handler, `/workspaces/${readyRow().id}/interviews`);
+  assertEquals(res.headers.get("allow"), "POST, OPTIONS");
+  await expectError(res, 405, "method_not_allowed");
+  await expectError(await request(handler, `/workspaces/${readyRow().id}/interviews/x`, { method: "POST" }), 404, "not_found");
+  assertEquals(writes, []);
+});
+
+Deno.test("starting an interview requires auth and a visible workspace", async () => {
+  const { handler, writes, enqueued } = setup({ workspaces: [readyRow()] });
+  await expectError(await startInterview(handler, readyRow().id, ""), 401, "unauthorized");
+  await expectError(await startInterview(handler, crypto.randomUUID()), 404, "workspace_not_found");
+  await expectError(await startInterview(handler, "not-a-uuid"), 404, "workspace_not_found");
+  assertEquals(writes, []);
+  assertEquals(enqueued, []);
+});
+
+Deno.test("a workspace that is not ready cannot start an interview", async () => {
+  for (const row of [workspaceRow(1, 1), failedRow()]) {
+    const { handler, writes, enqueued } = setup({ workspaces: [row] });
+    await expectError(await startInterview(handler, row.id), 409, "workspace_not_ready");
+    assertEquals(writes, []);
+    assertEquals(enqueued, []);
+  }
+});
+
+Deno.test("creates an interview pinned to the indexed commit and enqueues planning", async () => {
+  const row = readyRow();
+  const { handler, writes, enqueued } = setup({ workspaces: [row], eventId: "evt_plan" });
+  const res = await startInterview(handler, row.id);
+  assertEquals(res.status, 201);
+  assertEquals(res.headers.get("cache-control"), "no-store");
+  await assertNoSecrets(res);
+  assertEquals(createInterviewResponseSchema.parse(await res.json()), {
+    interview: {
+      id: INTERVIEW_ID,
+      interview_number: 1,
+      status: "created",
+      started_at: null,
+      ended_at: null,
+      created_at: "2026-10-05T10:00:00.123456+00:00",
+    },
+    planning: { state: "queued", error_code: null },
+  });
+  assertEquals(writes, [["startInterview", row.id, INDEXED_SHA], ["setJobEventId", PLANNING_JOB, "evt_plan"]]);
+  assertEquals(enqueued, [[
+    "interview.planning.requested",
+    { interview_id: INTERVIEW_ID, workspace_id: row.id, job_id: PLANNING_JOB, commit_sha: INDEXED_SHA },
+  ]]);
+});
+
+Deno.test("the database's ownership and readiness decisions are respected", async () => {
+  for (const reason of ["workspace_not_found", "workspace_not_ready"] as const) {
+    const { handler, enqueued } = setup({ workspaces: [readyRow()], startResult: { ok: false, reason } });
+    await expectError(await startInterview(handler, readyRow().id), reason === "workspace_not_found" ? 404 : 409, reason);
+    assertEquals(enqueued, []);
+  }
+});
+
+Deno.test("the rolling usage limit returns 429 with Retry-After and the next available time", async () => {
+  const nextAt = new Date(Date.now() + 3600_000).toISOString();
+  const { handler, enqueued } = setup({
+    workspaces: [readyRow()],
+    startResult: { ok: false, reason: "interview_limit_reached", next_available_at: nextAt },
+  });
+  const res = await startInterview(handler, readyRow().id);
+  const retryAfter = Number(res.headers.get("retry-after"));
+  assert(retryAfter > 3590 && retryAfter <= 3600, `unexpected Retry-After ${retryAfter}`);
+  assertEquals(res.status, 429);
+  const body = apiErrorSchema.parse(await res.clone().json());
+  assertEquals([body.code, body.next_available_at], ["interview_limit_reached", nextAt]);
+  await assertNoSecrets(res);
+  assertEquals(enqueued, []);
+});
+
+Deno.test("a failed planning enqueue marks the job failed and still returns the interview", async () => {
+  const lines = quietConsole();
+  try {
+    const { handler, writes } = setup({ workspaces: [readyRow()], failEnqueue: true });
+    const res = await startInterview(handler, readyRow().id);
+    assertEquals(res.status, 201);
+    const body = createInterviewResponseSchema.parse(await res.json());
+    assertEquals(body.planning, { state: "failed", error_code: "enqueue_failed" });
+    assertEquals(writes.at(-1), ["failPlanningJob", PLANNING_JOB, "enqueue_failed"]);
+    const entry = JSON.parse(lines.find((l) => l.includes("interview_planning_enqueue_failed"))!);
+    assertEquals(entry.interview_id, INTERVIEW_ID);
+    assert(!lines.join("\n").includes("evt_secret"));
+  } finally {
+    restoreConsole();
+  }
 });

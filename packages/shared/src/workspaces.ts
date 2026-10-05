@@ -99,6 +99,31 @@ export const retryAnalysisResponseSchema = z.object({
   workspace: workspaceSchema,
 });
 
+// POST /workspaces/:id/interviews ----------------------------------------------------
+// Planning state is derived from the interview's latest `interview_planning` job.
+
+export const planningStateSchema = z.enum(["queued", "running", "succeeded", "failed"]);
+
+/** Fixed failure codes recorded on the planning job; never raw error messages. */
+export const planningErrorCodeSchema = z.enum([
+  "repository_memory_unavailable",
+  "ai_rate_limited",
+  "ai_unavailable",
+  "ai_invalid_output",
+  "enqueue_failed",
+  "internal_error",
+]);
+
+export const interviewPlanningSchema = z.object({
+  state: planningStateSchema,
+  error_code: planningErrorCodeSchema.nullable(),
+});
+
+export const createInterviewResponseSchema = z.object({
+  interview: interviewHistoryItemSchema,
+  planning: interviewPlanningSchema,
+});
+
 /** `repositories` has no html_url column; GitHub's canonical URL is derived from the full name. */
 export function repositoryHtmlUrl(fullName: string): string {
   return `https://github.com/${fullName.split("/").map(encodeURIComponent).join("/")}`;
@@ -117,3 +142,8 @@ export type CreateWorkspaceResponse = z.infer<typeof createWorkspaceResponseSche
 export type WorkspaceListResponse = z.infer<typeof workspaceListResponseSchema>;
 export type InterviewHistoryItem = z.infer<typeof interviewHistoryItemSchema>;
 export type WorkspaceDetailResponse = z.infer<typeof workspaceDetailResponseSchema>;
+export type InterviewStatus = z.infer<typeof interviewStatusSchema>;
+export type PlanningState = z.infer<typeof planningStateSchema>;
+export type PlanningErrorCode = z.infer<typeof planningErrorCodeSchema>;
+export type InterviewPlanning = z.infer<typeof interviewPlanningSchema>;
+export type CreateInterviewResponse = z.infer<typeof createInterviewResponseSchema>;

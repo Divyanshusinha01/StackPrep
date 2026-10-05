@@ -16,6 +16,8 @@ export const apiErrorCodeSchema = z.enum([
   "repository_not_accessible",
   "workspace_not_found",
   "analysis_not_retryable",
+  "workspace_not_ready",
+  "interview_limit_reached",
   "github_rate_limited",
   "github_unavailable",
   "github_unexpected_response",
@@ -25,6 +27,8 @@ export const apiErrorCodeSchema = z.enum([
 export const apiErrorSchema = z.object({
   error: z.string().min(1),
   code: apiErrorCodeSchema,
+  /** Only with `interview_limit_reached`: when the next interview can be started. */
+  next_available_at: z.iso.datetime({ offset: true }).optional(),
 });
 
 // POST /github/connect ---------------------------------------------------------

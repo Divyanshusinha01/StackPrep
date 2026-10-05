@@ -3,8 +3,13 @@ import {
   analysisErrorCodeSchema,
   analysisStageSchema,
   type AnalysisState,
+  createInterviewResponseSchema,
   createWorkspaceRequestSchema,
   createWorkspaceResponseSchema,
+  type InterviewHistoryItem,
+  type InterviewPlanning,
+  type InterviewStatus,
+  type PlanningErrorCode,
   repositoryHtmlUrl,
   retryAnalysisResponseSchema,
   type Workspace,
@@ -25,6 +30,9 @@ const FN = "workspaces";
 const UNIQUE_VIOLATION = "23505";
 
 const ENQUEUE_FAILED_MESSAGE = "The analysis could not be queued";
+const PLANNING_ENQUEUE_FAILED_MESSAGE = "Interview planning could not be queued";
+
+const INTERVIEW_COLUMNS = "id, interview_number, status, started_at, ended_at, created_at";
 
 /** Only the latest repository_indexing job is embedded (see `withLatestJob`). */
 const WORKSPACE_COLUMNS = "id, status, target_commit_sha, indexed_commit_sha, created_at, ready_at, " +
@@ -71,7 +79,22 @@ export interface WorkspaceReader {
   listWorkspaces(): Promise<WorkspaceRow[]>;
   getWorkspace(workspaceId: string): Promise<WorkspaceRow | null>;
   findWorkspaceByGithubRepo(githubRepoId: number): Promise<WorkspaceRow | null>;
+  /** Newest first. */
+  listInterviews(workspaceId: string): Promise<InterviewHistoryItem[]>;
 }
+
+export interface StartedInterview {
+  interview_id: string;
+  interview_number: number;
+  status: InterviewStatus;
+  created_at: string;
+  job_id: string;
+}
+
+export type StartInterviewResult =
+  | { ok: true; interview: StartedInterview }
+  | { ok: false; reason: "workspace_not_found" | "workspace_not_ready" }
+  | { ok: false; reason: "interview_limit_reached"; next_available_at: string };
 
 export interface RepositoryInput {
   github_connection_id: string;
@@ -95,6 +118,12 @@ export interface WorkspaceWriters {
   failIndexingJob(workspaceId: string, jobId: string, code: AnalysisErrorCode, message: string): Promise<void>;
   /** Atomically re-queues a failed workspace; null when it is not the user's or not failed. */
   retryAnalysis(userId: string, workspaceId: string): Promise<string | null>;
+  /**
+   * Atomically checks ownership, readiness at `commitSha`, and the rolling usage limit, then
+   * creates the interview, its empty state, and a queued planning job.
+   */
+  startInterview(userId: string, workspaceId: string, commitSha: string): Promise<StartInterviewResult>;
+  failPlanningJob(userId: string, jobId: string, code: PlanningErrorCode, message: string): Promise<void>;
 }
 
 export interface WorkspacesHandlerOptions {
@@ -163,8 +192,19 @@ export function createWorkspaceReader(client: SupabaseClient): WorkspaceReader {
         workspaces().eq("repository_id", repositoryId).maybeSingle(),
       );
     },
+    async listInterviews(workspaceId) {
+      return (await maybeOne<InterviewHistoryItem[]>(
+        "list interviews",
+        client.from("interviews").select(INTERVIEW_COLUMNS).eq("workspace_id", workspaceId)
+          .order("interview_number", { ascending: false }),
+      )) ?? [];
+    },
   };
 }
+
+const WORKSPACE_NOT_FOUND_SQLSTATE = "P0002";
+const WORKSPACE_NOT_READY_SQLSTATE = "55000";
+const INTERVIEW_LIMIT_SQLSTATE = "P0429";
 
 export function createWorkspaceWriters(serviceClient: SupabaseClient): WorkspaceWriters {
   async function run<T>(
@@ -256,6 +296,46 @@ export function createWorkspaceWriters(serviceClient: SupabaseClient): Workspace
       }
       return (data as string | null) ?? null;
     },
+    async startInterview(userId, workspaceId, commitSha) {
+      const { data, error } = await serviceClient.rpc("start_interview", {
+        p_workspace_id: workspaceId,
+        p_user_id: userId,
+        p_commit_sha: commitSha,
+      });
+      if (error?.code === WORKSPACE_NOT_FOUND_SQLSTATE) {
+        return { ok: false, reason: "workspace_not_found" };
+      }
+      if (error?.code === WORKSPACE_NOT_READY_SQLSTATE) {
+        return { ok: false, reason: "workspace_not_ready" };
+      }
+      if (error?.code === INTERVIEW_LIMIT_SQLSTATE) {
+        const nextAt = new Date(error.details ?? "");
+        if (Number.isNaN(nextAt.getTime())) {
+          throw new Error("Interview limit error without a next-available time");
+        }
+        return { ok: false, reason: "interview_limit_reached", next_available_at: nextAt.toISOString() };
+      }
+      if (error) {
+        throw new Error(`Failed to start interview: ${error.message}`);
+      }
+      const row = (data as StartedInterview[] | null)?.[0];
+      if (!row) {
+        throw new Error("Failed to start interview: no row returned");
+      }
+      return { ok: true, interview: row };
+    },
+    async failPlanningJob(userId, jobId, code, message) {
+      const { error } = await serviceClient
+        .from("jobs")
+        .update({ status: "failed", error_code: code, error_message: message, finished_at: new Date().toISOString() })
+        .eq("id", jobId)
+        .eq("user_id", userId)
+        .eq("type", "interview_planning")
+        .neq("status", "succeeded");
+      if (error) {
+        throw new Error(`Failed to record planning failure: ${error.message}`);
+      }
+    },
     async setJobEventId(userId, jobId, eventId) {
       const { error } = await serviceClient
         .from("jobs")
@@ -299,7 +379,7 @@ function toWorkspace(row: WorkspaceRow): Workspace {
   };
 }
 
-const ROUTE = /\/workspaces(?:\/([^/]+)(\/analysis\/retry)?)?\/?$/;
+const ROUTE = /\/workspaces(?:\/([^/]+)(\/analysis\/retry|\/interviews)?)?\/?$/;
 
 export function createWorkspacesHandler({
   webOrigin,
@@ -484,13 +564,97 @@ export function createWorkspacesHandler({
     if (!workspaceIdParamSchema.safeParse(id).success) {
       return apiError("workspace_not_found", cors);
     }
-    const row = await reader(ctx.supabase).getWorkspace(id);
+    const userReader = reader(ctx.supabase);
+    const row = await userReader.getWorkspace(id);
     if (!row) {
       return apiError("workspace_not_found", cors);
     }
     const workspace = toWorkspace(row);
-    const body = workspaceDetailResponseSchema.parse({ workspace, repository: workspace.repository, interviews: [] });
+    const interviews = await userReader.listInterviews(row.id);
+    const body = workspaceDetailResponseSchema.parse({ workspace, repository: workspace.repository, interviews });
     return json(body, { headers: cors.headers });
+  }
+
+  /**
+   * Best effort and never throws. If the event cannot be sent, the planning job is marked failed
+   * (`enqueue_failed`) instead of leaving the interview waiting on a run that never starts.
+   */
+  async function enqueuePlanning(
+    userId: string,
+    workspaceId: string,
+    interview: StartedInterview,
+    commitSha: string,
+  ): Promise<InterviewPlanning> {
+    const logCtx = { workspace_id: workspaceId, interview_id: interview.interview_id };
+    let eventId: string | null;
+    try {
+      ({ eventId } = await jobs.enqueue("interview.planning.requested", {
+        interview_id: interview.interview_id,
+        workspace_id: workspaceId,
+        job_id: interview.job_id,
+        commit_sha: commitSha,
+      }));
+    } catch (err) {
+      logGithubError(FN, err, { ...logCtx, event: "interview_planning_enqueue_failed", code: "internal_error" });
+      try {
+        await writers.failPlanningJob(userId, interview.job_id, "enqueue_failed", PLANNING_ENQUEUE_FAILED_MESSAGE);
+      } catch (failErr) {
+        logGithubError(FN, failErr, { ...logCtx, event: "interview_planning_fail_record_failed", code: "internal_error" });
+      }
+      return { state: "failed", error_code: "enqueue_failed" };
+    }
+    if (eventId !== null) {
+      try {
+        await writers.setJobEventId(userId, interview.job_id, eventId);
+      } catch (err) {
+        logGithubError(FN, err, { ...logCtx, event: "interview_job_event_id_failed", code: "internal_error" });
+      }
+    }
+    return { state: "queued", error_code: null };
+  }
+
+  async function createInterview(req: Request, id: string): Promise<Response> {
+    const ctx = await authenticate(req);
+    if (!ctx) {
+      return apiError("unauthorized", cors);
+    }
+    if (!workspaceIdParamSchema.safeParse(id).success) {
+      return apiError("workspace_not_found", cors);
+    }
+    const row = await reader(ctx.supabase).getWorkspace(id);
+    if (!row) {
+      return apiError("workspace_not_found", cors);
+    }
+    if (row.status !== "ready" || row.indexed_commit_sha === null) {
+      return apiError("workspace_not_ready", cors);
+    }
+
+    const commitSha = row.indexed_commit_sha;
+    const result = await writers.startInterview(ctx.user.id, row.id, commitSha);
+    if (!result.ok) {
+      if (result.reason === "interview_limit_reached") {
+        const seconds = Math.max(1, Math.ceil((Date.parse(result.next_available_at) - Date.now()) / 1000));
+        return apiError("interview_limit_reached", cors, { "Retry-After": String(seconds) }, {
+          next_available_at: result.next_available_at,
+        });
+      }
+      return apiError(result.reason, cors);
+    }
+
+    const { interview } = result;
+    const planning = await enqueuePlanning(ctx.user.id, row.id, interview, commitSha);
+    const body = createInterviewResponseSchema.parse({
+      interview: {
+        id: interview.interview_id,
+        interview_number: interview.interview_number,
+        status: interview.status,
+        started_at: null,
+        ended_at: null,
+        created_at: interview.created_at,
+      },
+      planning,
+    });
+    return json(body, { status: 201, headers: cors.headers });
   }
 
   async function retryAnalysis(req: Request, id: string): Promise<Response> {
@@ -551,15 +715,18 @@ export function createWorkspacesHandler({
       return apiError("not_found", cors);
     }
     const id = match[1];
-    const isRetry = match[2] !== undefined;
-    const allowed = id === undefined ? "GET, POST" : isRetry ? "POST" : "GET";
+    const action = match[2];
+    const allowed = id === undefined ? "GET, POST" : action !== undefined ? "POST" : "GET";
     if (!allowed.split(", ").includes(req.method)) {
       return apiError("method_not_allowed", cors, { Allow: `${allowed}, OPTIONS` });
     }
 
     try {
-      if (isRetry) {
+      if (action === "/analysis/retry") {
         return await retryAnalysis(req, id);
+      }
+      if (action === "/interviews") {
+        return await createInterview(req, id);
       }
       if (id !== undefined) {
         return await getWorkspace(req, id);

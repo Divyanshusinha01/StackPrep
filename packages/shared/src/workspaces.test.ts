@@ -1,12 +1,14 @@
 import { describe, expect, it } from "vitest";
 import { Constants } from "./database.types.ts";
-import { apiErrorCodeSchema } from "./github.ts";
+import { apiErrorCodeSchema, apiErrorSchema } from "./github.ts";
 import {
   analysisStateSchema,
+  createInterviewResponseSchema,
   createWorkspaceRequestSchema,
   createWorkspaceResponseSchema,
   gitCommitShaSchema,
   interviewStatusSchema,
+  planningStateSchema,
   repositoryHtmlUrl,
   retryAnalysisResponseSchema,
   workspaceDetailResponseSchema,
@@ -111,6 +113,48 @@ describe("response schemas", () => {
   it("requires created and interviews", () => {
     expect(createWorkspaceResponseSchema.safeParse({ workspace }).success).toBe(false);
     expect(workspaceDetailResponseSchema.safeParse({ workspace, repository }).success).toBe(false);
+  });
+});
+
+describe("createInterviewResponseSchema", () => {
+  const interview = {
+    id: "dddddddd-0000-4000-8000-000000000004",
+    interview_number: 1,
+    status: "created",
+    started_at: null,
+    ended_at: null,
+    created_at: "2026-10-05T10:00:00.123456+00:00",
+  };
+
+  it("parses an interview with its planning state", () => {
+    const body = { interview, planning: { state: "queued", error_code: null } };
+    expect(createInterviewResponseSchema.parse(body)).toEqual(body);
+    const failed = { interview, planning: { state: "failed", error_code: "enqueue_failed" } };
+    expect(createInterviewResponseSchema.parse(failed)).toEqual(failed);
+  });
+
+  it("rejects unknown planning states and error codes", () => {
+    expect(createInterviewResponseSchema.safeParse({ interview, planning: { state: "done", error_code: null } }).success)
+      .toBe(false);
+    expect(createInterviewResponseSchema.safeParse({ interview, planning: { state: "failed", error_code: "boom" } }).success)
+      .toBe(false);
+  });
+
+  it("includes the interview error codes and an optional next-available time", () => {
+    expect(apiErrorCodeSchema.safeParse("workspace_not_ready").success).toBe(true);
+    expect(apiErrorCodeSchema.safeParse("interview_limit_reached").success).toBe(true);
+    expect(apiErrorSchema.parse({
+      error: "Limit",
+      code: "interview_limit_reached",
+      next_available_at: "2026-10-06T10:00:00+00:00",
+    }).next_available_at).toBe("2026-10-06T10:00:00+00:00");
+    expect(apiErrorSchema.safeParse({ error: "Limit", code: "interview_limit_reached", next_available_at: "soon" }).success)
+      .toBe(false);
+  });
+
+  it("planning states match the job status enum", () => {
+    expect(planningStateSchema.options).toEqual([...Constants.public.Enums.job_status]);
+    expect(Constants.public.Enums.job_type).toContain("interview_planning");
   });
 });
 
