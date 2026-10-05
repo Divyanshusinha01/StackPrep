@@ -6,6 +6,9 @@ import {
   evaluateAnswerOutputSchema,
   evidenceExaminedPayloadSchema,
   getFileInputSchema,
+  INTEGRITY_FRAME_MAX_CHARS,
+  integrityFrameRequestSchema,
+  integrityFrameResponseSchema,
   interviewEventAckSchema,
   interviewEventRequestSchema,
   REALTIME_TOOLS,
@@ -26,6 +29,7 @@ const session = {
   expires_at: "2026-10-05T12:00:00.000Z",
   model: "gpt-realtime-2.1-mini",
   remaining_voice_seconds: VOICE_LIMIT_SECONDS,
+  resume: null,
 };
 
 describe("realtimeSessionResponseSchema", () => {
@@ -33,11 +37,20 @@ describe("realtimeSessionResponseSchema", () => {
     expect(realtimeSessionResponseSchema.parse({ ...session, api_key: "sk-x" })).toEqual(session);
   });
 
+  it("accepts a resume point", () => {
+    const resume = { last_turn_sequence: 7, current_question: "How is auth handled?" };
+    expect(realtimeSessionResponseSchema.parse({ ...session, resume }).resume).toEqual(resume);
+    expect(realtimeSessionResponseSchema.parse({ ...session, resume: { last_turn_sequence: 0, current_question: null } }).resume)
+      .toEqual({ last_turn_sequence: 0, current_question: null });
+  });
+
   it.each([
     ["no voice time left", { ...session, remaining_voice_seconds: 0 }],
     ["more than the cap", { ...session, remaining_voice_seconds: VOICE_LIMIT_SECONDS + 1 }],
     ["empty secret", { ...session, client_secret: "" }],
     ["non-ISO expiry", { ...session, expires_at: "tomorrow" }],
+    ["a missing resume field", { ...session, resume: undefined }],
+    ["a negative resume sequence", { ...session, resume: { last_turn_sequence: -1, current_question: null } }],
   ])("rejects %s", (_label, body) => {
     expect(realtimeSessionResponseSchema.safeParse(body).success).toBe(false);
   });
@@ -155,9 +168,22 @@ describe("interviewEventRequestSchema", () => {
     });
   });
 
-  it.each(["connected", "disconnected"])("accepts %s without a sequence", (type) => {
+  it.each(["connected", "disconnected", "resume"])("accepts %s without a sequence", (type) => {
     const event = { type, client_event_id: CLIENT_EVENT_ID, occurred_at: OCCURRED_AT };
     expect(interviewEventRequestSchema.parse(event)).toEqual(event);
+  });
+
+  it.each(["camera", "microphone", "network", "connection"])("accepts a pause caused by %s", (reason) => {
+    const event = { type: "pause", reason, client_event_id: CLIENT_EVENT_ID, occurred_at: OCCURRED_AT };
+    expect(interviewEventRequestSchema.parse(event)).toEqual(event);
+  });
+
+  it.each([
+    ["a pause without a reason", { type: "pause", client_event_id: CLIENT_EVENT_ID, occurred_at: OCCURRED_AT }],
+    ["a voluntary pause", { type: "pause", reason: "user", client_event_id: CLIENT_EVENT_ID, occurred_at: OCCURRED_AT }],
+    ["a resume with a reason", { type: "resume", reason: "network", client_event_id: CLIENT_EVENT_ID, occurred_at: OCCURRED_AT }],
+  ])("rejects %s", (_label, body) => {
+    expect(interviewEventRequestSchema.safeParse(body).success).toBe(false);
   });
 
   it.each([
@@ -183,6 +209,8 @@ describe("interviewEventAckSchema", () => {
   it("accepts turn and voice acks", () => {
     expect(interviewEventAckSchema.parse(turnAck)).toEqual(turnAck);
     expect(interviewEventAckSchema.parse(voiceAck)).toEqual(voiceAck);
+    expect(interviewEventAckSchema.parse({ ...voiceAck, type: "pause" }).type).toBe("pause");
+    expect(interviewEventAckSchema.parse({ ...voiceAck, type: "resume" }).type).toBe("resume");
   });
 
   it.each([
@@ -196,8 +224,42 @@ describe("interviewEventAckSchema", () => {
   });
 });
 
+describe("integrity frame contracts", () => {
+  const image = "data:image/jpeg;base64,/9j/4AAQSkZJRg==";
+
+  it("accepts a base64 JPEG data URL", () => {
+    expect(integrityFrameRequestSchema.parse({ image })).toEqual({ image });
+  });
+
+  it.each([
+    ["a PNG", { image: "data:image/png;base64,iVBORw0KGgo=" }],
+    ["a remote URL", { image: "https://evil.example/a.jpg" }],
+    ["non-base64 data", { image: "data:image/jpeg;base64,<script>" }],
+    ["an oversized frame", { image: `data:image/jpeg;base64,${"A".repeat(INTEGRITY_FRAME_MAX_CHARS)}` }],
+    ["extra fields", { image, interview_id: CLIENT_EVENT_ID }],
+  ])("rejects %s", (_label, body) => {
+    expect(integrityFrameRequestSchema.safeParse(body).success).toBe(false);
+  });
+
+  it("accepts ok, warning, and terminated responses", () => {
+    expect(integrityFrameResponseSchema.parse({ status: "ok" })).toEqual({ status: "ok" });
+    expect(integrityFrameResponseSchema.parse({ status: "warning", warning_number: 2, message: "Stay focused." }).status)
+      .toBe("warning");
+    expect(integrityFrameResponseSchema.parse({ status: "terminated", warning_number: 3, message: "Ended." }).status)
+      .toBe("terminated");
+  });
+
+  it.each([
+    ["a third warning that is not a termination", { status: "warning", warning_number: 3, message: "x" }],
+    ["a termination before the third signal", { status: "terminated", warning_number: 2, message: "x" }],
+    ["a signal kind or image leak", { status: "ok", image: "data:" }],
+  ])("rejects %s", (_label, body) => {
+    expect(integrityFrameResponseSchema.safeParse(body).success).toBe(false);
+  });
+});
+
 describe("interview API error codes", () => {
-  it.each(["interview_not_found", "interview_preparing", "interview_planning_failed", "interview_not_active", "realtime_unavailable", "event_conflict"])(
+  it.each(["interview_not_found", "interview_preparing", "interview_planning_failed", "interview_not_active", "realtime_unavailable", "event_conflict", "interview_interrupted", "rate_limited"])(
     "includes %s",
     (code) => {
       expect(apiErrorCodeSchema.safeParse(code).success).toBe(true);

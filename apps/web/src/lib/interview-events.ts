@@ -1,4 +1,10 @@
-import { apiErrorSchema, type InterviewEventRequest, type ToolCallRequest } from "@stackprep/shared";
+import {
+  apiErrorSchema,
+  type IntegrityFrameResponse,
+  integrityFrameResponseSchema,
+  type InterviewEventRequest,
+  type ToolCallRequest,
+} from "@stackprep/shared";
 import { FunctionsHttpError } from "@supabase/supabase-js";
 import { createSupabaseBrowserClient } from "@/lib/supabase/client";
 
@@ -28,6 +34,31 @@ export async function sendEvent(interviewId: string, event: InterviewEventReques
     return { ok: false, retryable, code };
   }
   return { ok: false, retryable: true, code: "network_error" };
+}
+
+/**
+ * Browser-side `POST /interviews/:id/integrity/frames`. The image is sent once and not kept.
+ * Refusals (rate limited, interrupted, ended) come back as codes; the monitor skips them.
+ */
+export async function submitIntegrityFrame(
+  interviewId: string,
+  image: string,
+): Promise<{ ok: true; body: IntegrityFrameResponse } | { ok: false; code: string }> {
+  const supabase = createSupabaseBrowserClient();
+  const { data, error } = await supabase.functions.invoke(
+    `interviews/${encodeURIComponent(interviewId)}/integrity/frames`,
+    { method: "POST", body: { image } },
+  );
+  if (!error) {
+    const parsed = integrityFrameResponseSchema.safeParse(data);
+    return parsed.success ? { ok: true, body: parsed.data } : { ok: false, code: "contract_error" };
+  }
+  if (error instanceof FunctionsHttpError) {
+    const res = error.context as Response;
+    const parsed = apiErrorSchema.safeParse(await res.json().catch(() => null));
+    return { ok: false, code: parsed.success ? parsed.data.code : `http_${res.status}` };
+  }
+  return { ok: false, code: "network_error" };
 }
 
 /**

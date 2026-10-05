@@ -4,6 +4,7 @@ import { Check, Circle, Loader2, Mic, Video } from "lucide-react";
 import type { InterviewPlanning, PlanningErrorCode } from "@stackprep/shared";
 import { Notice } from "@/components/app/notice";
 import { type DeviceError, useDeviceCheck } from "@/components/app/use-device-check";
+import type { InterviewMedia } from "@/components/app/use-interview-media";
 import { usePollWhile } from "@/components/app/use-poll-while";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
@@ -36,8 +37,16 @@ function CheckItem({ ok, icon, label, hint }: { ok: boolean; icon: React.ReactNo
   );
 }
 
-export function InterviewLobby({ planning, onEnter }: { planning: InterviewPlanning | null; onEnter: () => void }) {
-  const { videoRef, meterRef, phase, error, cameraOk, micOk, start, onVideoLoaded } = useDeviceCheck();
+export function InterviewLobby({
+  planning,
+  media,
+  onEnter,
+}: {
+  planning: InterviewPlanning | null;
+  media: InterviewMedia;
+  onEnter: () => void;
+}) {
+  const { videoRef, meterRef, phase, error, cameraOk, micOk, start, onVideoLoaded } = useDeviceCheck(media);
   const preparing = planning === null || planning.state === "queued" || planning.state === "running";
   const planReady = planning?.state === "succeeded";
   usePollWhile(preparing);
@@ -63,7 +72,7 @@ export function InterviewLobby({ planning, onEnter }: { planning: InterviewPlann
           />
           {phase !== "active" ? (
             <div className="absolute inset-0 flex items-center justify-center">
-              <Button onClick={start} disabled={phase === "requesting"} variant="outline">
+              <Button onClick={() => void start()} disabled={phase === "requesting"} variant="outline">
                 {phase === "requesting" ? "Waiting for permission…" : phase === "error" ? "Try again" : "Start check"}
               </Button>
             </div>

@@ -13,6 +13,8 @@ export interface StructuredRequest<T> {
   system: string;
   /** Task input; may contain untrusted content, which the system prompt must fence. */
   input: string;
+  /** Image data URLs sent at low detail after `input`. Never logged or stored by the provider. */
+  images?: string[];
   /** Snake_case name the provider attaches to the output schema. */
   schemaName: string;
   /** Must be a strict object with every field required. */

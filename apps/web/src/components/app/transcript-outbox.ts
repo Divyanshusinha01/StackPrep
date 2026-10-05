@@ -3,6 +3,7 @@ import {
   interviewEventAckSchema,
   type InterviewEventRequest,
   interviewEventRequestSchema,
+  type PauseReason,
   TRANSCRIPT_TURN_MAX_CHARS,
 } from "@stackprep/shared";
 import type { TranscriptState } from "./realtime-transcript";
@@ -17,7 +18,8 @@ import type { TranscriptState } from "./realtime-transcript";
 
 export type OutboxInput =
   | { type: "transcript_turn"; role: "ai" | "user"; content: string; item_id: string; interrupted?: boolean }
-  | { type: "connected" | "disconnected" };
+  | { type: "connected" | "disconnected" | "resume" }
+  | { type: "pause"; reason: PauseReason };
 
 export type SendResult =
   | { ok: true; ack: unknown }
@@ -35,6 +37,8 @@ export interface OutboxOptions {
   storage?: OutboxStorage | null;
   /** A non-retryable failure or a contract mismatch; the item has been dropped. */
   onDrop?(item: InterviewEventRequest, code: string): void;
+  /** The backend stored the item (created or duplicate). */
+  onAck?(item: InterviewEventRequest, ack: InterviewEventAck): void;
   /** Registers `wake` for events that make an immediate retry worthwhile; returns an unsubscribe. */
   subscribeWake?(wake: () => void): () => void;
   randomId?: () => string;
@@ -88,6 +92,7 @@ export function createTranscriptOutbox({
   send,
   storage = null,
   onDrop,
+  onAck,
   subscribeWake,
   randomId = () => crypto.randomUUID(),
   now = () => new Date(),
@@ -173,6 +178,7 @@ export function createTranscriptOutbox({
           state.queue.shift();
           attempt = 0;
           persist();
+          onAck?.(item, ack.data);
           continue;
         }
         if (!result.retryable) {
@@ -209,7 +215,9 @@ export function createTranscriptOutbox({
               item_id: input.item_id,
               ...(input.interrupted ? { interrupted: true } : {}),
             }
-          : { type: input.type, ...base };
+          : input.type === "pause"
+            ? { type: "pause", ...base, reason: input.reason }
+            : { type: input.type, ...base };
       state.queue.push(item);
       persist();
       if (!disposed) {
@@ -239,6 +247,25 @@ export function createTranscriptOutbox({
       settle();
     },
   };
+}
+
+/**
+ * Flushes until no transcript turn is waiting to be stored, or `timeoutMs` passes. Used before a
+ * reconnect so the backend's recap includes every finalized answer. True if every turn was acked.
+ */
+export async function drainTurns(outbox: TranscriptOutbox, timeoutMs = 5_000, pauseMs = 500): Promise<boolean> {
+  const deadline = Date.now() + timeoutMs;
+  const hasTurns = () => outbox.pending().some((item) => item.type === "transcript_turn");
+  while (hasTurns()) {
+    if (Date.now() >= deadline) {
+      return false;
+    }
+    await outbox.flush();
+    if (hasTurns()) {
+      await new Promise((resolve) => setTimeout(resolve, pauseMs));
+    }
+  }
+  return true;
 }
 
 /** Retry as soon as the browser is back online or the tab becomes visible. */

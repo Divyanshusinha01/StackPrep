@@ -1,7 +1,8 @@
-import type { EvidenceExaminedPayload } from "@stackprep/shared";
+import type { EvidenceExaminedPayload, IntegritySignalKind } from "@stackprep/shared";
 import { GithubUnexpectedResponseError, type GithubApp, type RepositoryTreeEntry } from "../_shared/github-app.ts";
 import { StaleInterviewStateError } from "../_shared/interview-state.ts";
 import type { JobEventName, JobEvents, JobQueue } from "../_shared/jobs.ts";
+import type { IntegritySignalResult, IntegrityStore } from "./integrity.ts";
 import type { ReportJobStore } from "./report-request.ts";
 import type {
   EvaluationRecord,
@@ -118,6 +119,70 @@ export function createFakeToolStore(init: Partial<Pick<FakeToolStore, "memory" |
       }
       store.status = "completed";
       return Promise.resolve(true);
+    },
+  };
+  return store;
+}
+
+export interface FakeIntegrityStore extends IntegrityStore {
+  status: "in_progress" | "completed" | "terminated";
+  /** Latest voice-state event, as record_voice_event stores it. */
+  voice: "connected" | "disconnected" | "pause" | "resume";
+  warnings: { checkId: string; kind: IntegritySignalKind; number: number }[];
+  /** Reservation id to its resolution: null while pending, else the stored outcome. */
+  checks: Map<string, IntegritySignalResult | null>;
+  reservedAt: number[];
+}
+
+/** Mirrors reserve_integrity_check and record_integrity_signal, including the 10 s window. */
+export function createFakeIntegrityStore(now: () => Date): FakeIntegrityStore {
+  let counter = 0;
+  const store: FakeIntegrityStore = {
+    status: "in_progress",
+    voice: "connected",
+    warnings: [],
+    checks: new Map(),
+    reservedAt: [],
+    reserveIntegrityCheck() {
+      if (store.status !== "in_progress") {
+        return Promise.resolve({ status: "not_active", checkId: null });
+      }
+      if (store.voice === "pause" || store.voice === "disconnected") {
+        return Promise.resolve({ status: "interrupted", checkId: null });
+      }
+      const last = store.reservedAt.at(-1);
+      if (last !== undefined && last > now().getTime() - 10_000) {
+        return Promise.resolve({ status: "rate_limited", checkId: null });
+      }
+      const checkId = `check-${++counter}`;
+      store.reservedAt.push(now().getTime());
+      store.checks.set(checkId, null);
+      return Promise.resolve({ status: "reserved", checkId });
+    },
+    recordIntegritySignal(_interviewId, _userId, checkId, kind) {
+      if (!store.checks.has(checkId)) {
+        return Promise.reject(new Error("integrity_check_not_found"));
+      }
+      const resolved = store.checks.get(checkId);
+      if (resolved) {
+        return Promise.resolve(resolved);
+      }
+      if (store.status !== "in_progress") {
+        return Promise.resolve({ status: "not_active", warningNumber: null });
+      }
+      let result: IntegritySignalResult;
+      if (kind === null) {
+        result = { status: "clear", warningNumber: null };
+      } else {
+        const number = store.warnings.length + 1;
+        store.warnings.push({ checkId, kind, number });
+        if (number >= 3) {
+          store.status = "terminated";
+        }
+        result = { status: number >= 3 ? "terminated" : "warning", warningNumber: number };
+      }
+      store.checks.set(checkId, result);
+      return Promise.resolve(result);
     },
   };
   return store;

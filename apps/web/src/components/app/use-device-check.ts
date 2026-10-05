@@ -1,67 +1,31 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
+import type { MediaError } from "./interview-media";
+import type { InterviewMedia } from "./use-interview-media";
 
-export type DeviceError = "denied" | "not_found" | "unsupported" | "failed";
+export type DeviceError = MediaError;
 
 /** RMS level that counts as hearing the user, roughly normal speech at arm's length. */
 const MIC_THRESHOLD = 0.02;
 
-function toDeviceError(err: unknown): DeviceError {
-  const name = err instanceof DOMException ? err.name : "";
-  if (name === "NotAllowedError" || name === "SecurityError") {
-    return "denied";
-  }
-  if (name === "NotFoundError" || name === "OverconstrainedError") {
-    return "not_found";
-  }
-  return "failed";
-}
-
 /**
- * Camera preview plus microphone level. The camera passes once frames render; the microphone
- * passes once it picks up sound above the threshold. Tracks are stopped on unmount.
+ * Camera preview plus microphone level on the interview's shared stream. The camera passes once
+ * frames render; the microphone passes once it picks up sound above the threshold. Tracks are
+ * never stopped here: the same stream continues into the interview.
  */
-export function useDeviceCheck() {
+export function useDeviceCheck(media: InterviewMedia) {
+  const { stream, acquire } = media;
   const videoRef = useRef<HTMLVideoElement>(null);
   const meterRef = useRef<HTMLDivElement>(null);
-  const cleanupRef = useRef<(() => void) | null>(null);
-  const [phase, setPhase] = useState<"idle" | "requesting" | "active" | "error">("idle");
-  const [error, setError] = useState<DeviceError | null>(null);
+  const [endedError, setEndedError] = useState(false);
   const [cameraOk, setCameraOk] = useState(false);
   const [micOk, setMicOk] = useState(false);
 
-  const stop = useCallback(() => {
-    cleanupRef.current?.();
-    cleanupRef.current = null;
-  }, []);
-
-  useEffect(() => stop, [stop]);
-
-  const start = useCallback(async () => {
-    stop();
-    setError(null);
-    setCameraOk(false);
-    setMicOk(false);
-    if (!navigator.mediaDevices?.getUserMedia) {
-      setPhase("error");
-      setError("unsupported");
+  useEffect(() => {
+    if (!stream) {
       return;
     }
-
-    setPhase("requesting");
-    let stream: MediaStream;
-    try {
-      stream = await navigator.mediaDevices.getUserMedia({
-        video: true,
-        audio: { echoCancellation: true, noiseSuppression: true },
-      });
-    } catch (err) {
-      setPhase("error");
-      setError(toDeviceError(err));
-      return;
-    }
-
     const audio = new AudioContext();
     const analyser = audio.createAnalyser();
     analyser.fftSize = 1024;
@@ -86,8 +50,7 @@ export function useDeviceCheck() {
     frame = requestAnimationFrame(tick);
 
     const onEnded = () => {
-      setPhase("error");
-      setError("failed");
+      setEndedError(true);
       setCameraOk(false);
       setMicOk(false);
     };
@@ -99,23 +62,34 @@ export function useDeviceCheck() {
       video.srcObject = stream;
     }
 
-    cleanupRef.current = () => {
+    return () => {
       cancelAnimationFrame(frame);
       for (const track of stream.getTracks()) {
         track.removeEventListener("ended", onEnded);
-        track.stop();
       }
       void audio.close();
       if (video) {
         video.srcObject = null;
       }
     };
-    setPhase("active");
-  }, [stop]);
+  }, [stream]);
+
+  const start = useCallback(async () => {
+    setEndedError(false);
+    setCameraOk(false);
+    setMicOk(false);
+    try {
+      await acquire();
+    } catch {
+      // Surfaced through media.error.
+    }
+  }, [acquire]);
 
   const onVideoLoaded = useCallback(() => {
     setCameraOk((videoRef.current?.videoWidth ?? 0) > 0);
   }, []);
 
+  const error: DeviceError | null = endedError ? "failed" : media.error;
+  const phase = endedError ? "error" : media.phase;
   return { videoRef, meterRef, phase, error, cameraOk, micOk, start, onVideoLoaded };
 }

@@ -100,7 +100,12 @@ describe("integration env schemas", () => {
       OPENAI_EVALUATION_MODEL: "gpt-5.6-terra",
       OPENAI_REALTIME_MODEL: "gpt-realtime-2.1-mini",
       OPENAI_REALTIME_TRANSCRIPTION_MODEL: "gpt-4o-mini-transcribe",
+      OPENAI_VISION_MODEL: "gpt-5.6-luna",
     });
+    expect(
+      parseEnv("openai", openAIEnvSchema, { OPENAI_API_KEY: "sk-test", OPENAI_VISION_MODEL: "gpt-vision" })
+        .OPENAI_VISION_MODEL,
+    ).toBe("gpt-vision");
     expect(() =>
       parseEnv("openai", openAIEnvSchema, { OPENAI_API_KEY: "sk-test", OPENAI_REALTIME_MODEL: "" })
     ).toThrowError(/OPENAI_REALTIME_MODEL/);

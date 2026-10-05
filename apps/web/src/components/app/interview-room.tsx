@@ -1,20 +1,28 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import Link from "next/link";
 import { Bot, FileSearch, Loader2, Mic } from "lucide-react";
-import { VOICE_WRAP_UP_SECONDS } from "@stackprep/shared";
+import { INTEGRITY_WARNING_LIMIT, type PauseReason, VOICE_WRAP_UP_SECONDS } from "@stackprep/shared";
 import { type ExaminedItem, examiningLabel } from "@/components/app/examining";
 import { Notice } from "@/components/app/notice";
 import type { TranscriptTurn } from "@/components/app/realtime-transcript";
-import type { RealtimeErrorCode, RealtimeStatus, VoiceClock } from "@/components/app/use-realtime-interview";
+import type { IntegrityWarning } from "@/components/app/use-integrity-monitor";
+import {
+  NOT_RETRYABLE,
+  type RealtimeErrorCode,
+  type RealtimeStatus,
+  type VoiceClock,
+} from "@/components/app/use-realtime-interview";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 
 const ROOM_ERRORS: Partial<Record<RealtimeErrorCode, string>> = {
-  microphone_denied: "Microphone access was blocked. Allow access in your browser settings and reconnect.",
-  microphone_unavailable: "No working microphone was found. Connect one and reconnect.",
+  microphone_denied: "Camera or microphone access was blocked. Allow access in your browser settings and reconnect.",
+  microphone_unavailable: "No working camera or microphone was found. Connect them and reconnect.",
   connection_failed: "Could not connect to the voice interviewer. Check your connection and try again.",
-  connection_lost: "The connection dropped. Your voice time is paused; reconnect to continue.",
+  connection_lost:
+    "We could not reconnect automatically. Your voice time is paused and your answers are saved; reconnect to continue.",
   realtime_unavailable: "The voice interviewer is unavailable right now. Try again in a moment.",
   interview_preparing: "The interview is still being prepared. Retrying shortly…",
   interview_planning_failed: "This interview could not be prepared. Start a new interview from the workspace.",
@@ -23,13 +31,33 @@ const ROOM_ERRORS: Partial<Record<RealtimeErrorCode, string>> = {
   unauthorized: "Your session expired. Sign in again to continue.",
 };
 
-const NOT_RETRYABLE: ReadonlySet<RealtimeErrorCode> = new Set([
-  "interview_planning_failed",
-  "interview_not_active",
-  "interview_not_found",
-  "unauthorized",
-  "interview_preparing",
-]);
+const PAUSE_REASONS: Record<PauseReason, string> = {
+  camera: "Your camera stopped",
+  microphone: "Your microphone stopped",
+  network: "Your network connection dropped",
+  connection: "The connection to the interviewer dropped",
+};
+
+/** How long "Resumed" stays on screen after a reconnect. */
+const RESUMED_NOTICE_MS = 6000;
+
+/** True for a few seconds after `resumed` turns on. */
+function useBriefly(on: boolean, ms: number): boolean {
+  const [visible, setVisible] = useState(false);
+  useEffect(() => {
+    if (!on) {
+      return;
+    }
+    const show = window.setTimeout(() => setVisible(true), 0);
+    const hide = window.setTimeout(() => setVisible(false), ms);
+    return () => {
+      window.clearTimeout(show);
+      window.clearTimeout(hide);
+      setVisible(false);
+    };
+  }, [on, ms]);
+  return on && visible;
+}
 
 function formatClock(seconds: number): string {
   const s = Math.max(0, Math.floor(seconds));
@@ -127,25 +155,39 @@ export function InterviewRoom({
   error,
   timeUp,
   ended,
+  pauseReason,
+  resumed,
+  warning,
+  termination,
+  workspaceId,
   examining,
   clock,
   transcript,
   onReconnect,
+  onDismissWarning,
 }: {
   status: RealtimeStatus;
   error: RealtimeErrorCode | null;
   timeUp: boolean;
   ended: boolean;
+  pauseReason: PauseReason | null;
+  resumed: boolean;
+  warning: IntegrityWarning | null;
+  /** Set once the interview was terminated for integrity; the message to show. */
+  termination: string | null;
+  workspaceId: string;
   examining: ExaminedItem[] | null;
   clock: VoiceClock | null;
   transcript: { ai: TranscriptTurn[]; user: TranscriptTurn[] };
   onReconnect: () => void;
+  onDismissWarning: () => void;
 }) {
   const live = status === "live";
   const elapsed = useElapsed(clock, live);
   const wrappingUp = live && elapsed >= VOICE_WRAP_UP_SECONDS;
+  const showResumed = useBriefly(resumed && live, RESUMED_NOTICE_MS);
   const canReconnect =
-    !timeUp && !ended && (status === "closed" || (status === "error" && error !== null && !NOT_RETRYABLE.has(error)));
+    !timeUp && !ended && !termination && status === "error" && error !== null && !NOT_RETRYABLE.has(error);
 
   return (
     <div className="mt-6">
@@ -160,9 +202,14 @@ export function InterviewRoom({
             <span className="size-2 rounded-full bg-destructive motion-safe:animate-pulse" aria-hidden />
             Live
           </span>
+        ) : status === "reconnecting" ? (
+          <span className="flex items-center gap-2 text-muted-foreground">
+            <Loader2 className="size-4 animate-spin" aria-hidden />
+            Reconnecting… your answers are saved
+          </span>
         ) : status === "closed" ? (
           <span className="text-muted-foreground">
-            {ended ? "Interview complete" : timeUp ? "Interview time is over" : "Disconnected"}
+            {termination ? "Interview ended" : ended ? "Interview complete" : timeUp ? "Interview time is over" : "Disconnected"}
           </span>
         ) : null}
         <span className="ml-auto font-mono tabular-nums text-muted-foreground" aria-label="Elapsed time">
@@ -171,6 +218,34 @@ export function InterviewRoom({
       </div>
       <ExaminingIndicator items={live ? examining : null} />
 
+      {termination ? (
+        <Notice tone="error">
+          <span className="min-w-0 flex-1">{termination}</span>
+          <Button asChild variant="outline" size="sm">
+            <Link href={`/workspaces/${workspaceId}`}>Start another interview</Link>
+          </Button>
+        </Notice>
+      ) : null}
+      {warning && !termination ? (
+        <Notice tone="error">
+          <span className="min-w-0 flex-1">
+            {warning.message}{" "}
+            <span className="text-xs">
+              (Warning {warning.number} of {INTEGRITY_WARNING_LIMIT - 1}. A third warning ends the interview.)
+            </span>
+          </span>
+          <Button variant="ghost" size="sm" onClick={onDismissWarning}>
+            Dismiss
+          </Button>
+        </Notice>
+      ) : null}
+      {status === "reconnecting" ? (
+        <Notice tone="info">
+          {pauseReason ? `${PAUSE_REASONS[pauseReason]}. ` : ""}
+          Your voice time is paused and your answers are saved. Reconnecting automatically…
+        </Notice>
+      ) : null}
+      {showResumed ? <Notice tone="success">Resumed from your last answer.</Notice> : null}
       {ended ? (
         <Notice tone="info">The interview is complete. Thanks for walking through your code. Taking you to your report…</Notice>
       ) : null}

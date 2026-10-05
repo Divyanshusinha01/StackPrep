@@ -50,6 +50,7 @@ Deno.serve(
     }),
     ai: createOpenAIProvider({ apiKey: env.OPENAI_API_KEY, timeoutMs: EVALUATION_TIMEOUT_MS }),
     evaluationModel: env.OPENAI_EVALUATION_MODEL,
+    visionModel: env.OPENAI_VISION_MODEL,
     jobs: createInngestJobQueue(createInngestClient(env)),
     reportJobs: createReportJobStore(serviceClient),
   }),
