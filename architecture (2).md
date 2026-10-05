@@ -103,6 +103,7 @@ Stores persistent application state:
 - Answers
 - Evaluations
 - Reports
+- AI usage (per-call tokens and estimated cost)
 
 Repository source code itself should not be treated as primary database data.
 
@@ -136,6 +137,38 @@ Responsible for:
 5. Report generation
 
 AI output is persisted where it becomes part of the interview record.
+
+#### Models
+
+Each task reads its model from an environment variable, so models can change without code changes.
+
+| Task                                   | Model                        | Variable                 |
+| -------------------------------------- | ---------------------------- | ------------------------ |
+| Live voice interviewer                 | `gpt-realtime-2.1-mini`      | `OPENAI_REALTIME_MODEL`  |
+| Auxiliary extraction / classification  | `gpt-5.6-luna`               | `OPENAI_EXTRACTION_MODEL` |
+| Deep analysis, interview planning      | `gpt-5.6-terra`              | `OPENAI_PLANNING_MODEL`  |
+| Answer evaluation, report generation   | `gpt-5.6-terra`              | `OPENAI_EVALUATION_MODEL` |
+| Integrity monitoring                   | `gpt-5.6-luna`               | `OPENAI_VISION_MODEL`    |
+
+Planning and evaluation use the same model today but keep separate variables, so either can change on its own.
+
+#### Cost controls
+
+The live voice session is the main AI cost, so most controls target it.
+
+- **Session length.** Voice time is the sum of connected time, measured from `connected` / `disconnected` interview events. At 30 minutes the backend tells the interviewer to wrap up. At 35 minutes the backend completes the interview, refuses new Realtime credentials, and tool calls return an instruction to close. See [Voice Session Flow](#voice-session-flow) for how this is enforced.
+- **Idle timeout.** The browser closes the voice session after 3 minutes without candidate speech and records a `disconnected` event. The user can reconnect within the remaining voice time.
+- **Usage limit.** `POST /workspaces/:id/interviews` rejects a request when the user has created 5 or more interviews in the previous 24 hours, returning `429 interview_limit_reached` with `Retry-After`. Every created interview counts.
+- **Cached prompt prefix.** Realtime session instructions are assembled in a fixed order: interviewer instructions, then repository context, then the interview plan, then changing state (progress, current question, recap). The first three are byte-identical across sessions of the same interview, so reconnects get cached-input pricing.
+- **Context trimming.** Sessions enable OpenAI's automatic truncation of older turns. On reconnect, the backend replaces the full transcript with a compact recap of covered topics and the current question. The full transcript stays in PostgreSQL for evaluation and the report.
+- **Bounded inputs.** Repository context and tool results are already size-limited (see [Repository Context](#6-repository-context) and the [Tool catalogue](#tool-catalogue)).
+- **Vision.** The browser sends one low-detail camera frame every 10 seconds to the backend, which forwards it to the vision model. Only the resulting signal is stored; frames are never persisted.
+
+#### Usage tracking
+
+Every AI call writes a row to `ai_usage`: user, interview (nullable for repository analysis), workspace, task (`voice`, `auxiliary`, `deep_analysis`, `planning`, `evaluation`, `report`, `vision`), model, input / cached-input / output tokens (split into text and audio where relevant), estimated cost in USD, and a timestamp. Cost is computed from a price table in `@stackprep/shared`, so rows can be recalculated if prices change.
+
+Text and vision calls are logged by the backend from OpenAI's response `usage`. Voice usage arrives in the browser as Realtime `response.done` events. The browser relays these through `POST /interviews/:id/events`, and the backend also records an estimate based on connected voice time. Relayed numbers are client-reported, so the duration-based estimate is the cross-check.
 
 ---
 
@@ -301,6 +334,8 @@ Rules:
 - The backend sets the Realtime session configuration (model, interviewer instructions, repository context, tools) when minting the credential. The client cannot override interviewer instructions or tool definitions. Tool calls are executed by the backend (see [Realtime Tool Execution & Persistence](#10-realtime-tool-execution--persistence)).
 - The session endpoint authenticates the user, verifies interview ownership, and is rate-limited like other expensive AI endpoints.
 - Ephemeral credentials are scoped to a single interview session and expire quickly. A new credential is requested for each connection or reconnection.
+- The session endpoint refuses a credential once the interview has used its 35 minutes of voice time, and returns the remaining voice time with each credential so the browser can show the wrap-up and close the session on time.
+- After the 35-minute cap, `POST /interviews/:id/tool-calls` returns an end-interview instruction and the backend marks the interview complete. Without a server-side sideband connection, the backend cannot force-close a live WebRTC session. A client that ignores the instruction is bounded by OpenAI's maximum Realtime session length and cannot reconnect.
 
 #### Transcript Ownership & Persistence
 
@@ -425,8 +460,11 @@ POST   /interviews/:id/answers
 POST   /interviews/:id/realtime/session
 POST   /interviews/:id/events
 POST   /interviews/:id/tool-calls
+POST   /interviews/:id/integrity/frames
 GET    /interviews/:id/report
 ```
+
+`POST /interviews/:id/integrity/frames` accepts one low-detail camera frame (about every 10 seconds), sends it to the vision model, stores only the detected signal, and returns any warning to show. Frames are never persisted.
 
 `POST /workspaces/:id/interviews` creates the interview and enqueues planning (see [Phase 1 — Planning](#phase-1--planning)). `POST /interviews/:id/realtime/session` returns a short-lived ephemeral Realtime credential, or `interview_preparing` while the plan is still being generated. `POST /interviews/:id/events` accepts idempotent transcript turns and realtime interview events. `POST /interviews/:id/tool-calls` executes Realtime tool calls relayed by the browser (see [Realtime Tool Execution & Persistence](#10-realtime-tool-execution--persistence)).
 
@@ -854,7 +892,7 @@ Key requirements:
 - Validate all API input
 - Enforce workspace ownership
 - Apply GitHub permission scopes minimally
-- Rate-limit expensive AI endpoints
+- Rate-limit expensive AI endpoints: at most 5 interviews per user per rolling 24 hours, a 35-minute voice cap per interview, and integrity frames no faster than one per ~10 seconds
 - Sanitize repository-derived content
 - Scrub secrets before AI ingestion, including API keys, access tokens, private keys, passwords, and `.env` values
 - Never pass raw secret-bearing files into the AI context
@@ -914,7 +952,7 @@ Each integration has its own Zod schema in `@stackprep/shared` (`packages/shared
 | `edgeEnvSchema` (required) | `WEB_ORIGIN`                                                                                  |
 | `edgeSupabaseEnvSchema`    | `SUPABASE_URL`, `SUPABASE_ANON_KEY`, `SUPABASE_SERVICE_ROLE_KEY` (injected by the runtime)     |
 | `inngestEnvSchema`         | `INNGEST_EVENT_KEY`, `INNGEST_SIGNING_KEY`                                                    |
-| `openAIEnvSchema`          | `OPENAI_API_KEY`                                                                              |
+| `openAIEnvSchema`          | `OPENAI_API_KEY`, `OPENAI_REALTIME_MODEL`, `OPENAI_EXTRACTION_MODEL`, `OPENAI_PLANNING_MODEL`, `OPENAI_EVALUATION_MODEL`, `OPENAI_VISION_MODEL` |
 | `githubAppEnvSchema`       | `GITHUB_APP_ID`, `GITHUB_APP_CLIENT_ID`, `GITHUB_APP_CLIENT_SECRET`, `GITHUB_APP_PRIVATE_KEY`, `GITHUB_APP_WEBHOOK_SECRET` |
 | `edgeSentryEnvSchema`      | `SENTRY_DSN`, `SENTRY_ENVIRONMENT`                                                            |
 

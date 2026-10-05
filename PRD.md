@@ -219,6 +219,13 @@ The AI may:
 - Continue questioning when necessary around the 30-minute target.
 - Balance depth against repository coverage.
 
+Hard limits:
+
+- At **30 minutes** of voice time, the AI starts wrapping up: no new topics, finish the current question, give a closing statement.
+- At **35 minutes** of voice time, the interview ends regardless. The AI gives a short closing statement if it can.
+- Voice time counts only while the voice session is connected, so technical interruptions do not use it up.
+- If the user says nothing for **3 minutes**, the voice session closes. This is treated like a technical interruption: the user can reconnect and resume from the persisted state, within the 35-minute limit.
+
 The user sees only **elapsed time**.
 
 The user does not see:
@@ -495,6 +502,8 @@ Computer vision may analyze observable user behaviour for potential external ass
 
 These observations are **signals**, not automatic proof of misconduct.
 
+Monitoring analyzes one low-detail camera frame about every 10 seconds. Frames are analyzed and discarded. Only the detected signals and warnings are stored, never the images.
+
 ### Warning policy
 
 - First detected signal → warning
@@ -605,7 +614,9 @@ Interview 3
 
 at any time.
 
-There is no mandatory waiting period.
+There is no mandatory waiting period between interviews.
+
+To prevent abuse, a user can start at most **5 interviews per rolling 24 hours** across all workspaces. Every started interview counts, including abandoned and integrity-terminated ones. There is no monthly quota. When the limit is reached, the user sees when they can start the next interview.
 
 Interview 2 should feel fresh while using previous interview outcomes to improve question selection.
 
@@ -710,7 +721,7 @@ A terminated interview remains in history.
 The AI may finish:
 
 - Earlier than 30 minutes when sufficient evidence is gathered, or
-- Around the 30-minute target.
+- Around the 30-minute target, and never later than the 35-minute hard limit (see [Interview Duration](#7-interview-duration)).
 
 The AI gives a clear closing statement before ending.
 
