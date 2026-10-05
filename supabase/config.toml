@@ -3,6 +3,10 @@ project_id = "stackprep"
 [db]
 major_version = 17
 
+# Vector cannot reach the Docker daemon on Docker Desktop for Windows (tcp 2375), so it crash-loops.
+[analytics]
+enabled = false
+
 [auth]
 enabled = true
 site_url = "http://localhost:3000"
