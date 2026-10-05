@@ -694,6 +694,15 @@ export type Database = {
           isSetofReturn: false
         }
       }
+      fail_deep_analysis: {
+        Args: {
+          p_error_code: string
+          p_error_message: string
+          p_job_id: string
+          p_workspace_id: string
+        }
+        Returns: undefined
+      }
       fail_repository_analysis: {
         Args: {
           p_error_code: string
@@ -780,6 +789,10 @@ export type Database = {
           status: string
         }[]
       }
+      request_deep_analysis: {
+        Args: { p_commit_sha: string; p_workspace_id: string }
+        Returns: string
+      }
       request_report: {
         Args: { p_interview_id: string; p_user_id: string }
         Returns: string
@@ -794,6 +807,15 @@ export type Database = {
       retry_repository_analysis: {
         Args: { p_user_id: string; p_workspace_id: string }
         Returns: string
+      }
+      save_deep_analysis: {
+        Args: {
+          p_commit_sha: string
+          p_job_id: string
+          p_payload: Json
+          p_workspace_id: string
+        }
+        Returns: undefined
       }
       save_report: {
         Args: { p_content: Json; p_interview_id: string; p_job_id: string }

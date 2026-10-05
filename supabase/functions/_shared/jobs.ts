@@ -7,6 +7,13 @@ export interface JobEvents {
     installation_id: number;
     commit_sha: string;
   };
+  "repository.deep_analysis.requested": {
+    workspace_id: string;
+    /** The `deep_analysis` jobs row that projects this run's progress. */
+    job_id: string;
+    /** The analyzed commit whose memory is enriched. */
+    commit_sha: string;
+  };
   "interview.planning.requested": {
     interview_id: string;
     workspace_id: string;
