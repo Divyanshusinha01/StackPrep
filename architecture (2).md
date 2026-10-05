@@ -147,7 +147,7 @@ Each task reads its model from an environment variable, so models can change wit
 | Live voice interviewer                 | `gpt-realtime-2.1-mini`      | `OPENAI_REALTIME_MODEL`  |
 | Live candidate speech transcription    | `gpt-4o-mini-transcribe`     | `OPENAI_REALTIME_TRANSCRIPTION_MODEL` |
 | Interview planning                     | `gpt-5.6-terra`              | `OPENAI_PLANNING_MODEL`  |
-| Deep analysis (planned)                | `gpt-5.6-terra`              | `OPENAI_PLANNING_MODEL`  |
+| Deep analysis                          | `gpt-5.6-terra`              | `OPENAI_PLANNING_MODEL`  |
 | Answer evaluation, report generation   | `gpt-5.6-terra`              | `OPENAI_EVALUATION_MODEL` |
 | Integrity monitoring                   | `gpt-5.6-luna`               | `OPENAI_VISION_MODEL`    |
 | Auxiliary extraction / classification (planned) | `gpt-5.6-luna`      | `OPENAI_EXTRACTION_MODEL` (future) |
@@ -156,9 +156,10 @@ Planning and evaluation use the same model today but keep separate variables, so
 
 The transcription model is set on the Realtime session when the backend mints the credential. It transcribes only the candidate's speech for the persisted transcript; the interviewer's own transcript comes from the voice model.
 
-Two rows are planned and not implemented yet:
+Deep analysis is a single structured call per analyzed commit and reuses `OPENAI_PLANNING_MODEL` rather than adding its own variable. Its token usage is logged as `deep_analysis_ai_usage`, like the other jobs' usage logs.
 
-- **Deep analysis** has no model-calling job yet; `deep_analysis` exists only as an `ai_usage` task type. When built, it will reuse `OPENAI_PLANNING_MODEL` rather than adding its own variable.
+One row is planned and not implemented yet:
+
 - **Auxiliary extraction / classification** has no AI calls yet, and `OPENAI_EXTRACTION_MODEL` is not part of `openAIEnvSchema` or `.env.example`. The variable will be added, with default `gpt-5.6-luna`, when that capability is built.
 
 #### Cost controls
@@ -413,7 +414,7 @@ Analysis runs in two stages, matching the PRD's lightweight-then-deeper flow.
 
 **Baseline analysis** (`repository_indexing` job) is rule-based: file-tree analysis, metadata/dependency analysis, and lightweight fact extraction per file, with secret scrubbing. The workspace becomes `ready` when it completes.
 
-**Deep analysis** (`deep_analysis` job, planned — not implemented yet) starts after the baseline. It sends the scrubbed baseline facts to OpenAI using `OPENAI_PLANNING_MODEL` and adds AI-derived repository memory:
+**Deep analysis** (`deep_analysis` job, Inngest event `repository.deep_analysis.requested`) starts after the baseline. It sends the scrubbed baseline memory for the analyzed commit to OpenAI using `OPENAI_PLANNING_MODEL` in one structured call and adds AI-derived repository memory:
 
 - Architecture summary
 - Major modules
@@ -421,7 +422,20 @@ Analysis runs in two stages, matching the PRD's lightweight-then-deeper flow.
 - Security-sensitive areas
 - Repository-specific concepts
 
-Deep analysis does not block interviews. Repository memory persists across interviews, so this understanding is computed once per commit SHA rather than per interview.
+How it runs:
+
+- **Trigger.** After the baseline marks the job succeeded and the workspace ready, the baseline function runs a separate, best-effort step that calls `request_deep_analysis` and enqueues the event. It only runs when the analyzed commit is still the workspace target. A failure there is logged (`deep_analysis_enqueue_failed`) and recorded on the deep job as `enqueue_failed`; it never changes the baseline result or the workspace status.
+- **One job per commit.** `request_deep_analysis` returns no job when the commit has no baseline `architecture_summary` row, when that row already carries `metadata.deep_analysis`, or when a deep analysis is already active for the workspace (partial unique index `jobs_active_deep_analysis_key`). Only the given commit is checked, so an analyzed older commit never suppresses a new one.
+- **Validation.** The output is re-validated against `deepAnalysisOutputSchema`, evidence paths that are not baseline `key_files` paths of the commit are dropped (modules and security areas left without evidence are dropped too), concepts are de-duplicated by normalized term, and caps are enforced. Output that is empty after this fails with `ai_invalid_output` and nothing is stored.
+- **Storage.** `save_deep_analysis` writes, in one transaction: `structured.ai` on the commit's `architecture_summary` (summary, technical decisions, security-sensitive areas) and `modules` rows, one `concepts` row for the commit, and the `metadata.deep_analysis` marker (`model`, `analyzer_version`, `generated_at`). `structured.ai` is replaced rather than merged, so retries are idempotent. Failures are recorded only on the job (`fail_deep_analysis`), never on the workspace.
+
+| Memory row             | Deep analysis output                                        |
+| ---------------------- | ----------------------------------------------------------- |
+| `architecture_summary` | `structured.ai`: summary, technical decisions, security-sensitive areas; `metadata.deep_analysis` marker |
+| `modules`              | `structured.ai`: important modules with evidence files      |
+| `concepts`             | New row: `content` (term: explanation lines) and `structured.ai.concepts` |
+
+Deep analysis does not block interviews. Planning includes the `structured.ai` sections inside its fenced repository memory, within a fixed budget, and uses the baseline alone when deep analysis has not finished. Repository memory persists across interviews, so this understanding is computed once per commit SHA rather than per interview; re-analysis of a new commit runs deep analysis again for that commit.
 
 Tree-sitter parsing is deferred; baseline fact extraction is sufficient initially. Semantic/vector retrieval can be introduced later with `pgvector` if repository scale requires it.
 
@@ -859,7 +873,7 @@ Use background jobs for:
 | Job type              | Trigger                                 | Output                                  |
 | --------------------- | --------------------------------------- | --------------------------------------- |
 | `repository_indexing` | Workspace created / analysis retried    | Baseline repository memory; workspace `ready` |
-| `deep_analysis` (planned) | Baseline analysis succeeded         | AI-derived repository memory            |
+| `deep_analysis`       | Baseline analysis succeeded (best-effort chained step) | `structured.ai` on the commit's `architecture_summary` and `modules` rows, plus a `concepts` row |
 | `interview_planning`  | `POST /workspaces/:id/interviews`       | Coverage map, plan, strategy in `interview_state` |
 | `report_generation`   | Backend marks interview complete        | Interview report                        |
 

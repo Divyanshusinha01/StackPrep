@@ -13,6 +13,9 @@ import {
   buildPlanningInput,
   classifyPlanningError,
   handlePlanningFailure,
+  MAX_AI_ENTRY_CHARS,
+  MAX_AI_TOTAL_CHARS,
+  MAX_MEMORY_CHARS,
   normalizePlan,
   PLANNING_FAILURE_MESSAGES,
   PLANNING_SYSTEM_PROMPT,
@@ -216,6 +219,62 @@ Deno.test("untrusted repository content cannot close its delimiter", () => {
 Deno.test("repository context sent to the planner is bounded", () => {
   const memory = Array.from({ length: 20 }, (_, i) => ({ kind: `kind_${i}`, content: "x".repeat(10_000) }));
   const input = buildPlanningInput(target(), memory, []);
+  assert(input.length < 62_000, `input too large: ${input.length}`);
+});
+
+Deno.test("deep analysis memory (structured.ai) is included inside the fenced block", () => {
+  const memory: PlanningMemory[] = [
+    {
+      kind: "architecture_summary",
+      content: "Express API.",
+      ai: {
+        architecture_summary: "Layered Express API.",
+        technical_decisions: [{ decision: "Stateless JWT", rationale: "No session store", evidence_files: ["src/auth.ts"] }],
+        security_sensitive_areas: [],
+      },
+    },
+    { kind: "concepts", content: "React: UI library", ai: { concepts: [{ term: "React", normalized_term: "react", explanation: `UI library ${INJECTION}` }] } },
+    { kind: "modules", content: "src/", ai: { important_modules: [{ name: "Server", purpose: "Entry point", evidence_files: ["src/server.ts"] }] } },
+    { kind: "technologies", content: "TypeScript", ai: null },
+  ];
+  const input = buildPlanningInput(target(), memory, []);
+  const block = input.slice(input.indexOf("<repository_memory>"), input.indexOf("</repository_memory>"));
+  assert(block.includes("architecture_summary: Layered Express API."));
+  assert(block.includes("- Stateless JWT | No session store | [src/auth.ts]"));
+  assert(block.includes("- Server | Entry point | [src/server.ts]"));
+  assert(block.includes("- React | UI library"));
+  assert(!block.includes("security_sensitive_areas"), "empty lists are omitted");
+  assert(block.indexOf("## architecture_summary (deep analysis)") < block.indexOf("## modules (deep analysis)"));
+  assert(block.indexOf("## modules (deep analysis)") < block.indexOf("## concepts (deep analysis)"));
+  assert(!block.includes("## concepts\n"), "the concepts row is only rendered from structured.ai");
+  assert(block.includes("## technologies\nTypeScript"));
+  assertEquals(input.match(/<\/repository_memory>/g)?.length, 1);
+});
+
+Deno.test("without deep analysis, planning uses the baseline only", () => {
+  const input = buildPlanningInput(target(), [{ kind: "architecture_summary", content: "Express API." }], []);
+  assert(!input.includes("(deep analysis)"));
+  assert(input.includes("## architecture_summary\nExpress API."));
+});
+
+Deno.test("AI sections and the whole memory block respect their budgets", () => {
+  const huge = { notes: "y".repeat(50_000) };
+  const memory: PlanningMemory[] = [
+    { kind: "architecture_summary", content: "x".repeat(10_000), ai: huge },
+    { kind: "modules", content: "x".repeat(10_000), ai: huge },
+    { kind: "concepts", content: "x".repeat(10_000), ai: huge },
+    ...Array.from({ length: 20 }, (_, i) => ({ kind: `kind_${i}`, content: "x".repeat(10_000) })),
+  ];
+  const input = buildPlanningInput(target(), memory, []);
+  const block = input.slice(input.indexOf("<repository_memory>"), input.indexOf("</repository_memory>"));
+  const aiChars = (block.match(/y/g) ?? []).length;
+  const baseChars = (block.match(/x/g) ?? []).length;
+  assert(aiChars <= MAX_AI_TOTAL_CHARS, `AI sections too large: ${aiChars}`);
+  for (const section of block.split("\n## ").filter((s) => s.includes("(deep analysis)"))) {
+    assert((section.match(/y/g) ?? []).length <= MAX_AI_ENTRY_CHARS);
+  }
+  assert(baseChars <= MAX_MEMORY_CHARS - MAX_AI_TOTAL_CHARS, `baseline too large: ${baseChars}`);
+  assert(aiChars + baseChars <= MAX_MEMORY_CHARS);
   assert(input.length < 62_000, `input too large: ${input.length}`);
 });
 

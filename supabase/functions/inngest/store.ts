@@ -1,4 +1,4 @@
-import type { AnalysisErrorCode, AnalysisStage } from "@stackprep/shared";
+import type { AnalysisErrorCode, AnalysisStage, DeepAnalysisErrorCode } from "@stackprep/shared";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { MemoryRow } from "../_shared/analysis/context.ts";
 
@@ -25,6 +25,9 @@ export interface AnalysisStore {
   markStage(jobId: string, stage: AnalysisStage, progress: number, runId: string): Promise<void>;
   complete(workspaceId: string, jobId: string, commitSha: string, memory: MemoryRow[]): Promise<boolean>;
   fail(workspaceId: string, jobId: string, code: AnalysisErrorCode, message: string): Promise<void>;
+  /** Queues a deep_analysis job for the commit; null when already analyzed, active, or without memory. */
+  requestDeepAnalysis(workspaceId: string, commitSha: string): Promise<string | null>;
+  failDeepAnalysis(workspaceId: string, jobId: string, code: DeepAnalysisErrorCode, message: string): Promise<void>;
 }
 
 const TARGET_COLUMNS = "id, status, repository_commit_sha, workspace_id, " +
@@ -128,6 +131,27 @@ export function createAnalysisStore(serviceClient: SupabaseClient): AnalysisStor
       });
       if (error) {
         throw new Error(`Failed to record repository analysis failure: ${error.message}`);
+      }
+    },
+    async requestDeepAnalysis(workspaceId, commitSha) {
+      const { data, error } = await serviceClient.rpc("request_deep_analysis", {
+        p_workspace_id: workspaceId,
+        p_commit_sha: commitSha,
+      });
+      if (error) {
+        throw new Error(`Failed to request deep analysis: ${error.message}`);
+      }
+      return typeof data === "string" ? data : null;
+    },
+    async failDeepAnalysis(workspaceId, jobId, code, message) {
+      const { error } = await serviceClient.rpc("fail_deep_analysis", {
+        p_workspace_id: workspaceId,
+        p_job_id: jobId,
+        p_error_code: code,
+        p_error_message: message,
+      });
+      if (error) {
+        throw new Error(`Failed to record deep analysis failure: ${error.message}`);
       }
     },
   };

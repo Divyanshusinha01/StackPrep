@@ -11,6 +11,8 @@ import {
   GithubRateLimitedError,
   GithubUnavailableError,
 } from "../_shared/github-app.ts";
+import type { JobQueue } from "../_shared/jobs.ts";
+import { DEEP_ANALYSIS_EVENT, DEEP_ANALYSIS_FAILURE_MESSAGES } from "./deep-analysis.ts";
 import type { AnalysisStore, AnalysisTarget } from "./store.ts";
 
 export const ANALYSIS_EVENT = "repository.analysis.requested";
@@ -42,6 +44,8 @@ export const FAILURE_MESSAGES: Record<AnalysisErrorCode, string> = {
 export interface AnalysisDeps {
   github: Pick<GithubApp, "getRepositoryTree" | "getBlob">;
   store: AnalysisStore;
+  /** Sends the best-effort deep analysis that follows a successful baseline. */
+  jobs: JobQueue;
   limits?: AnalysisLimits;
   log?: (line: string) => void;
 }
@@ -128,6 +132,41 @@ async function mapLimited<T, R>(items: T[], limit: number, fn: (item: T) => Prom
   return results;
 }
 
+/**
+ * Best-effort enqueue of deep analysis, in its own step after the baseline is complete. Every
+ * failure is logged and swallowed inside the step, so it never changes the baseline result and a
+ * replay never queues a second job.
+ */
+async function queueDeepAnalysis(deps: AnalysisDeps, step: StepRunner, event: AnalysisEvent): Promise<void> {
+  const ids = { workspace_id: event.workspace_id, analysis_job_id: event.job_id };
+  await step.run("queue-deep-analysis", async () => {
+    let jobId: string | null = null;
+    try {
+      jobId = await deps.store.requestDeepAnalysis(event.workspace_id, event.commit_sha);
+      if (jobId === null) {
+        return { queued: false };
+      }
+      await deps.jobs.enqueue(DEEP_ANALYSIS_EVENT, {
+        workspace_id: event.workspace_id,
+        job_id: jobId,
+        commit_sha: event.commit_sha,
+      });
+      logLine(deps, { event: "deep_analysis_queued", ...ids, job_id: jobId });
+      return { queued: true };
+    } catch {
+      if (jobId !== null) {
+        try {
+          await deps.store.failDeepAnalysis(event.workspace_id, jobId, "enqueue_failed", DEEP_ANALYSIS_FAILURE_MESSAGES.enqueue_failed);
+        } catch {
+          // The job is left queued and blocks further deep analysis for the workspace until cleared.
+        }
+      }
+      logLine(deps, { event: "deep_analysis_enqueue_failed", ...ids, ...(jobId ? { job_id: jobId } : {}) });
+      return { queued: false };
+    }
+  });
+}
+
 function decodeText(bytes: Uint8Array): string | null {
   if (bytes.includes(0)) {
     return null;
@@ -167,6 +206,9 @@ export async function runRepositoryAnalysis(
     const ready = await step.run("complete", () =>
       classified(() => deps.store.complete(event.workspace_id, event.job_id, event.commit_sha, [])));
     logLine(deps, { event: "analysis_skipped", reason: "memory_exists", ...ids });
+    if (ready) {
+      await queueDeepAnalysis(deps, step, event);
+    }
     return { outcome: "skipped", reason: "memory_exists", ready };
   }
 
@@ -215,6 +257,9 @@ export async function runRepositoryAnalysis(
     memory_rows: memory.length,
     limits_hit: scan.limits_hit.join(",") || "none",
   });
+  if (ready) {
+    await queueDeepAnalysis(deps, step, event);
+  }
   return { outcome: "completed", ready, memory_rows: memory.length };
 }
 

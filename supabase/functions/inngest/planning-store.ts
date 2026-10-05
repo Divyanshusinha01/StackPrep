@@ -36,6 +36,8 @@ export interface PlanningTarget {
 export interface PlanningMemory {
   kind: string;
   content: string;
+  /** `structured.ai` written by deep analysis; absent until it has run for the commit. */
+  ai?: unknown;
 }
 
 export interface PriorCategoryOutcome {
@@ -140,12 +142,13 @@ export function createPlanningStore(serviceClient: SupabaseClient): PlanningStor
     },
 
     async loadMemory(workspaceId, commitSha) {
-      const base = () =>
-        serviceClient.from("repository_memory").select("kind, content")
-          .eq("workspace_id", workspaceId).eq("repository_commit_sha", commitSha);
       const [summaries, files] = await Promise.all([
-        base().neq("kind", "file_summary").order("kind"),
-        base().eq("kind", "file_summary").order("created_at").limit(MAX_FILE_SUMMARIES),
+        serviceClient.from("repository_memory").select("kind, content, ai:structured->ai")
+          .eq("workspace_id", workspaceId).eq("repository_commit_sha", commitSha)
+          .neq("kind", "file_summary").order("kind"),
+        serviceClient.from("repository_memory").select("kind, content")
+          .eq("workspace_id", workspaceId).eq("repository_commit_sha", commitSha)
+          .eq("kind", "file_summary").order("created_at").limit(MAX_FILE_SUMMARIES),
       ]);
       check("load repository memory", summaries.error);
       check("load file summaries", files.error);

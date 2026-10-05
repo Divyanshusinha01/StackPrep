@@ -4,6 +4,9 @@ import { createOpenAIProvider } from "../_shared/ai/openai.ts";
 import { readEnv } from "../_shared/env.ts";
 import { createGithubApp } from "../_shared/github-app.ts";
 import { createInngestClient } from "../_shared/inngest.ts";
+import { createInngestJobQueue } from "../_shared/jobs.ts";
+import { createDeepAnalysisFunction } from "./deep-analysis.ts";
+import { createDeepAnalysisStore } from "./deep-analysis-store.ts";
 import { createRepositoryAnalysisFunction } from "./function.ts";
 import { createInngestHandler } from "./handler.ts";
 import { createInterviewPlanningFunction } from "./planning.ts";
@@ -33,7 +36,16 @@ const ai = createOpenAIProvider({ apiKey: env.OPENAI_API_KEY });
 
 Deno.serve(
   createInngestHandler(inngest, [
-    createRepositoryAnalysisFunction(inngest, { github, store: createAnalysisStore(serviceClient) }),
+    createRepositoryAnalysisFunction(inngest, {
+      github,
+      store: createAnalysisStore(serviceClient),
+      jobs: createInngestJobQueue(inngest),
+    }),
+    createDeepAnalysisFunction(inngest, {
+      ai,
+      model: env.OPENAI_PLANNING_MODEL,
+      store: createDeepAnalysisStore(serviceClient),
+    }),
     createInterviewPlanningFunction(inngest, {
       ai,
       model: env.OPENAI_PLANNING_MODEL,

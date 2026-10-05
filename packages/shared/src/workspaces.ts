@@ -124,6 +124,19 @@ export const createInterviewResponseSchema = z.object({
   planning: interviewPlanningSchema,
 });
 
+// Deep repository analysis ---------------------------------------------------------
+// Best-effort `deep_analysis` job chained after a baseline analysis; never decides readiness.
+
+/** Fixed failure codes recorded on the deep analysis job; never raw error messages. */
+export const deepAnalysisErrorCodeSchema = z.enum([
+  "repository_memory_unavailable",
+  "ai_rate_limited",
+  "ai_unavailable",
+  "ai_invalid_output",
+  "enqueue_failed",
+  "internal_error",
+]);
+
 /** `repositories` has no html_url column; GitHub's canonical URL is derived from the full name. */
 export function repositoryHtmlUrl(fullName: string): string {
   return `https://github.com/${fullName.split("/").map(encodeURIComponent).join("/")}`;
@@ -147,3 +160,4 @@ export type PlanningState = z.infer<typeof planningStateSchema>;
 export type PlanningErrorCode = z.infer<typeof planningErrorCodeSchema>;
 export type InterviewPlanning = z.infer<typeof interviewPlanningSchema>;
 export type CreateInterviewResponse = z.infer<typeof createInterviewResponseSchema>;
+export type DeepAnalysisErrorCode = z.infer<typeof deepAnalysisErrorCodeSchema>;

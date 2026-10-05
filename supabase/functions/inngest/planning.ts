@@ -21,9 +21,14 @@ export const PLANNING_EVENT = "interview.planning.requested";
 export const PLANNING_FUNCTION_ID = "interview-planning";
 const FN = "inngest";
 
-/** Bounds the repository context sent to the planner. */
-const MAX_MEMORY_CHARS = 60_000;
+/** Bounds the repository context sent to the planner; AI sections come out of the same total. */
+export const MAX_MEMORY_CHARS = 60_000;
 const MAX_ENTRY_CHARS = 8_000;
+/** Deep analysis sections: architecture_summary, modules, and concepts, in that order. */
+const AI_KINDS = ["architecture_summary", "modules", "concepts"] as const;
+export const MAX_AI_ROWS = 3;
+export const MAX_AI_ENTRY_CHARS = 6_000;
+export const MAX_AI_TOTAL_CHARS = 15_000;
 
 export const planningEventSchema = z.object({
   interview_id: z.uuid(),
@@ -137,16 +142,64 @@ function fence(text: string): string {
   return text.replace(/<\s*\/?\s*(repository_memory|prior_interviews)/gi, "[$1");
 }
 
+function renderValue(value: unknown): string {
+  if (Array.isArray(value)) {
+    return `[${value.map(renderValue).join(", ")}]`;
+  }
+  return typeof value === "string" ? value : JSON.stringify(value) ?? "";
+}
+
+/** Compact text for one row's `structured.ai`: scalar fields as lines, arrays as bullet lists. */
+export function renderAiMemory(ai: unknown): string {
+  if (!ai || typeof ai !== "object" || Array.isArray(ai)) {
+    return "";
+  }
+  const lines: string[] = [];
+  for (const [key, value] of Object.entries(ai)) {
+    if (!Array.isArray(value)) {
+      lines.push(`${key}: ${renderValue(value)}`);
+      continue;
+    }
+    if (value.length === 0) {
+      continue;
+    }
+    lines.push(`${key}:`);
+    for (const item of value) {
+      const fields = item && typeof item === "object" && !Array.isArray(item)
+        ? Object.entries(item).filter(([k]) => k !== "normalized_term").map(([, v]) => renderValue(v))
+        : [renderValue(item)];
+      lines.push(`- ${fields.join(" | ")}`);
+    }
+  }
+  return lines.join("\n");
+}
+
 export function buildPlanningInput(
   target: Pick<PlanningTarget, "repository_full_name" | "commit_sha" | "interview_number">,
   memory: PlanningMemory[],
   prior: PriorOutcome[],
 ): string {
-  let budget = MAX_MEMORY_CHARS;
   const sections: string[] = [];
+  let aiBudget = MAX_AI_TOTAL_CHARS;
+  for (const kind of AI_KINDS.slice(0, MAX_AI_ROWS)) {
+    const rendered = renderAiMemory(memory.find((m) => m.kind === kind)?.ai);
+    if (!rendered || aiBudget <= 0) {
+      continue;
+    }
+    const text = fence(rendered).slice(0, Math.min(MAX_AI_ENTRY_CHARS, aiBudget));
+    aiBudget -= text.length;
+    sections.push(`## ${kind} (deep analysis)\n${text}`);
+  }
+
+  // Fixed even when deep analysis has not run, so the whole block stays within MAX_MEMORY_CHARS.
+  let budget = MAX_MEMORY_CHARS - MAX_AI_TOTAL_CHARS;
   for (const { kind, content } of memory) {
     if (budget <= 0) {
       break;
+    }
+    // Written only by deep analysis; already rendered above from structured.ai.
+    if (kind === "concepts") {
+      continue;
     }
     const text = fence(content).slice(0, Math.min(MAX_ENTRY_CHARS, budget));
     budget -= text.length;
