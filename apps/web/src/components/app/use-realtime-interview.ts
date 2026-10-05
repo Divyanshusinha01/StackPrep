@@ -3,8 +3,9 @@
 import { useCallback, useEffect, useReducer, useRef, useState } from "react";
 import { type ApiErrorCode, apiErrorSchema, realtimeSessionResponseSchema, VOICE_LIMIT_SECONDS } from "@stackprep/shared";
 import { FunctionsHttpError } from "@supabase/supabase-js";
-import { sendEvent } from "@/lib/interview-events";
+import { sendEvent, sendToolCall } from "@/lib/interview-events";
 import { createSupabaseBrowserClient } from "@/lib/supabase/client";
+import { examiningReducer } from "./examining";
 import { relayToolCall } from "./realtime-tool-relay";
 import { EMPTY_TRANSCRIPT, type RealtimeServerEvent, transcriptReducer } from "./realtime-transcript";
 import {
@@ -17,6 +18,8 @@ import {
 } from "./transcript-outbox";
 
 const REALTIME_CALLS_URL = "https://api.openai.com/v1/realtime/calls";
+/** Upper bound on the interviewer's closing turn once the backend has ended the interview. */
+const CLOSING_GRACE_MS = 30_000;
 
 export type RealtimeStatus = "idle" | "connecting" | "live" | "error" | "closed";
 
@@ -85,6 +88,9 @@ export function useRealtimeInterview(interviewId: string) {
   const [status, setStatus] = useState<RealtimeStatus>("idle");
   const [error, setError] = useState<RealtimeErrorCode | null>(null);
   const [timeUp, setTimeUp] = useState(false);
+  /** The backend ended the interview (end_interview accepted, or the voice cap was reached). */
+  const [ended, setEnded] = useState(false);
+  const [examining, dispatchExamining] = useReducer(examiningReducer, null);
   const [clock, setClock] = useState<VoiceClock | null>(null);
   /** Code of the last event the backend refused; that event was dropped. */
   const [syncError, setSyncError] = useState<string | null>(null);
@@ -145,6 +151,17 @@ export function useRealtimeInterview(interviewId: string) {
     }
   }, [transcript]);
 
+  useEffect(() => {
+    if (!examining) {
+      return;
+    }
+    const id = window.setTimeout(
+      () => dispatchExamining({ type: "expire", at: Date.now() }),
+      Math.max(0, examining.until - Date.now()),
+    );
+    return () => window.clearTimeout(id);
+  }, [examining]);
+
   const start = useCallback(async () => {
     attemptRef.current++;
     const attempt = attemptRef.current;
@@ -152,15 +169,21 @@ export function useRealtimeInterview(interviewId: string) {
     teardown();
     setError(null);
     setTimeUp(false);
+    setEnded(false);
+    dispatchExamining({ type: "reset" });
     setStatus("connecting");
 
     let mic: MediaStream | null = null;
     let pc: RTCPeerConnection | null = null;
     let audio: HTMLAudioElement | null = null;
     let hardStop = 0;
+    let closingTimer = 0;
+    /** After the backend ends the interview: wait for the closing response, then for its audio to finish. */
+    let closing: "none" | "awaiting_response" | "speaking" = "none";
     let connected = false;
     const cleanup = () => {
       window.clearTimeout(hardStop);
+      window.clearTimeout(closingTimer);
       if (connected) {
         connected = false;
         outboxRef.current?.enqueue({ type: "disconnected" });
@@ -217,6 +240,12 @@ export function useRealtimeInterview(interviewId: string) {
         pc.addTrack(track, mic);
       }
 
+      const finish = () => {
+        if (current()) {
+          setEnded(true);
+          stop();
+        }
+      };
       const channel = pc.createDataChannel("oai-events");
       channel.onmessage = (e) => {
         let event: RealtimeServerEvent;
@@ -228,10 +257,31 @@ export function useRealtimeInterview(interviewId: string) {
         if (typeof event?.type !== "string") {
           return;
         }
-        for (const reply of relayToolCall(event)) {
-          channel.send(JSON.stringify(reply));
-        }
         dispatch(event);
+        if (closing === "awaiting_response" && event.type === "response.created") {
+          closing = "speaking";
+        } else if (closing === "speaking" && event.type === "output_audio_buffer.stopped") {
+          finish();
+          return;
+        }
+        void relayToolCall(event, (call) => sendToolCall(interviewId, call)).then((relay) => {
+          if (!relay || !current()) {
+            return;
+          }
+          if (relay.examined.length > 0) {
+            dispatchExamining({ type: "examined", items: relay.examined, at: Date.now() });
+          }
+          // Set before the output is sent, so the closing response's events are recognized.
+          if (relay.ending && closing === "none") {
+            closing = "awaiting_response";
+            closingTimer = window.setTimeout(finish, CLOSING_GRACE_MS);
+          }
+          if (channel.readyState === "open") {
+            for (const reply of relay.events) {
+              channel.send(JSON.stringify(reply));
+            }
+          }
+        });
       };
       channel.onopen = () => {
         if (!current()) {
@@ -287,5 +337,5 @@ export function useRealtimeInterview(interviewId: string) {
     }
   }, [interviewId, stop, teardown]);
 
-  return { status, error, timeUp, clock, transcript, syncError, start, stop };
+  return { status, error, timeUp, ended, examining: examining?.items ?? null, clock, transcript, syncError, start, stop };
 }

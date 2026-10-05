@@ -4,6 +4,7 @@ import {
   advanceInterviewInputSchema,
   endInterviewInputSchema,
   evaluateAnswerOutputSchema,
+  evidenceExaminedPayloadSchema,
   getFileInputSchema,
   interviewEventAckSchema,
   interviewEventRequestSchema,
@@ -11,6 +12,10 @@ import {
   realtimeSessionResponseSchema,
   realtimeToolNameSchema,
   searchRepositoryInputSchema,
+  TOOL_CALL_ARGUMENTS_MAX_CHARS,
+  toolCallEventPayloadSchema,
+  toolCallRequestSchema,
+  toolCallResponseSchema,
   toolErrorSchema,
   TRANSCRIPT_TURN_MAX_CHARS,
   VOICE_LIMIT_SECONDS,
@@ -68,6 +73,64 @@ describe("tool schemas", () => {
   it("parses tool errors", () => {
     expect(toolErrorSchema.parse({ ok: false, error: { code: "unknown_tool" } }).error.code).toBe("unknown_tool");
     expect(toolErrorSchema.safeParse({ ok: false, error: { code: "boom" } }).success).toBe(false);
+    expect(toolErrorSchema.safeParse({ ok: false, error: { code: "internal" }, guidance: "x".repeat(301) }).success)
+      .toBe(false);
+  });
+});
+
+describe("toolCallRequestSchema", () => {
+  const call = { call_id: "call_1", name: "get_file", arguments: '{"path":"src/a.ts"}' };
+
+  it("accepts string or object arguments and any tool name", () => {
+    expect(toolCallRequestSchema.parse(call)).toEqual(call);
+    expect(toolCallRequestSchema.parse({ ...call, arguments: { path: "src/a.ts" } }).arguments).toEqual({
+      path: "src/a.ts",
+    });
+    expect(toolCallRequestSchema.safeParse({ ...call, name: "drop_tables" }).success).toBe(true);
+  });
+
+  it.each([
+    ["an empty call id", { ...call, call_id: "" }],
+    ["a long call id", { ...call, call_id: "c".repeat(129) }],
+    ["oversized string arguments", { ...call, arguments: "x".repeat(TOOL_CALL_ARGUMENTS_MAX_CHARS + 1) }],
+    ["oversized object arguments", { ...call, arguments: { path: "x".repeat(TOOL_CALL_ARGUMENTS_MAX_CHARS) } }],
+    ["array arguments", { ...call, arguments: [] }],
+    ["an interview id", { ...call, interview_id: CLIENT_EVENT_ID }],
+  ])("rejects %s", (_label, body) => {
+    expect(toolCallRequestSchema.safeParse(body).success).toBe(false);
+  });
+});
+
+describe("toolCallResponseSchema", () => {
+  it.each([
+    { ok: false, error: { code: "interview_not_active" }, guidance: "Close now." },
+    { ok: true, results: [{ path: "src/a.ts", excerpt: "x" }] },
+    { ok: true, path: "a", startLine: 1, endLine: 1, totalLines: 1, content: "", truncated: false },
+    { ok: true, guidance: "follow_up", focus: "token rotation" },
+    { ok: true, nextFocus: { area: "src/auth", category: "Security", angle: "x" }, depth: "deep", elapsedMinutes: 3 },
+    { ok: true, accepted: false, guidance: "Continue." },
+  ])("accepts tool result %#", (body) => {
+    expect(toolCallResponseSchema.safeParse(body).success).toBe(true);
+  });
+
+  it("rejects unrelated bodies", () => {
+    expect(toolCallResponseSchema.safeParse({ ok: true }).success).toBe(false);
+    expect(toolCallResponseSchema.safeParse({ error: "Unauthorized", code: "unauthorized" }).success).toBe(false);
+  });
+});
+
+describe("tool event payloads", () => {
+  it("validates evidence_examined payloads", () => {
+    expect(evidenceExaminedPayloadSchema.parse({ path: "src/a.ts", area: "src", tool: "get_file" })).toBeTruthy();
+    expect(evidenceExaminedPayloadSchema.safeParse({ path: "src/a.ts", tool: "evaluate_answer" }).success).toBe(false);
+    expect(evidenceExaminedPayloadSchema.safeParse({ path: "src/a.ts", tool: "get_file", content: "x" }).success)
+      .toBe(false);
+  });
+
+  it("validates tool_call payloads", () => {
+    const payload = { call_id: "c1", tool: "get_file", args: { path: "a" }, result_summary: { ok: true } };
+    expect(toolCallEventPayloadSchema.parse(payload)).toEqual(payload);
+    expect(toolCallEventPayloadSchema.safeParse({ ...payload, tool: "nope" }).success).toBe(false);
   });
 });
 

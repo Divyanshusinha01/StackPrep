@@ -81,6 +81,8 @@ export const toolErrorCodeSchema = z.enum([
 export const toolErrorSchema = z.object({
   ok: z.literal(false),
   error: z.object({ code: toolErrorCodeSchema }),
+  /** Spoken-behavior cue, e.g. to close the interview once the voice cap is reached. */
+  guidance: z.string().max(300).optional(),
 });
 
 export const searchRepositoryInputSchema = z.strictObject({
@@ -193,6 +195,49 @@ export const REALTIME_TOOLS: Record<RealtimeToolName, RealtimeToolDefinition> = 
   },
 };
 
+// POST /interviews/:id/tool-calls -------------------------------------------------
+// The browser relays Realtime's function call unchanged. Unknown tools, invalid arguments, and an
+// inactive interview come back as HTTP 200 with a tool error so the interviewer can recover.
+
+export const TOOL_CALL_ARGUMENTS_MAX_CHARS = 8000;
+
+const jsonLength = (value: unknown) => JSON.stringify(value).length;
+
+export const toolCallRequestSchema = z.strictObject({
+  call_id: z.string().min(1).max(128),
+  name: z.string().min(1).max(64),
+  /** Realtime sends a JSON string; an already-parsed object is accepted too. */
+  arguments: z.union([
+    z.string().max(TOOL_CALL_ARGUMENTS_MAX_CHARS),
+    z.record(z.string(), z.unknown()).refine((args) => jsonLength(args) <= TOOL_CALL_ARGUMENTS_MAX_CHARS),
+  ]),
+});
+
+export const toolCallResponseSchema = z.union([
+  toolErrorSchema,
+  searchRepositoryOutputSchema,
+  getFileOutputSchema,
+  evaluateAnswerOutputSchema,
+  advanceInterviewOutputSchema,
+  endInterviewOutputSchema,
+]);
+
+// interview_events payloads written by the tool-call handler. Hidden from no one who owns the
+// interview, so they carry no scores or coverage.
+
+export const evidenceExaminedPayloadSchema = z.strictObject({
+  path: z.string().min(1).max(512),
+  area: z.string().max(120).optional(),
+  tool: z.enum(["get_file", "search_repository"]),
+});
+
+export const toolCallEventPayloadSchema = z.object({
+  call_id: z.string().min(1).max(128),
+  tool: realtimeToolNameSchema,
+  args: z.record(z.string(), z.unknown()),
+  result_summary: z.record(z.string(), z.unknown()),
+});
+
 export type RealtimeSessionResponse = z.infer<typeof realtimeSessionResponseSchema>;
 export type TranscriptTurnEvent = z.infer<typeof transcriptTurnEventSchema>;
 export type VoiceEventRequest = z.infer<typeof voiceEventSchema>;
@@ -214,3 +259,7 @@ export type AdvanceInterviewInput = z.infer<typeof advanceInterviewInputSchema>;
 export type AdvanceInterviewOutput = z.infer<typeof advanceInterviewOutputSchema>;
 export type EndInterviewInput = z.infer<typeof endInterviewInputSchema>;
 export type EndInterviewOutput = z.infer<typeof endInterviewOutputSchema>;
+export type ToolCallRequest = z.infer<typeof toolCallRequestSchema>;
+export type ToolCallResponse = z.infer<typeof toolCallResponseSchema>;
+export type EvidenceExaminedPayload = z.infer<typeof evidenceExaminedPayloadSchema>;
+export type ToolCallEventPayload = z.infer<typeof toolCallEventPayloadSchema>;

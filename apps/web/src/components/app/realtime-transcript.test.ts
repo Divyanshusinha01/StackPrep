@@ -1,5 +1,4 @@
 import { describe, expect, it } from "vitest";
-import { relayToolCall } from "./realtime-tool-relay";
 import { EMPTY_TRANSCRIPT, type RealtimeServerEvent, transcriptReducer } from "./realtime-transcript";
 
 function run(events: RealtimeServerEvent[]) {
@@ -80,32 +79,5 @@ describe("transcriptReducer", () => {
       { type: "response.function_call_arguments.done", item_id: "f1", call_id: "c1", arguments: "{}" },
     ]);
     expect(state).toEqual(EMPTY_TRANSCRIPT);
-  });
-});
-
-describe("relayToolCall", () => {
-  it("answers every tool call with unknown_tool and resumes the response", () => {
-    const events = relayToolCall({
-      type: "response.function_call_arguments.done",
-      call_id: "call_1",
-      name: "evaluate_answer",
-      arguments: "{}",
-    });
-    expect(events).toEqual([
-      {
-        type: "conversation.item.create",
-        item: {
-          type: "function_call_output",
-          call_id: "call_1",
-          output: JSON.stringify({ ok: false, error: { code: "unknown_tool" } }),
-        },
-      },
-      { type: "response.create" },
-    ]);
-  });
-
-  it("ignores other events and calls without an id", () => {
-    expect(relayToolCall({ type: "response.done" })).toEqual([]);
-    expect(relayToolCall({ type: "response.function_call_arguments.done" })).toEqual([]);
   });
 });

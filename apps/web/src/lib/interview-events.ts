@@ -1,4 +1,4 @@
-import { apiErrorSchema, type InterviewEventRequest } from "@stackprep/shared";
+import { apiErrorSchema, type InterviewEventRequest, type ToolCallRequest } from "@stackprep/shared";
 import { FunctionsHttpError } from "@supabase/supabase-js";
 import { createSupabaseBrowserClient } from "@/lib/supabase/client";
 
@@ -28,4 +28,17 @@ export async function sendEvent(interviewId: string, event: InterviewEventReques
     return { ok: false, retryable, code };
   }
   return { ok: false, retryable: true, code: "network_error" };
+}
+
+/**
+ * Browser-side `POST /interviews/:id/tool-calls`. Returns the unparsed result body, or null on any
+ * network or HTTP failure; the relay validates the body and substitutes a tool error.
+ */
+export async function sendToolCall(interviewId: string, call: ToolCallRequest): Promise<unknown> {
+  const supabase = createSupabaseBrowserClient();
+  const { data, error } = await supabase.functions.invoke(`interviews/${encodeURIComponent(interviewId)}/tool-calls`, {
+    method: "POST",
+    body: call,
+  });
+  return error ? null : data;
 }

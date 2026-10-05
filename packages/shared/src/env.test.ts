@@ -97,6 +97,7 @@ describe("integration env schemas", () => {
     expect(parseEnv("openai", openAIEnvSchema, { OPENAI_API_KEY: "sk-test" })).toEqual({
       OPENAI_API_KEY: "sk-test",
       OPENAI_PLANNING_MODEL: "gpt-5.6-terra",
+      OPENAI_EVALUATION_MODEL: "gpt-5.6-terra",
       OPENAI_REALTIME_MODEL: "gpt-realtime-2.1-mini",
       OPENAI_REALTIME_TRANSCRIPTION_MODEL: "gpt-4o-mini-transcribe",
     });

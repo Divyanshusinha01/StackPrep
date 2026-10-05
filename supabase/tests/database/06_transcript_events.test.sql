@@ -93,7 +93,8 @@ select throws_ok(
 select is(pg_temp.voice('66666666-0000-4000-8000-0000000000b1', 'connected'), 'created:1', 'connected gets the first event sequence');
 select is(pg_temp.voice('66666666-0000-4000-8000-0000000000b1', 'connected'), 'duplicate:1', 'a connected retry returns duplicate');
 select is(pg_temp.voice('66666666-0000-4000-8000-0000000000b1', 'disconnected'), 'event_conflict:1', 'a reused event id with another type conflicts');
-select is(pg_temp.voice('66666666-0000-4000-8000-0000000000b2', 'disconnected'), 'created:2', 'the server assigns the next event sequence');
+-- The first connected also writes a `start` event at sequence 2 (see 07_tool_calls).
+select is(pg_temp.voice('66666666-0000-4000-8000-0000000000b2', 'disconnected'), 'created:3', 'the server assigns the next event sequence');
 select is(
   (select occurred_at from public.interview_events where client_event_id = '66666666-0000-4000-8000-0000000000b1'),
   now(),

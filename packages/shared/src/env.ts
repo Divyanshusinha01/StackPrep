@@ -41,6 +41,8 @@ export const inngestEnvSchema = z.object({
 export const openAIEnvSchema = z.object({
   OPENAI_API_KEY: secret,
   OPENAI_PLANNING_MODEL: secret.default("gpt-5.6-terra"),
+  /** Scores answers during the live interview (evaluate_answer); latency matters. */
+  OPENAI_EVALUATION_MODEL: secret.default("gpt-5.6-terra"),
   OPENAI_REALTIME_MODEL: secret.default("gpt-realtime-2.1-mini"),
   /** Transcribes the candidate's speech for the live transcript; the interviewer's own transcript is free. */
   OPENAI_REALTIME_TRANSCRIPTION_MODEL: secret.default("gpt-4o-mini-transcribe"),
