@@ -3,7 +3,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { ArrowLeft } from "lucide-react";
 import { AppShell } from "@/components/app/app-shell";
-import { InterviewLobby } from "@/components/app/interview-lobby";
+import { InterviewSession } from "@/components/app/interview-session";
 import { InterviewStatusBadge } from "@/components/app/interview-status";
 import { getInterview } from "@/lib/api";
 import { requireUser } from "@/lib/auth";
@@ -37,7 +37,7 @@ export default async function InterviewPage({ params }: PageProps<"/interviews/[
       <p className="mt-2 text-sm text-muted-foreground">
         The interview uses your camera and microphone. Both are required to continue.
       </p>
-      <InterviewLobby planning={interview.planning} />
+      <InterviewSession interviewId={interview.id} planning={interview.planning} />
     </AppShell>
   );
 }

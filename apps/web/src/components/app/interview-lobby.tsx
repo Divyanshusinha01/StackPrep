@@ -36,13 +36,14 @@ function CheckItem({ ok, icon, label, hint }: { ok: boolean; icon: React.ReactNo
   );
 }
 
-export function InterviewLobby({ planning }: { planning: InterviewPlanning | null }) {
+export function InterviewLobby({ planning, onEnter }: { planning: InterviewPlanning | null; onEnter: () => void }) {
   const { videoRef, meterRef, phase, error, cameraOk, micOk, start, onVideoLoaded } = useDeviceCheck();
   const preparing = planning === null || planning.state === "queued" || planning.state === "running";
   const planReady = planning?.state === "succeeded";
   usePollWhile(preparing);
 
   const devicesOk = cameraOk && micOk;
+  const canEnter = devicesOk && planReady;
 
   return (
     <div className="mt-6 grid gap-6 md:grid-cols-[minmax(0,1fr)_18rem]">
@@ -108,7 +109,7 @@ export function InterviewLobby({ planning }: { planning: InterviewPlanning | nul
           ) : null}
         </section>
 
-        <Button disabled aria-disabled size="lg">
+        <Button disabled={!canEnter} onClick={onEnter} size="lg">
           Enter interview
         </Button>
         <p className="text-xs text-muted-foreground">
@@ -117,7 +118,7 @@ export function InterviewLobby({ planning }: { planning: InterviewPlanning | nul
             : preparing
               ? "Preparing… you can enter once the plan is ready."
               : planReady
-                ? "Ready. The live interview is not available yet."
+                ? "Ready. The interviewer will speak first; answer out loud."
                 : "This interview could not be prepared."}
         </p>
       </aside>

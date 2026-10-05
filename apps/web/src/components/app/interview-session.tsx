@@ -1,0 +1,46 @@
+"use client";
+
+import { useEffect, useState } from "react";
+import type { InterviewPlanning } from "@stackprep/shared";
+import { InterviewLobby } from "@/components/app/interview-lobby";
+import { InterviewRoom } from "@/components/app/interview-room";
+import { useRealtimeInterview } from "@/components/app/use-realtime-interview";
+
+const PREPARING_RETRY_MS = 4000;
+
+/** Lobby until the candidate enters, then the live room. */
+export function InterviewSession({ interviewId, planning }: { interviewId: string; planning: InterviewPlanning | null }) {
+  const [entered, setEntered] = useState(false);
+  const { status, error, timeUp, clock, transcript, start } = useRealtimeInterview(interviewId);
+
+  const preparing = entered && status === "error" && error === "interview_preparing";
+  useEffect(() => {
+    if (!preparing) {
+      return;
+    }
+    const id = window.setTimeout(() => void start(), PREPARING_RETRY_MS);
+    return () => window.clearTimeout(id);
+  }, [preparing, start]);
+
+  if (!entered) {
+    return (
+      <InterviewLobby
+        planning={planning}
+        onEnter={() => {
+          setEntered(true);
+          void start();
+        }}
+      />
+    );
+  }
+  return (
+    <InterviewRoom
+      status={status}
+      error={error}
+      timeUp={timeUp}
+      clock={clock}
+      transcript={transcript}
+      onReconnect={() => void start()}
+    />
+  );
+}
