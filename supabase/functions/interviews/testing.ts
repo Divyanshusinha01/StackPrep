@@ -1,4 +1,5 @@
 import type { EvidenceExaminedPayload, IntegritySignalKind } from "@stackprep/shared";
+import type { AiUsageEntry } from "../_shared/ai-usage.ts";
 import { GithubUnexpectedResponseError, type GithubApp, type RepositoryTreeEntry } from "../_shared/github-app.ts";
 import { StaleInterviewStateError } from "../_shared/interview-state.ts";
 import type { JobEventName, JobEvents, JobQueue } from "../_shared/jobs.ts";
@@ -28,6 +29,8 @@ export interface FakeToolStore extends ToolStore {
   records: ToolCallRecord[];
   evidence: EvidenceExaminedPayload[];
   evaluations: EvaluationRecord[];
+  /** Rows passed to recordAiUsage, deduplicated by idempotency key like the table. */
+  usage: AiUsageEntry[];
   completions: ("time_limit" | null)[];
   stateUpdates: InterviewStateSnapshot[];
   memory: MemoryEntry[];
@@ -47,6 +50,7 @@ export function createFakeToolStore(init: Partial<Pick<FakeToolStore, "memory" |
     records: [],
     evidence: [],
     evaluations: [],
+    usage: [],
     completions: [],
     stateUpdates: [],
     memory: init.memory ?? [],
@@ -57,6 +61,13 @@ export function createFakeToolStore(init: Partial<Pick<FakeToolStore, "memory" |
     recentReads: 0,
     status: "in_progress",
 
+    recordAiUsage(entry) {
+      if (store.usage.some((u) => u.idempotencyKey === entry.idempotencyKey)) {
+        return Promise.resolve("duplicate");
+      }
+      store.usage.push(entry);
+      return Promise.resolve("created");
+    },
     findToolCall(_interviewId, callId) {
       const record = store.records.find((r) => r.callId === callId);
       return Promise.resolve(record ? { tool: record.tool, args: record.args, result: record.result ?? null } : null);

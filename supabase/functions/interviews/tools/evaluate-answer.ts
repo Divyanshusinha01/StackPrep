@@ -2,6 +2,7 @@ import type { CoverageMap, EvaluateAnswerInput, EvaluateAnswerOutput, InterviewP
 import { z } from "zod";
 import { scrubSecrets } from "../../_shared/analysis/scrub.ts";
 import { AIError } from "../../_shared/ai/provider.ts";
+import { providerTokens } from "../../_shared/ai-usage.ts";
 import { parseState, raiseStatus, updateCoverage } from "./coverage.ts";
 import { type EvaluationRecord, failed, type MemoryEntry, type ToolContext, type ToolOutcome, type TranscriptMessage } from "./types.ts";
 
@@ -179,6 +180,16 @@ export async function evaluateAnswer(ctx: ToolContext, input: EvaluateAnswerInpu
       input_tokens: usage.input_tokens,
       cached_input_tokens: usage.cached_input_tokens,
       output_tokens: usage.output_tokens,
+    });
+    await store.recordAiUsage({
+      userId: ctx.userId,
+      workspaceId: interview.workspace_id,
+      interviewId: interview.id,
+      task: "evaluation",
+      model: ctx.evaluationModel,
+      source: "provider",
+      tokens: providerTokens(usage),
+      idempotencyKey: `evaluation:${interview.id}:${crypto.randomUUID()}`,
     });
   } catch (err) {
     if (!(err instanceof AIError)) {

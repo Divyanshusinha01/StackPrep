@@ -1,6 +1,6 @@
 import type { IntegritySignalKind } from "@stackprep/shared";
 import { z } from "zod";
-import type { AIProvider } from "../_shared/ai/provider.ts";
+import type { AIProvider, AIUsage } from "../_shared/ai/provider.ts";
 
 const MAX_OUTPUT_TOKENS = 200;
 
@@ -62,6 +62,8 @@ export interface FrameAnalysisContext {
   ai: AIProvider;
   model: string;
   log: (entry: Record<string, string | number | boolean>) => void;
+  /** Persists the call's usage. Must not throw. */
+  recordUsage: (usage: AIUsage) => Promise<unknown>;
 }
 
 /**
@@ -85,5 +87,6 @@ export async function analyzeFrame(ctx: FrameAnalysisContext, image: string): Pr
     cached_input_tokens: usage.cached_input_tokens,
     output_tokens: usage.output_tokens,
   });
+  await ctx.recordUsage(usage);
   return output.signal && output.kind !== "none" ? output.kind : null;
 }

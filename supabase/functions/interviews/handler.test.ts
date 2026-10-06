@@ -1,5 +1,6 @@
-import { assert, assertEquals } from "@std/assert";
+import { assert, assertAlmostEquals, assertEquals } from "@std/assert";
 import {
+  AI_USAGE_MAX_TOKENS_PER_EVENT,
   apiErrorSchema,
   integrityFrameResponseSchema,
   interviewEventAckSchema,
@@ -12,6 +13,7 @@ import {
 } from "@stackprep/shared";
 import type { SupabaseClient, User } from "@supabase/supabase-js";
 import { AIUnavailableError, type StructuredRequest } from "../_shared/ai/provider.ts";
+import { aiUsageCost } from "../_shared/ai-usage.ts";
 import type { Authenticate } from "../_shared/auth.ts";
 import { CREDENTIAL_TTL_SECONDS, createRealtimeClient } from "../_shared/realtime/openai-realtime.ts";
 import { createFakeAIProvider } from "../_shared/testing.ts";
@@ -37,6 +39,7 @@ import {
   type VoiceEventRecord,
   voiceSecondsUsed,
 } from "./handler.ts";
+import type { VoiceSegmentEvent } from "./voice-usage.ts";
 
 const userId = "aaaaaaaa-0000-4000-8000-000000000001";
 const webOrigin = "http://localhost:3000";
@@ -75,6 +78,7 @@ interface Setup {
   vision?: (request: StructuredRequest<unknown>) => unknown;
   messages?: TranscriptMessage[];
   state?: InterviewStateSnapshot | null;
+  segmentEvents?: VoiceSegmentEvent[];
 }
 
 function at(offsetSeconds: number): string {
@@ -94,6 +98,7 @@ function setup({
   vision = () => ({ signal: false, kind: "none" }),
   messages = [],
   state = null,
+  segmentEvents = [],
 }: Setup = {}) {
   const clock = { now: NOW };
   const rlsClient = { rls: true } as unknown as SupabaseClient;
@@ -117,8 +122,10 @@ function setup({
   const reportJobs = createFakeReportJobs();
   const integrity = createFakeIntegrityStore(() => clock.now);
   const ai = createFakeAIProvider(vision);
+  const toolStore = createFakeToolStore({ messages, state });
   const store: InterviewStore = {
-    ...createFakeToolStore({ messages, state }),
+    ...toolStore,
+    listVoiceSegmentEvents: () => Promise.resolve(segmentEvents),
     reserveIntegrityCheck: (...args) => integrity.reserveIntegrityCheck(...args),
     recordIntegritySignal: (...args) => integrity.recordIntegritySignal(...args),
     getPlan: (id) => {
@@ -163,7 +170,7 @@ function setup({
     reportJobs,
     now: () => clock.now,
   });
-  return { handler, openaiRequests, turns, voiceEvents, jobs, reportJobs, integrity, ai, clock };
+  return { handler, openaiRequests, turns, voiceEvents, jobs, reportJobs, integrity, ai, clock, usage: toolStore.usage };
 }
 
 function post(path = `/interviews/${INTERVIEW_ID}/realtime/session`, auth = "Bearer valid", method = "POST") {
@@ -517,6 +524,133 @@ Deno.test("events: voice events get a server event_sequence and keep the client 
   );
 });
 
+// Voice usage ----------------------------------------------------------------------------------
+
+const CONNECTED_ID = "eeeeeeee-0000-4000-8000-000000000001";
+const USAGE_EVENT_ID = "bbbbbbbb-0000-4000-8000-000000000009";
+
+const usageEvent = {
+  type: "voice_usage",
+  client_event_id: USAGE_EVENT_ID,
+  response_id: "resp_1",
+  input_tokens: 1_200,
+  cached_input_tokens: 5_000,
+  output_tokens: 80,
+  audio_input_tokens: 2_000_000,
+  audio_cached_input_tokens: 0,
+  audio_output_tokens: 900,
+  occurred_at: NOW.toISOString(),
+};
+
+Deno.test("events: a disconnect writes duration estimates for the segment it closes", async () => {
+  const segmentEvents: VoiceSegmentEvent[] = [
+    { id: CONNECTED_ID, sequence: 6, event_type: "connected", occurred_at: at(-120) },
+    { id: "eeeeeeee-0000-4000-8000-000000000002", sequence: 7, event_type: "disconnected", occurred_at: at(0) },
+  ];
+  const { handler, usage } = setup({ segmentEvents, voiceResult: { status: "created", sequence: 7 } });
+  const event = { type: "disconnected", client_event_id: EVENT_ID, occurred_at: NOW.toISOString() };
+  assertEquals((await handler(postEvent(event))).status, 201);
+  assertEquals(usage.map(({ idempotencyKey: _, ...u }) => u), [
+    {
+      userId,
+      workspaceId: WORKSPACE_ID,
+      interviewId: INTERVIEW_ID,
+      task: "voice",
+      source: "duration_estimate",
+      audioSeconds: 120,
+      voiceSegmentEventId: CONNECTED_ID,
+      model: "gpt-realtime-2.1-mini",
+      tokens: { audio_input_tokens: 1_200, audio_output_tokens: 1_200 },
+    },
+    {
+      userId,
+      workspaceId: WORKSPACE_ID,
+      interviewId: INTERVIEW_ID,
+      task: "voice",
+      source: "duration_estimate",
+      audioSeconds: 120,
+      voiceSegmentEventId: CONNECTED_ID,
+      model: "gpt-4o-mini-transcribe",
+    },
+  ]);
+  assertAlmostEquals(aiUsageCost(usage[1])!, 0.006, 1e-12);
+
+  // Processing the same close again (a retried disconnect) estimates nothing new.
+  await handler(postEvent(event));
+  assertEquals(usage.length, 2);
+});
+
+Deno.test("events: pause and resume never write usage", async () => {
+  const segmentEvents: VoiceSegmentEvent[] = [{ id: CONNECTED_ID, sequence: 6, event_type: "connected", occurred_at: at(-120) }];
+  const { handler, usage } = setup({ segmentEvents, voiceResult: { status: "created", sequence: 7 } });
+  await handler(postEvent({ type: "pause", reason: "network", client_event_id: EVENT_ID, occurred_at: NOW.toISOString() }));
+  assertEquals(usage, []);
+});
+
+Deno.test("events: relayed voice usage is stored as client-reported for the open segment, clamped", async () => {
+  const segmentEvents: VoiceSegmentEvent[] = [{ id: CONNECTED_ID, sequence: 6, event_type: "connected", occurred_at: at(-60) }];
+  const { handler, usage, voiceEvents } = setup({ segmentEvents });
+  const res = await handler(postEvent(usageEvent));
+  assertEquals(res.status, 201);
+  assertEquals(interviewEventAckSchema.parse(await res.json()), {
+    type: "voice_usage",
+    status: "created",
+    client_event_id: USAGE_EVENT_ID,
+  });
+  assertEquals(voiceEvents, [], "usage is not an interview event");
+  assertEquals(usage, [{
+    userId,
+    workspaceId: WORKSPACE_ID,
+    interviewId: INTERVIEW_ID,
+    task: "voice",
+    model: "gpt-realtime-2.1-mini",
+    source: "client_reported",
+    tokens: {
+      input_tokens: 1_200,
+      cached_input_tokens: 1_200,
+      output_tokens: 80,
+      audio_input_tokens: AI_USAGE_MAX_TOKENS_PER_EVENT,
+      audio_cached_input_tokens: 0,
+      audio_output_tokens: 900,
+    },
+    voiceSegmentEventId: CONNECTED_ID,
+    idempotencyKey: `voice_usage:${INTERVIEW_ID}:${USAGE_EVENT_ID}`,
+  }]);
+
+  const again = await handler(postEvent(usageEvent));
+  assertEquals(again.status, 200);
+  assertEquals(interviewEventAckSchema.parse(await again.json()).status, "duplicate");
+  assertEquals(usage.length, 1);
+});
+
+Deno.test("events: relayed voice usage without an open segment is rejected", async () => {
+  for (const segmentEvents of [
+    [],
+    [
+      { id: CONNECTED_ID, sequence: 6, event_type: "connected", occurred_at: at(-60) },
+      { id: "eeeeeeee-0000-4000-8000-000000000002", sequence: 7, event_type: "disconnected", occurred_at: at(-1) },
+    ],
+  ] as VoiceSegmentEvent[][]) {
+    const { handler, usage } = setup({ segmentEvents });
+    await expectError(await handler(postEvent(usageEvent)), 409, "voice_not_connected");
+    assertEquals(usage, []);
+  }
+});
+
+Deno.test("events: malformed voice usage is rejected", async () => {
+  const segmentEvents: VoiceSegmentEvent[] = [{ id: CONNECTED_ID, sequence: 6, event_type: "connected", occurred_at: at(-60) }];
+  const { handler, usage } = setup({ segmentEvents });
+  for (const body of [
+    { ...usageEvent, input_tokens: -1 },
+    { ...usageEvent, output_tokens: 1.5 },
+    { ...usageEvent, response_id: "" },
+    { ...usageEvent, estimated_cost_usd: 0 },
+  ]) {
+    await expectError(await handler(postEvent(body)), 400, "invalid_request");
+  }
+  assertEquals(usage, []);
+});
+
 // GET /interviews/:id/report and POST /interviews/:id/report/retry ---------------------------------
 
 const completed: InterviewRow = { ...interviewRow, status: "completed" };
@@ -709,12 +843,29 @@ Deno.test("frames: auth, ownership, method, and body are checked before reservin
 });
 
 Deno.test("frames: a clear frame is analyzed at low detail with the vision model and resolved", async () => {
-  const { handler, integrity, ai } = setup({ interview: inProgress });
+  const { handler, integrity, ai, usage } = setup({ interview: inProgress });
   assertEquals(await frameBody(await handler(postFrame({ image: FRAME }))), { status: "ok" });
   assertEquals(ai.calls.length, 1);
   assertEquals([ai.calls[0].model, ai.calls[0].images], ["gpt-vision", [FRAME]]);
   assertEquals([...integrity.checks.values()], [{ status: "clear", warningNumber: null }]);
   assertEquals(integrity.warnings, []);
+  assertEquals(usage, [{
+    userId,
+    workspaceId: WORKSPACE_ID,
+    interviewId: INTERVIEW_ID,
+    task: "vision",
+    model: "gpt-vision",
+    source: "provider",
+    tokens: { input_tokens: 100, cached_input_tokens: 0, output_tokens: 50 },
+    idempotencyKey: `vision:${[...integrity.checks.keys()][0]}`,
+  }]);
+  assertAlmostEquals(aiUsageCost({ ...usage[0], model: "gpt-5.6-luna" })!, (100 * 0.2 + 50 * 1.2) / 1_000_000, 1e-15);
+});
+
+Deno.test("frames: a vision failure records no usage", async () => {
+  const { handler, usage } = setup({ interview: inProgress, vision: () => new AIUnavailableError(503) });
+  await captureAllLogs(() => handler(postFrame({ image: FRAME })));
+  assertEquals(usage, []);
 });
 
 Deno.test("frames: signals 1 and 2 warn, the third terminates", async () => {

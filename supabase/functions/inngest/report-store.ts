@@ -5,6 +5,7 @@ import {
   type ReportErrorCode,
 } from "@stackprep/shared";
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { type AiUsageRecorder, createAiUsageRecorder } from "../_shared/ai-usage.ts";
 import { createPlanningStore, type PlanningMemory, type PriorOutcome } from "./planning-store.ts";
 
 const MAX_MESSAGES = 400;
@@ -16,6 +17,7 @@ export type ReportJobStatus = "queued" | "running" | "succeeded" | "failed";
 export interface ReportTarget {
   job_id: string;
   job_status: ReportJobStatus;
+  user_id: string;
   interview_id: string;
   workspace_id: string;
   interview_number: number;
@@ -66,7 +68,7 @@ export interface ReportContext {
 }
 
 /** Service-role persistence for the report run. Every call is keyed by job or interview id. */
-export interface ReportStore {
+export interface ReportStore extends AiUsageRecorder {
   /** Job, interview, and repository, resolved together; null if any is missing. */
   loadReportTarget(jobId: string): Promise<ReportTarget | null>;
   loadReportContext(target: ReportTarget): Promise<ReportContext>;
@@ -90,10 +92,12 @@ export function createReportStore(serviceClient: SupabaseClient): ReportStore {
   const planning = createPlanningStore(serviceClient);
 
   return {
+    ...createAiUsageRecorder(serviceClient),
+
     async loadReportTarget(jobId) {
       const { data: job, error } = await serviceClient
         .from("jobs")
-        .select("id, status, interview_id, workspace_id")
+        .select("id, status, user_id, interview_id, workspace_id")
         .eq("id", jobId)
         .eq("type", "report_generation")
         .maybeSingle();
@@ -119,6 +123,7 @@ export function createReportStore(serviceClient: SupabaseClient): ReportStore {
       return {
         job_id: job.id,
         job_status: job.status,
+        user_id: job.user_id,
         interview_id: interview.data.id,
         workspace_id: interview.data.workspace_id,
         interview_number: interview.data.interview_number,

@@ -17,6 +17,7 @@ import {
   AIRequestError,
   AIUnavailableError,
 } from "../_shared/ai/provider.ts";
+import { providerTokens } from "../_shared/ai-usage.ts";
 import type {
   DeepAnalysisMemoryRow,
   DeepAnalysisPayload,
@@ -337,6 +338,17 @@ export async function runDeepAnalysis(
         input_tokens: usage.input_tokens,
         cached_input_tokens: usage.cached_input_tokens,
         output_tokens: usage.output_tokens,
+      });
+      // Keyed per call: a retried step calls the model again, which is a real second spend.
+      await deps.store.recordAiUsage({
+        userId: target.user_id,
+        workspaceId: event.workspace_id,
+        interviewId: null,
+        task: "deep_analysis",
+        model: deps.model,
+        source: "provider",
+        tokens: providerTokens(usage),
+        idempotencyKey: `deep_analysis:${event.job_id}:${runId}:${crypto.randomUUID()}`,
       });
       return validateDeepAnalysis(output, memory.evidence_paths);
     }));

@@ -14,6 +14,7 @@ import {
   AIRequestError,
   AIUnavailableError,
 } from "../_shared/ai/provider.ts";
+import { providerTokens } from "../_shared/ai-usage.ts";
 import type { StepRunner } from "./function.ts";
 import { INITIAL_STATE_VERSION, type PlanningMemory, type PlanningStore, type PlanningTarget, type PriorOutcome } from "./planning-store.ts";
 
@@ -291,6 +292,17 @@ export async function runInterviewPlanning(
         input_tokens: usage.input_tokens,
         cached_input_tokens: usage.cached_input_tokens,
         output_tokens: usage.output_tokens,
+      });
+      // Keyed per call: a retried step calls the model again, which is a real second spend.
+      await deps.store.recordAiUsage({
+        userId: target.user_id,
+        workspaceId: event.workspace_id,
+        interviewId: event.interview_id,
+        task: "planning",
+        model: deps.model,
+        source: "provider",
+        tokens: providerTokens(usage),
+        idempotencyKey: `planning:${event.job_id}:${runId}:${crypto.randomUUID()}`,
       });
       return normalizePlan(output);
     }));

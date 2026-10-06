@@ -1,5 +1,5 @@
 import { assert, assertEquals, assertInstanceOf, assertRejects } from "@std/assert";
-import { AIUnavailableError } from "../_shared/ai/provider.ts";
+import { type AIUsage, AIUnavailableError } from "../_shared/ai/provider.ts";
 import { createFakeAIProvider } from "../_shared/testing.ts";
 import { analyzeFrame, INTEGRITY_SYSTEM_PROMPT, INTEGRITY_WARNING_MESSAGES } from "./integrity.ts";
 
@@ -8,11 +8,18 @@ const IMAGE = "data:image/jpeg;base64,/9j/4AAQSkZJRg==";
 function context(respond: () => unknown) {
   const ai = createFakeAIProvider(respond);
   const logs: Record<string, string | number | boolean>[] = [];
-  return { ai, logs, ctx: { ai, model: "gpt-vision", log: (entry: Record<string, string | number | boolean>) => logs.push(entry) } };
+  const usage: AIUsage[] = [];
+  const ctx = {
+    ai,
+    model: "gpt-vision",
+    log: (entry: Record<string, string | number | boolean>) => logs.push(entry),
+    recordUsage: (u: AIUsage) => Promise.resolve(usage.push(u)),
+  };
+  return { ai, logs, usage, ctx };
 }
 
 Deno.test("sends the frame as an image with a fixed prompt and logs usage only", async () => {
-  const { ai, logs, ctx } = context(() => ({ signal: true, kind: "looking_away" }));
+  const { ai, logs, usage, ctx } = context(() => ({ signal: true, kind: "looking_away" }));
   assertEquals(await analyzeFrame(ctx, IMAGE), "looking_away");
   assertEquals(ai.calls.length, 1);
   const [call] = ai.calls;
@@ -22,6 +29,13 @@ Deno.test("sends the frame as an image with a fixed prompt and logs usage only",
   assert(!call.input.includes("base64"), "the frame is never part of the text input");
   assertEquals(logs, [{ event: "integrity_ai_usage", model: "gpt-vision", input_tokens: 100, cached_input_tokens: 0, output_tokens: 50 }]);
   assert(!JSON.stringify(logs).includes("base64"));
+  assertEquals(usage, [{ input_tokens: 100, cached_input_tokens: 0, output_tokens: 50 }]);
+});
+
+Deno.test("a failed call records no usage", async () => {
+  const { usage, ctx } = context(() => new AIUnavailableError(503));
+  await assertRejects(() => analyzeFrame(ctx, IMAGE));
+  assertEquals(usage, []);
 });
 
 Deno.test("no signal, or an inconsistent kind, means no signal", async () => {

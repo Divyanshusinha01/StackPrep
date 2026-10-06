@@ -1,5 +1,6 @@
 import type { DeepAnalysisErrorCode, DeepAnalysisResult } from "@stackprep/shared";
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { type AiUsageRecorder, createAiUsageRecorder } from "../_shared/ai-usage.ts";
 
 const MAX_FILE_SUMMARIES = 30;
 
@@ -8,6 +9,7 @@ export type DeepAnalysisJobStatus = "queued" | "running" | "succeeded" | "failed
 export interface DeepAnalysisTarget {
   job_id: string;
   job_status: DeepAnalysisJobStatus;
+  user_id: string;
   workspace_id: string;
   /** The analyzed commit the job is pinned to. */
   commit_sha: string | null;
@@ -37,7 +39,7 @@ export interface DeepAnalysisPayload {
 }
 
 /** Service-role persistence for the deep analysis run. Every call is keyed by job and workspace id. */
-export interface DeepAnalysisStore {
+export interface DeepAnalysisStore extends AiUsageRecorder {
   loadTarget(jobId: string, workspaceId: string): Promise<DeepAnalysisTarget | null>;
   loadMemory(workspaceId: string, commitSha: string): Promise<DeepAnalysisMemory>;
   markStage(jobId: string, progress: number, runId: string): Promise<void>;
@@ -63,10 +65,12 @@ function evidencePaths(structured: unknown): string[] {
 
 export function createDeepAnalysisStore(serviceClient: SupabaseClient): DeepAnalysisStore {
   return {
+    ...createAiUsageRecorder(serviceClient),
+
     async loadTarget(jobId, workspaceId) {
       const { data: job, error } = await serviceClient
         .from("jobs")
-        .select("id, status, workspace_id, repository_commit_sha")
+        .select("id, status, user_id, workspace_id, repository_commit_sha")
         .eq("id", jobId)
         .eq("workspace_id", workspaceId)
         .eq("type", "deep_analysis")
@@ -91,6 +95,7 @@ export function createDeepAnalysisStore(serviceClient: SupabaseClient): DeepAnal
       return {
         job_id: job.id,
         job_status: job.status,
+        user_id: job.user_id,
         workspace_id: job.workspace_id,
         commit_sha: job.repository_commit_sha,
         already_analyzed: alreadyAnalyzed,

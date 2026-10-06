@@ -1,4 +1,4 @@
-import { assert, assertEquals, assertInstanceOf, assertRejects, assertThrows } from "@std/assert";
+import { assert, assertAlmostEquals, assertEquals, assertInstanceOf, assertRejects, assertThrows } from "@std/assert";
 import { DEEP_ANALYSIS_LIMITS, type DeepAnalysisOutput } from "@stackprep/shared";
 import { NonRetriableError, RetryAfterError } from "inngest";
 import {
@@ -7,6 +7,7 @@ import {
   AIRequestError,
   AIUnavailableError,
 } from "../_shared/ai/provider.ts";
+import { type AiUsageEntry, aiUsageCost } from "../_shared/ai-usage.ts";
 import { createFakeAIProvider } from "../_shared/testing.ts";
 import {
   buildDeepAnalysisInput,
@@ -32,6 +33,7 @@ import type { StepRunner } from "./function.ts";
 
 const SHA = "a".repeat(40);
 const OTHER_SHA = "b".repeat(40);
+const USER_ID = "55555555-0000-4000-8000-000000000005";
 const event = {
   workspace_id: "22222222-0000-4000-8000-000000000002",
   job_id: "44444444-0000-4000-8000-000000000004",
@@ -45,6 +47,7 @@ function target(extra: Partial<DeepAnalysisTarget> = {}): DeepAnalysisTarget {
   return {
     job_id: event.job_id,
     job_status: "queued",
+    user_id: USER_ID,
     workspace_id: event.workspace_id,
     commit_sha: SHA,
     already_analyzed: false,
@@ -100,8 +103,13 @@ function setup({
   const saved: DeepAnalysisPayload[] = [];
   const failures: [string, string][] = [];
   const logs: string[] = [];
+  const usage: AiUsageEntry[] = [];
 
   const store: DeepAnalysisStore = {
+    recordAiUsage: (entry) => {
+      usage.push(entry);
+      return Promise.resolve("created");
+    },
     loadTarget: (jobId, workspaceId) => {
       calls.push(`target:${jobId}:${workspaceId}`);
       return Promise.resolve(t);
@@ -131,7 +139,7 @@ function setup({
 
   const provider = createFakeAIProvider(() => ai());
   const deps: DeepAnalysisDeps = { ai: provider, model: "gpt-test", store, log: (line) => logs.push(line) };
-  return { deps, provider, calls, saved, failures, logs };
+  return { deps, provider, calls, saved, failures, logs, usage };
 }
 
 /** Records step outputs; memoizes completed steps across runs like Inngest's durable replay. */
@@ -152,7 +160,7 @@ function stepRunner(memo = new Map<string, unknown>()) {
 }
 
 Deno.test("a successful run loads memory, analyzes, and saves the normalized result", async () => {
-  const { deps, provider, calls, saved, logs } = setup();
+  const { deps, provider, calls, saved, logs, usage: recorded } = setup();
   const { step, order } = stepRunner();
   const result = await runDeepAnalysis(deps, { data: event, runId: "run-1", step });
 
@@ -184,6 +192,28 @@ Deno.test("a successful run loads memory, analyzes, and saves the normalized res
   const usage = JSON.parse(logs.find((l) => l.includes("deep_analysis_ai_usage"))!);
   assertEquals([usage.model, usage.input_tokens, usage.output_tokens], ["gpt-test", 100, 50]);
   assertEquals(JSON.parse(logs.at(-1)!).event, "deep_analysis_completed");
+
+  assertEquals(recorded.length, 1);
+  const { idempotencyKey, ...row } = recorded[0];
+  assertEquals(row, {
+    userId: USER_ID,
+    workspaceId: event.workspace_id,
+    interviewId: null,
+    task: "deep_analysis",
+    model: "gpt-test",
+    source: "provider",
+    tokens: { input_tokens: 100, cached_input_tokens: 0, output_tokens: 50 },
+  });
+  assert(idempotencyKey.startsWith(`deep_analysis:${event.job_id}:run-1:`));
+  assertAlmostEquals(aiUsageCost({ ...row, model: "gpt-5.6-terra" })!, (100 * 2 + 50 * 12) / 1_000_000, 1e-15);
+});
+
+Deno.test("a failed usage write does not fail the analysis", async () => {
+  const { deps, saved } = setup();
+  deps.store.recordAiUsage = () => Promise.resolve("failed");
+  const result = await runDeepAnalysis(deps, { data: event, runId: "r", step: stepRunner().step });
+  assertEquals(result.outcome, "analyzed");
+  assertEquals(saved.length, 1);
 });
 
 Deno.test("a re-run for an already succeeded job does nothing", async () => {
