@@ -53,6 +53,11 @@ export interface TranscriptOutbox {
   /** Sends now, skipping any backoff. Resolves once the queue is empty or a send has failed. */
   flush(): Promise<void>;
   pending(): readonly InterviewEventRequest[];
+  /**
+   * The server reported this item as stored (e.g. via the event stream after a lost response):
+   * drop it without resending. An item that is being sent is left to its own ack. True if removed.
+   */
+  confirm(clientEventId: string): boolean;
   /** Stops sending. Unsent items stay persisted for the next outbox on this key. */
   dispose(): void;
 }
@@ -102,6 +107,7 @@ export function createTranscriptOutbox({
 }: OutboxOptions): TranscriptOutbox {
   const state = load(storage, storageKey);
   let running = false;
+  let inFlight: InterviewEventRequest | null = null;
   let disposed = false;
   let attempt = 0;
   let backoff: { timer: ReturnType<typeof setTimeout>; resolve: () => void } | null = null;
@@ -161,10 +167,13 @@ export function createTranscriptOutbox({
       while (state.queue.length > 0 && !disposed) {
         const item = state.queue[0];
         let result: SendResult;
+        inFlight = item;
         try {
           result = await send(item);
         } catch {
           result = { ok: false, retryable: true, code: "network_error" };
+        } finally {
+          inFlight = null;
         }
         if (disposed) {
           return;
@@ -235,6 +244,20 @@ export function createTranscriptOutbox({
     },
     pending() {
       return [...state.queue];
+    },
+    confirm(clientEventId) {
+      const index = state.queue.findIndex((item) => item.client_event_id === clientEventId);
+      if (index === -1 || state.queue[index] === inFlight) {
+        return false;
+      }
+      state.queue.splice(index, 1);
+      persist();
+      if (index === 0) {
+        // The head was waiting out a backoff; move on to the next item now.
+        attempt = 0;
+        wake();
+      }
+      return true;
     },
     dispose() {
       disposed = true;

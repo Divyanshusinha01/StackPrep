@@ -440,13 +440,14 @@ Deno.test("events: invalid bodies are rejected", async () => {
   assertEquals([turns.length, voiceEvents.length], [0, 0]);
 });
 
-Deno.test("events: only POST is allowed", async () => {
+Deno.test("events: only POST (record) and GET (stream) are allowed", async () => {
   const { handler } = setup();
   const res = await handler(new Request(`http://localhost:54321/functions/v1/interviews/${INTERVIEW_ID}/events`, {
-    method: "GET",
+    method: "DELETE",
     headers: { Authorization: "Bearer valid", Origin: webOrigin },
   }));
   await expectError(res, 405, "method_not_allowed");
+  assertEquals(res.headers.get("allow"), "POST, GET, OPTIONS");
 });
 
 Deno.test("events: a new turn is stored and acknowledged with the server-assigned turn_sequence", async () => {
