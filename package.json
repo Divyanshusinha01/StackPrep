@@ -21,6 +21,11 @@
     "typecheck": "pnpm -r typecheck",
     "lint": "pnpm -r lint",
     "test": "pnpm -r test",
+    "e2e:install": "pnpm --filter @stackprep/web e2e:install",
+    "e2e:stack:up": "supabase start && supabase functions serve --env-file supabase/functions/.env.e2e",
+    "e2e:stack:down": "supabase stop",
+    "test:e2e": "pnpm --filter @stackprep/web test:e2e",
+    "test:e2e:ui": "pnpm --filter @stackprep/web test:e2e:ui",
     "check": "pnpm typecheck && pnpm typecheck:functions && pnpm lint && pnpm test && pnpm test:functions && pnpm build"
   },
   "devDependencies": {

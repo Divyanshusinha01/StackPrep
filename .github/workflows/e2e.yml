@@ -1,0 +1,117 @@
+name: E2E
+
+on:
+  pull_request:
+    paths:
+      - apps/web/**
+      - packages/shared/**
+      - supabase/**
+      - package.json
+      - pnpm-lock.yaml
+      - .github/workflows/e2e.yml
+  push:
+    branches: [main]
+    paths:
+      - apps/web/**
+      - packages/shared/**
+      - supabase/**
+      - package.json
+      - pnpm-lock.yaml
+      - .github/workflows/e2e.yml
+  workflow_dispatch:
+
+concurrency:
+  group: e2e-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  e2e:
+    name: Playwright
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    env:
+      CI: true
+      # No repository secrets: keys come from the ephemeral local stack (`supabase status`), and every
+      # external credential is a dummy from supabase/functions/.env.e2e.example.
+      NEXT_TELEMETRY_DISABLED: 1
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Start Supabase
+        # Only Postgres, Auth, PostgREST, Kong, and the Edge runtime are needed.
+        run: pnpm exec supabase start -x studio,imgproxy,storage-api,realtime,postgres-meta,mailpit,logflare,vector,supavisor
+
+      - name: Serve Edge Functions
+        run: |
+          cp supabase/functions/.env.e2e.example supabase/functions/.env.e2e
+          nohup pnpm exec supabase functions serve --env-file supabase/functions/.env.e2e > functions.log 2>&1 &
+          for i in $(seq 1 60); do
+            if curl -fsS -H "Origin: http://localhost:3000" http://127.0.0.1:54321/functions/v1/health > /dev/null; then
+              exit 0
+            fi
+            sleep 2
+          done
+          echo "Edge Functions did not become healthy" >&2
+          cat functions.log >&2
+          exit 1
+
+      - name: Get Playwright version
+        id: playwright
+        run: echo "version=$(pnpm --filter @stackprep/web exec playwright --version | awk '{print $2}')" >> "$GITHUB_OUTPUT"
+
+      - name: Cache Playwright browsers
+        id: playwright-cache
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-${{ steps.playwright.outputs.version }}-chromium
+
+      - name: Install Playwright Chromium
+        if: steps.playwright-cache.outputs.cache-hit != 'true'
+        run: pnpm --filter @stackprep/web exec playwright install --with-deps chromium
+
+      - name: Install Playwright system dependencies
+        if: steps.playwright-cache.outputs.cache-hit == 'true'
+        run: pnpm --filter @stackprep/web exec playwright install-deps chromium
+
+      - name: Run E2E tests
+        # CI=true makes playwright.config.ts build the app and serve it with `next start`.
+        run: pnpm test:e2e
+
+      - name: Upload Playwright report
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report
+          path: apps/web/playwright-report/
+          retention-days: 14
+
+      - name: Upload test results
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-test-results
+          path: apps/web/test-results/
+          retention-days: 14
+          if-no-files-found: ignore
+
+      - name: Upload Edge Functions log
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: edge-functions-log
+          path: functions.log
+          retention-days: 14
