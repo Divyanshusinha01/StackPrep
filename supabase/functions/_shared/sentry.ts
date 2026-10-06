@@ -58,10 +58,15 @@ export function initSentry(functionName: string): void {
       databaseQueryData: false,
       stackFrameVariables: false,
     },
-    initialScope: { tags: { function: functionName } },
     beforeSend: scrubEvent,
   });
-  activeReporter = Sentry;
+  // `initialScope` tags do not reach captures in the Deno SDK, so the tag is added per capture. Sentry
+  // reserves `function` (stack frame function), so the key is `edge_function`.
+  activeReporter = {
+    captureException: (err, { tags }) =>
+      Sentry.captureException(err, { tags: { edge_function: functionName, ...tags } }),
+    flush: (timeoutMs) => Sentry.flush(timeoutMs),
+  };
 }
 
 export interface WithSentryOptions {
