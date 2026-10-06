@@ -1,4 +1,5 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { createAiUsageRecorder } from "../../_shared/ai-usage.ts";
 import { type InterviewStateRpcClient, updateInterviewState } from "../../_shared/interview-state.ts";
 import type { MemoryEntry, ToolCallRecordResult, ToolStore, TranscriptMessage } from "./types.ts";
 
@@ -24,6 +25,7 @@ export function createToolStore(serviceClient: SupabaseClient): ToolStore {
     serviceClient.from("interview_events").select("payload").eq("interview_id", interviewId).eq("event_type", "tool_call");
 
   return {
+    ...createAiUsageRecorder(serviceClient),
     async findToolCall(interviewId, callId) {
       const { data, error } = await toolCalls(interviewId).eq("payload->>call_id", callId).maybeSingle();
       check("load tool call", error);

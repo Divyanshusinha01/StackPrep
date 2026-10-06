@@ -14,6 +14,98 @@ export type Database = {
   }
   public: {
     Tables: {
+      ai_usage: {
+        Row: {
+          audio_cached_input_tokens: number
+          audio_input_tokens: number
+          audio_output_tokens: number
+          audio_seconds: number | null
+          cached_input_tokens: number
+          created_at: string
+          estimated_cost_usd: number | null
+          id: string
+          idempotency_key: string | null
+          input_tokens: number
+          interview_id: string | null
+          model: string
+          output_tokens: number
+          source: Database["public"]["Enums"]["ai_usage_source"]
+          task: Database["public"]["Enums"]["ai_task"]
+          user_id: string
+          voice_segment_event_id: string | null
+          workspace_id: string
+        }
+        Insert: {
+          audio_cached_input_tokens?: number
+          audio_input_tokens?: number
+          audio_output_tokens?: number
+          audio_seconds?: number | null
+          cached_input_tokens?: number
+          created_at?: string
+          estimated_cost_usd?: number | null
+          id?: string
+          idempotency_key?: string | null
+          input_tokens?: number
+          interview_id?: string | null
+          model: string
+          output_tokens?: number
+          source: Database["public"]["Enums"]["ai_usage_source"]
+          task: Database["public"]["Enums"]["ai_task"]
+          user_id: string
+          voice_segment_event_id?: string | null
+          workspace_id: string
+        }
+        Update: {
+          audio_cached_input_tokens?: number
+          audio_input_tokens?: number
+          audio_output_tokens?: number
+          audio_seconds?: number | null
+          cached_input_tokens?: number
+          created_at?: string
+          estimated_cost_usd?: number | null
+          id?: string
+          idempotency_key?: string | null
+          input_tokens?: number
+          interview_id?: string | null
+          model?: string
+          output_tokens?: number
+          source?: Database["public"]["Enums"]["ai_usage_source"]
+          task?: Database["public"]["Enums"]["ai_task"]
+          user_id?: string
+          voice_segment_event_id?: string | null
+          workspace_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "ai_usage_interview_id_workspace_id_user_id_fkey"
+            columns: ["interview_id", "workspace_id", "user_id"]
+            isOneToOne: false
+            referencedRelation: "interviews"
+            referencedColumns: ["id", "workspace_id", "user_id"]
+          },
+          {
+            foreignKeyName: "ai_usage_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ai_usage_voice_segment_event_id_interview_id_fkey"
+            columns: ["voice_segment_event_id", "interview_id"]
+            isOneToOne: false
+            referencedRelation: "interview_events"
+            referencedColumns: ["id", "interview_id"]
+          },
+          {
+            foreignKeyName: "ai_usage_workspace_id_user_id_fkey"
+            columns: ["workspace_id", "user_id"]
+            isOneToOne: false
+            referencedRelation: "workspaces"
+            referencedColumns: ["id", "user_id"]
+          },
+        ]
+      }
       evaluations: {
         Row: {
           category: string
@@ -640,7 +732,58 @@ export type Database = {
       }
     }
     Views: {
-      [_ in never]: never
+      ai_usage_effective: {
+        Row: {
+          audio_cached_input_tokens: number | null
+          audio_input_tokens: number | null
+          audio_output_tokens: number | null
+          audio_seconds: number | null
+          cached_input_tokens: number | null
+          created_at: string | null
+          estimated_cost_usd: number | null
+          id: string | null
+          input_tokens: number | null
+          interview_id: string | null
+          is_estimate: boolean | null
+          model: string | null
+          output_tokens: number | null
+          source: Database["public"]["Enums"]["ai_usage_source"] | null
+          task: Database["public"]["Enums"]["ai_task"] | null
+          user_id: string | null
+          voice_segment_event_id: string | null
+          workspace_id: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "ai_usage_interview_id_workspace_id_user_id_fkey"
+            columns: ["interview_id", "workspace_id", "user_id"]
+            isOneToOne: false
+            referencedRelation: "interviews"
+            referencedColumns: ["id", "workspace_id", "user_id"]
+          },
+          {
+            foreignKeyName: "ai_usage_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ai_usage_voice_segment_event_id_interview_id_fkey"
+            columns: ["voice_segment_event_id", "interview_id"]
+            isOneToOne: false
+            referencedRelation: "interview_events"
+            referencedColumns: ["id", "interview_id"]
+          },
+          {
+            foreignKeyName: "ai_usage_workspace_id_user_id_fkey"
+            columns: ["workspace_id", "user_id"]
+            isOneToOne: false
+            referencedRelation: "workspaces"
+            referencedColumns: ["id", "user_id"]
+          },
+        ]
+      }
     }
     Functions: {
       complete_interview: {
@@ -847,6 +990,15 @@ export type Database = {
       }
     }
     Enums: {
+      ai_task:
+        | "voice"
+        | "auxiliary"
+        | "deep_analysis"
+        | "planning"
+        | "evaluation"
+        | "report"
+        | "vision"
+      ai_usage_source: "provider" | "client_reported" | "duration_estimate"
       event_type:
         | "start"
         | "integrity_warning"
@@ -1007,6 +1159,16 @@ export type CompositeTypes<
 export const Constants = {
   public: {
     Enums: {
+      ai_task: [
+        "voice",
+        "auxiliary",
+        "deep_analysis",
+        "planning",
+        "evaluation",
+        "report",
+        "vision",
+      ],
+      ai_usage_source: ["provider", "client_reported", "duration_estimate"],
       event_type: [
         "start",
         "integrity_warning",

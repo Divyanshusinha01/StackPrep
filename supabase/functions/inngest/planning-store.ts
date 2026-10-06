@@ -6,6 +6,7 @@ import {
   type PlanningState,
 } from "@stackprep/shared";
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { type AiUsageRecorder, createAiUsageRecorder } from "../_shared/ai-usage.ts";
 import {
   type InterviewStateRpcClient,
   StaleInterviewStateError,
@@ -23,6 +24,7 @@ export interface PlanningTarget {
   job_id: string;
   job_status: PlanningState;
   job_commit_sha: string | null;
+  user_id: string;
   interview_id: string;
   workspace_id: string;
   interview_number: number;
@@ -56,7 +58,7 @@ export interface PriorOutcome {
 }
 
 /** Service-role persistence for the planning run. Every call is keyed by job or interview id. */
-export interface PlanningStore {
+export interface PlanningStore extends AiUsageRecorder {
   /** Job, interview, state version, and repository, resolved together; null if any is missing. */
   loadPlanningTarget(jobId: string): Promise<PlanningTarget | null>;
   /** Memory for exactly this commit; summary kinds first, then a bounded set of file summaries. */
@@ -97,12 +99,13 @@ export function createPlanningStore(serviceClient: SupabaseClient): PlanningStor
   }
 
   return {
+    ...createAiUsageRecorder(serviceClient),
     markPlanningSucceeded,
 
     async loadPlanningTarget(jobId) {
       const { data: job, error } = await serviceClient
         .from("jobs")
-        .select("id, status, repository_commit_sha, interview_id, workspace_id")
+        .select("id, status, repository_commit_sha, user_id, interview_id, workspace_id")
         .eq("id", jobId)
         .eq("type", "interview_planning")
         .maybeSingle();
@@ -131,6 +134,7 @@ export function createPlanningStore(serviceClient: SupabaseClient): PlanningStor
         job_id: job.id,
         job_status: job.status,
         job_commit_sha: job.repository_commit_sha,
+        user_id: job.user_id,
         interview_id: interview.data.id,
         workspace_id: interview.data.workspace_id,
         interview_number: interview.data.interview_number,

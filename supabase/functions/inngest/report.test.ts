@@ -1,7 +1,8 @@
-import { assert, assertEquals, assertInstanceOf, assertRejects } from "@std/assert";
+import { assert, assertAlmostEquals, assertEquals, assertInstanceOf, assertRejects } from "@std/assert";
 import type { InterviewReport } from "@stackprep/shared";
 import { NonRetriableError, RetryAfterError } from "inngest";
 import { AIInvalidOutputError, AIRateLimitedError, AIUnavailableError } from "../_shared/ai/provider.ts";
+import { type AiUsageEntry, aiUsageCost } from "../_shared/ai-usage.ts";
 import { createFakeAIProvider } from "../_shared/testing.ts";
 import type { StepRunner } from "./function.ts";
 import {
@@ -18,6 +19,7 @@ import type { ReportContext, ReportStore, ReportTarget } from "./report-store.ts
 
 const SHA = "a".repeat(40);
 const QUESTION_ID = "44444444-0000-4000-8000-000000000004";
+const USER_ID = "55555555-0000-4000-8000-000000000005";
 const event = {
   interview_id: "11111111-0000-4000-8000-000000000001",
   workspace_id: "22222222-0000-4000-8000-000000000002",
@@ -30,6 +32,7 @@ function target(extra: Partial<ReportTarget> = {}): ReportTarget {
   return {
     job_id: event.job_id,
     job_status: "queued",
+    user_id: USER_ID,
     interview_id: event.interview_id,
     workspace_id: event.workspace_id,
     interview_number: 2,
@@ -103,8 +106,13 @@ function setup({ target: t = target(), context: c = context(), ai = aiReport }: 
   const saved: InterviewReport[] = [];
   const failures: [string, string][] = [];
   const logs: string[] = [];
+  const usage: AiUsageEntry[] = [];
 
   const store: ReportStore = {
+    recordAiUsage: (entry) => {
+      usage.push(entry);
+      return Promise.resolve("created");
+    },
     loadReportTarget: (jobId) => {
       calls.push(`target:${jobId}`);
       return Promise.resolve(t);
@@ -130,7 +138,7 @@ function setup({ target: t = target(), context: c = context(), ai = aiReport }: 
 
   const provider = createFakeAIProvider(() => ai());
   const deps: ReportDeps = { ai: provider, model: "gpt-report", store, log: (line) => logs.push(line) };
-  return { deps, provider, calls, saved, failures, logs };
+  return { deps, provider, calls, saved, failures, logs, usage };
 }
 
 /** Records step outputs; memoizes completed steps across runs like Inngest's durable replay. */
@@ -151,7 +159,7 @@ function stepRunner(memo = new Map<string, unknown>()) {
 }
 
 Deno.test("a successful run verifies, loads stored data, generates, and saves the report", async () => {
-  const { deps, provider, calls, saved, logs } = setup();
+  const { deps, provider, calls, saved, logs, usage: recorded } = setup();
   const { step, order } = stepRunner();
   const result = await runInterviewReport(deps, { data: event, runId: "run-1", step });
 
@@ -181,6 +189,20 @@ Deno.test("a successful run verifies, loads stored data, generates, and saves th
   const usage = JSON.parse(logs.find((l) => l.includes("report_ai_usage"))!);
   assertEquals([usage.task, usage.model, usage.input_tokens, usage.output_tokens], ["report", "gpt-report", 100, 50]);
   assertEquals(JSON.parse(logs.at(-1)!).event, "report_completed");
+
+  assertEquals(recorded.length, 1);
+  const { idempotencyKey, ...row } = recorded[0];
+  assertEquals(row, {
+    userId: USER_ID,
+    workspaceId: event.workspace_id,
+    interviewId: event.interview_id,
+    task: "report",
+    model: "gpt-report",
+    source: "provider",
+    tokens: { input_tokens: 100, cached_input_tokens: 0, output_tokens: 50 },
+  });
+  assert(idempotencyKey.startsWith(`report:${event.job_id}:run-1:`));
+  assertAlmostEquals(aiUsageCost({ ...row, model: "gpt-5.6-terra" })!, (100 * 2 + 50 * 12) / 1_000_000, 1e-15);
 });
 
 Deno.test("the prompt forbids scores and revealing answers", () => {

@@ -10,6 +10,7 @@ import {
 } from "@stackprep/shared";
 import type { SupabaseClient, User } from "@supabase/supabase-js";
 import { AIUnavailableError, type StructuredRequest } from "../_shared/ai/provider.ts";
+import { aiUsageCost } from "../_shared/ai-usage.ts";
 import type { Authenticate } from "../_shared/auth.ts";
 import { GithubRateLimitedError, GithubUnavailableError } from "../_shared/github-app.ts";
 import { createRealtimeClient } from "../_shared/realtime/openai-realtime.ts";
@@ -165,6 +166,8 @@ function setup({
     ...store,
     getPlan: () => Promise.resolve(plan),
     listVoiceEvents: () => Promise.resolve(events),
+    listVoiceSegmentEvents: () =>
+      Promise.resolve(events.map((e, i) => ({ ...e, id: `event-${i + 1}`, sequence: i + 1 }))),
     getRepositoryContext: () => Promise.resolve(null),
     recordTranscriptTurn: () => Promise.reject(new Error("unused")),
     recordVoiceEvent: () => Promise.reject(new Error("unused")),
@@ -308,6 +311,22 @@ Deno.test("tool-calls: past the 35-minute cap the interview completes and the in
     name: "interview.report.requested",
     payload: { interview_id: INTERVIEW_ID, workspace_id: WORKSPACE_ID, job_id: "job-1" },
   }]);
+});
+
+Deno.test("tool-calls: the time limit closes the open voice segment with duration estimates", async () => {
+  const events: VoiceEvent[] = [{ event_type: "connected", occurred_at: at(-VOICE_LIMIT_SECONDS - 60) }];
+  const { handler, store } = setup({ events });
+  await expectToolError(await handler(toolCall("get_file", { path: "src/server.ts" })), "interview_not_active");
+  const seconds = VOICE_LIMIT_SECONDS + 60;
+  assertEquals(store.usage.map((u) => [u.model, u.source, u.voiceSegmentEventId, u.audioSeconds]), [
+    ["gpt-realtime-2.1-mini", "duration_estimate", "event-1", seconds],
+    ["gpt-4o-mini-transcribe", "duration_estimate", "event-1", seconds],
+  ]);
+
+  // A later limit hit for the same segment is a no-op.
+  store.status = "in_progress";
+  await expectToolError(await handler(toolCall("get_file", { path: "src/server.ts" })), "interview_not_active");
+  assertEquals(store.usage.length, 2);
 });
 
 Deno.test("tool-calls: a time-limit call that loses the completion race does not queue a report", async () => {
@@ -469,6 +488,20 @@ Deno.test("evaluate_answer: stores a hidden evaluation, updates coverage, and re
   assertEquals(ai.calls[0].model, "gpt-eval");
   assert(ai.calls[0].input.includes("<question>\nHow are auth tokens validated?\n</question>"));
   assert(ai.calls[0].input.includes("Candidate: Middleware checks the JWT signature."));
+
+  assertEquals(store.usage.length, 1);
+  const { idempotencyKey, ...usage } = store.usage[0];
+  assertEquals(usage, {
+    userId,
+    workspaceId: interviewRow.workspace_id,
+    interviewId: interviewRow.id,
+    task: "evaluation",
+    model: "gpt-eval",
+    source: "provider",
+    tokens: { input_tokens: 100, cached_input_tokens: 0, output_tokens: 50 },
+  });
+  assert(idempotencyKey.startsWith(`evaluation:${interviewRow.id}:`));
+  assertEquals(aiUsageCost({ ...usage, model: "gpt-5.6-terra" }), (100 * 2 + 50 * 12) / 1_000_000);
 });
 
 Deno.test("evaluate_answer: a replayed call returns the stored guidance without re-evaluating", async () => {
@@ -476,7 +509,7 @@ Deno.test("evaluate_answer: a replayed call returns the stored guidance without 
   const first = await result(await handler(toolCall("evaluate_answer", { answerSummary: "JWTs" }, { callId: "eval_1" })));
   const again = await result(await handler(toolCall("evaluate_answer", { answerSummary: "JWTs" }, { callId: "eval_1" })));
   assertEquals(again, first);
-  assertEquals([ai.calls.length, store.evaluations.length, store.stateUpdates.length], [1, 1, 1]);
+  assertEquals([ai.calls.length, store.evaluations.length, store.stateUpdates.length, store.usage.length], [1, 1, 1, 1]);
 });
 
 Deno.test("evaluate_answer: guidance maps through and empty focus is omitted", async () => {
@@ -503,7 +536,7 @@ Deno.test("evaluate_answer: AI failures return internal and leave nothing behind
   await quietly(async () => {
     await expectToolError(await handler(toolCall("evaluate_answer", { answerSummary: "x" }, { callId: "eval_fail" })), "internal");
   });
-  assertEquals([store.records.length, store.evaluations.length, store.stateUpdates.length], [0, 0, 0]);
+  assertEquals([store.records.length, store.evaluations.length, store.stateUpdates.length, store.usage.length], [0, 0, 0, 0]);
 });
 
 Deno.test("evaluate_answer: unknown areas are stored as general without touching coverage", async () => {

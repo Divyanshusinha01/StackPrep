@@ -69,11 +69,32 @@ export const resumeEventSchema = z.strictObject({
   occurred_at: z.iso.datetime({ offset: true }),
 });
 
+const tokenCount = z.int().min(0);
+
+/**
+ * Usage from one Realtime `response.done`, relayed by the browser. Stored as client-reported voice
+ * usage for the open voice segment; input counts include their cached portion.
+ */
+export const voiceUsageEventSchema = z.strictObject({
+  type: z.literal("voice_usage"),
+  client_event_id: z.uuid(),
+  /** Realtime response id the usage belongs to. */
+  response_id: z.string().min(1).max(128),
+  input_tokens: tokenCount,
+  cached_input_tokens: tokenCount,
+  output_tokens: tokenCount,
+  audio_input_tokens: tokenCount,
+  audio_cached_input_tokens: tokenCount,
+  audio_output_tokens: tokenCount,
+  occurred_at: z.iso.datetime({ offset: true }),
+});
+
 export const interviewEventRequestSchema = z.discriminatedUnion("type", [
   transcriptTurnEventSchema,
   voiceEventSchema,
   pauseEventSchema,
   resumeEventSchema,
+  voiceUsageEventSchema,
 ]);
 
 export const interviewEventAckStatusSchema = z.enum(["created", "duplicate"]);
@@ -94,7 +115,17 @@ export const voiceEventAckSchema = z.strictObject({
   event_sequence: z.int().min(1),
 });
 
-export const interviewEventAckSchema = z.discriminatedUnion("type", [transcriptTurnAckSchema, voiceEventAckSchema]);
+export const voiceUsageAckSchema = z.strictObject({
+  type: z.literal("voice_usage"),
+  status: interviewEventAckStatusSchema,
+  client_event_id: z.uuid(),
+});
+
+export const interviewEventAckSchema = z.discriminatedUnion("type", [
+  transcriptTurnAckSchema,
+  voiceEventAckSchema,
+  voiceUsageAckSchema,
+]);
 
 // POST /interviews/:id/integrity/frames --------------------------------------------
 // One low-detail camera frame about every 10 seconds (PRD section 20). The frame is analyzed and
@@ -309,6 +340,8 @@ export type VoiceEventRequest = z.infer<typeof voiceEventSchema>;
 export type PauseReason = z.infer<typeof pauseReasonSchema>;
 export type PauseEventRequest = z.infer<typeof pauseEventSchema>;
 export type ResumeEventRequest = z.infer<typeof resumeEventSchema>;
+export type VoiceUsageEventRequest = z.infer<typeof voiceUsageEventSchema>;
+export type VoiceUsageAck = z.infer<typeof voiceUsageAckSchema>;
 export type IntegrityFrameRequest = z.infer<typeof integrityFrameRequestSchema>;
 export type IntegritySignalKind = z.infer<typeof integritySignalKindSchema>;
 export type IntegrityFrameResponse = z.infer<typeof integrityFrameResponseSchema>;

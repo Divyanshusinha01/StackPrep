@@ -156,7 +156,7 @@ Planning and evaluation use the same model today but keep separate variables, so
 
 The transcription model is set on the Realtime session when the backend mints the credential. It transcribes only the candidate's speech for the persisted transcript; the interviewer's own transcript comes from the voice model.
 
-Deep analysis is a single structured call per analyzed commit and reuses `OPENAI_PLANNING_MODEL` rather than adding its own variable. Its token usage is logged as `deep_analysis_ai_usage`, like the other jobs' usage logs.
+Deep analysis is a single structured call per analyzed commit and reuses `OPENAI_PLANNING_MODEL` rather than adding its own variable. Its token usage is persisted to `ai_usage` with task `deep_analysis` and no interview, like every other AI call (see [Usage tracking](#usage-tracking)).
 
 One row is planned and not implemented yet:
 
@@ -176,9 +176,26 @@ The live voice session is the main AI cost, so most controls target it.
 
 #### Usage tracking
 
-Every AI call writes a row to `ai_usage`: user, interview (nullable for repository analysis), workspace, task (`voice`, `auxiliary`, `deep_analysis`, `planning`, `evaluation`, `report`, `vision`), model, input / cached-input / output tokens (split into text and audio where relevant), estimated cost in USD, and a timestamp. Cost is computed from a price table in `@stackprep/shared`, so rows can be recalculated if prices change.
+Every AI call writes a row to `ai_usage` (migration `20261006100000_ai_usage.sql`): user, workspace, interview (null for repository analysis), task (`voice`, `auxiliary`, `deep_analysis`, `planning`, `evaluation`, `report`, `vision`), model, `source`, input / cached-input / output tokens split into text and audio, `audio_seconds` for duration estimates, the voice segment for voice rows, estimated cost in USD, an idempotency key, and a timestamp. The table is service-role only and append-only: updates are rejected, and the service role can only select and insert.
 
-Text and vision calls are logged by the backend from OpenAI's response `usage`. Voice usage arrives in the browser as Realtime `response.done` events. The browser relays these through `POST /interviews/:id/events`, and the backend also records an estimate based on connected voice time. Relayed numbers are client-reported, so the duration-based estimate is the cross-check.
+Cost is computed by `estimateCostUsd` from the price table in `@stackprep/shared` (`AI_PRICES`, USD per 1M tokens). Following OpenAI's `usage`, input counts include their cached portion, so each modality is billed as `(input − cached) × input rate + cached × cached rate + output × output rate`; a model without a cached rate bills cached tokens at the input rate. A model missing from the table gets a null cost, and the row is still written. Raw token counts are kept, so rows can be recalculated if prices change.
+
+`source` says how much a row can be trusted:
+
+| Source              | Meaning                                                                                     |
+| ------------------- | ------------------------------------------------------------------------------------------- |
+| `provider`          | Counts the provider returned to the backend. Authoritative.                                 |
+| `client_reported`   | Counts relayed by the browser. Provisional; used for voice cost until provider usage exists. |
+| `duration_estimate` | Derived from connected voice time. An approximation, never presented as actual spend.        |
+
+Text and vision calls (planning, deep analysis, report, answer evaluation, integrity frames) are recorded by the backend from OpenAI's response `usage` as `provider` rows, through `recordAiUsage` in `supabase/functions/_shared/ai-usage.ts`. A failed insert is logged and never fails the user-facing flow. Inngest jobs key each row per model call, so a retried step that calls the model again is recorded as the second spend it is. Vision rows are keyed by the integrity check.
+
+Voice usage belongs to a **voice segment**: the connected time opened by a `connected` interview event and closed by the next `disconnected` or `connected`, using the same pairing as voice time.
+
+- **Relayed usage.** The browser relays each Realtime `response.done` usage through `POST /interviews/:id/events` as a `voice_usage` event (`client_event_id`, `response_id`, text and audio input / cached-input / output tokens). The backend stores it as a `client_reported` row for the server's `OPENAI_REALTIME_MODEL`, linked to the open segment, idempotent on `client_event_id`, with each count capped and cached counts never above input. Usage relayed while no segment is open is rejected with `409 voice_not_connected`. The browser relay is not implemented yet.
+- **Duration estimate.** When a segment closes (a `disconnected`, a `connected` that implies a missed disconnect, or the 35-minute limit completing the interview), the backend writes two `duration_estimate` rows keyed by the segment, so each segment is estimated once: the realtime model, priced from `ESTIMATED_REALTIME_AUDIO_TOKENS_PER_SECOND`, and the transcription model, priced per minute (`TRANSCRIPTION_ESTIMATED_USD_PER_MINUTE`, $0.003/min for `gpt-4o-mini-transcribe`) with no token counts.
+
+The view `ai_usage_effective` applies the reconciliation rule without changing raw rows. Non-voice rows pass through. For voice, per segment and model, it uses `provider` rows if any exist, else `client_reported` rows, else the `duration_estimate` row, flagged `is_estimate`. So relayed usage supersedes the realtime estimate, while the transcription estimate stands until provider-side transcription usage exists. The superseded estimate stays in `ai_usage` as the cross-check for client-reported numbers.
 
 ---
 
@@ -834,7 +851,7 @@ Tool calls are idempotent per `call_id`: a partial unique index on `(interview_i
 
 Schema: `tool_call`, `connected`, and `disconnected` event types, `interview_messages.client_event_id`, and the `call_id` index are added in migrations `20261004140000_realtime_event_types.sql` and `20261004140100_realtime_idempotency.sql`. Migration `20261005120000_transcript_events.sql` adds `interview_events.client_event_id` (partial unique index on `(interview_id, client_event_id)`) and the service-role-only functions `record_transcript_turn` and `record_voice_event` behind `POST /interviews/:id/events`. Connected/disconnected events are stored with the server's time; the browser's timestamp is kept in the payload.
 
-The events endpoint returns `201` for a new row and `200` for a duplicate retry. A reused `client_event_id` with a different payload returns `409 event_conflict`. The acknowledgement returns `turn_sequence` (the assigned `interview_messages.sequence`) for transcript turns and `event_sequence` (the assigned `interview_events.sequence`) for voice events; both are informational for the browser. Turns are accepted after the interview has ended so buffered turns are not lost.
+The events endpoint returns `201` for a new row and `200` for a duplicate retry. A reused `client_event_id` with a different payload returns `409 event_conflict`. The acknowledgement returns `turn_sequence` (the assigned `interview_messages.sequence`) for transcript turns and `event_sequence` (the assigned `interview_events.sequence`) for voice events; both are informational for the browser. Turns are accepted after the interview has ended so buffered turns are not lost. A `voice_usage` event is stored in `ai_usage`, not `interview_events`, so its acknowledgement carries no sequence; a retry of a stored one returns `200` with status `duplicate` (see [Usage tracking](#usage-tracking)).
 
 ---
 

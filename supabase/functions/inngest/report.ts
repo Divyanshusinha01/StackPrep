@@ -8,6 +8,7 @@ import {
   AIRequestError,
   AIUnavailableError,
 } from "../_shared/ai/provider.ts";
+import { providerTokens } from "../_shared/ai-usage.ts";
 import type { StepRunner } from "./function.ts";
 import type { ReportContext, ReportStore, ReportTarget } from "./report-store.ts";
 
@@ -265,6 +266,17 @@ export async function runInterviewReport(
         input_tokens: usage.input_tokens,
         cached_input_tokens: usage.cached_input_tokens,
         output_tokens: usage.output_tokens,
+      });
+      // Keyed per call: a retried step calls the model again, which is a real second spend.
+      await deps.store.recordAiUsage({
+        userId: target.user_id,
+        workspaceId: event.workspace_id,
+        interviewId: event.interview_id,
+        task: "report",
+        model: deps.model,
+        source: "provider",
+        tokens: providerTokens(usage),
+        idempotencyKey: `report:${event.job_id}:${runId}:${crypto.randomUUID()}`,
       });
       return groundReport(output, context);
     }));

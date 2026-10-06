@@ -6,6 +6,7 @@ import type {
   ToolErrorCode,
 } from "@stackprep/shared";
 import type { AIProvider } from "../../_shared/ai/provider.ts";
+import type { AiUsageRecorder } from "../../_shared/ai-usage.ts";
 import type { GithubApp } from "../../_shared/github-app.ts";
 import type { InterviewStatePayload } from "../../_shared/interview-state.ts";
 import type { TreeCache } from "./get-file.ts";
@@ -84,7 +85,7 @@ export interface TranscriptMessage {
  * Service-role persistence for tool calls. Every call is keyed by an interview (or its workspace)
  * the caller has already been shown to own through the RLS reader.
  */
-export interface ToolStore {
+export interface ToolStore extends AiUsageRecorder {
   findToolCall(interviewId: string, callId: string): Promise<StoredToolCall | null>;
   recordToolCall(record: ToolCallRecord): Promise<ToolCallRecordResult>;
   countToolCallsSince(interviewId: string, tools: RealtimeToolName[], since: Date): Promise<number>;

@@ -222,6 +222,46 @@ describe("interviewEventAckSchema", () => {
   ])("rejects %s", (_label, body) => {
     expect(interviewEventAckSchema.safeParse(body).success).toBe(false);
   });
+
+  it("accepts a voice usage ack without a sequence", () => {
+    const ack = { type: "voice_usage", status: "created", client_event_id: CLIENT_EVENT_ID };
+    expect(interviewEventAckSchema.parse(ack)).toEqual(ack);
+    expect(interviewEventAckSchema.safeParse({ ...ack, event_sequence: 1 }).success).toBe(false);
+  });
+});
+
+describe("voice usage events", () => {
+  const usage = {
+    type: "voice_usage",
+    client_event_id: CLIENT_EVENT_ID,
+    response_id: "resp_1",
+    input_tokens: 120,
+    cached_input_tokens: 100,
+    output_tokens: 30,
+    audio_input_tokens: 900,
+    audio_cached_input_tokens: 0,
+    audio_output_tokens: 400,
+    occurred_at: OCCURRED_AT,
+  };
+
+  it("accepts relayed response.done usage", () => {
+    expect(interviewEventRequestSchema.parse(usage)).toEqual(usage);
+  });
+
+  it.each([
+    ["negative tokens", { ...usage, output_tokens: -1 }],
+    ["fractional tokens", { ...usage, audio_input_tokens: 1.5 }],
+    ["a missing token field", { ...usage, audio_output_tokens: undefined }],
+    ["an empty response id", { ...usage, response_id: "" }],
+    ["a client-supplied cost", { ...usage, estimated_cost_usd: 0.01 }],
+    ["a client-supplied model", { ...usage, model: "gpt-5.6-luna" }],
+  ])("rejects %s", (_label, body) => {
+    expect(interviewEventRequestSchema.safeParse(body).success).toBe(false);
+  });
+
+  it("adds the voice_not_connected error code", () => {
+    expect(apiErrorCodeSchema.safeParse("voice_not_connected").success).toBe(true);
+  });
 });
 
 describe("integrity frame contracts", () => {

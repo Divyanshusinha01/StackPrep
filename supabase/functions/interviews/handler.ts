@@ -21,7 +21,8 @@ import {
   VOICE_LIMIT_SECONDS,
 } from "@stackprep/shared";
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { AIError, type AIProvider } from "../_shared/ai/provider.ts";
+import { AIError, type AIProvider, type AIUsage } from "../_shared/ai/provider.ts";
+import { providerTokens } from "../_shared/ai-usage.ts";
 import type { Authenticate } from "../_shared/auth.ts";
 import type { GithubApp } from "../_shared/github-app.ts";
 import { apiError, logGithubError } from "../_shared/github-errors.ts";
@@ -44,6 +45,13 @@ import { createTreeCache, type TreeCache } from "./tools/get-file.ts";
 import { parseToolCall, READ_TOOLS, runTool } from "./tools/index.ts";
 import { createToolStore } from "./tools/store.ts";
 import { type ToolContext, toolError, type ToolStore } from "./tools/types.ts";
+import {
+  clampVoiceUsage,
+  openVoiceSegment,
+  voiceDurationEstimates,
+  type VoiceSegmentEvent,
+  voiceSegments,
+} from "./voice-usage.ts";
 
 const FN = "interviews";
 
@@ -127,6 +135,8 @@ export interface InterviewStore extends ToolStore, IntegrityStore {
   getPlan(interviewId: string): Promise<unknown>;
   /** Connected / disconnected events in sequence order. */
   listVoiceEvents(interviewId: string): Promise<VoiceEvent[]>;
+  /** The same events with their row id and sequence, for linking usage to voice segments. */
+  listVoiceSegmentEvents(interviewId: string): Promise<VoiceSegmentEvent[]>;
   getRepositoryContext(workspaceId: string, commitSha: string): Promise<RepositoryContext | null>;
   recordTranscriptTurn(turn: TranscriptTurnRecord): Promise<RecordResult>;
   recordVoiceEvent(event: VoiceEventRecord): Promise<RecordResult>;
@@ -225,6 +235,16 @@ export function createInterviewStore(serviceClient: SupabaseClient): InterviewSt
       check("load voice events", error);
       return (data ?? []) as VoiceEvent[];
     },
+    async listVoiceSegmentEvents(interviewId) {
+      const { data, error } = await serviceClient
+        .from("interview_events")
+        .select("id, sequence, event_type, occurred_at")
+        .eq("interview_id", interviewId)
+        .in("event_type", ["connected", "disconnected"])
+        .order("sequence");
+      check("load voice segment events", error);
+      return (data ?? []) as VoiceSegmentEvent[];
+    },
     async getRepositoryContext(workspaceId, commitSha) {
       const memory = () =>
         serviceClient.from("repository_memory").select("kind, content")
@@ -301,27 +321,8 @@ export function createInterviewStore(serviceClient: SupabaseClient): InterviewSt
  * a disconnect.
  */
 export function voiceSecondsUsed(events: VoiceEvent[], now: Date): number {
-  let total = 0;
-  let openedAt: number | null = null;
-  const close = (at: number) => {
-    if (openedAt !== null) {
-      total += Math.max(0, at - openedAt);
-      openedAt = null;
-    }
-  };
-  for (const event of events) {
-    const at = Date.parse(event.occurred_at);
-    if (Number.isNaN(at)) {
-      continue;
-    }
-    if (event.event_type === "connected") {
-      close(at);
-      openedAt = at;
-    } else {
-      close(at);
-    }
-  }
-  close(now.getTime());
+  const total = voiceSegments(events)
+    .reduce((sum, segment) => sum + Math.max(0, (segment.endedAt ?? now.getTime()) - segment.startedAt), 0);
   return Math.floor(total / 1000);
 }
 
@@ -379,6 +380,39 @@ export function createInterviewsHandler({
 
   function queueReport(interview: ReportInterview, userId: string) {
     return requestReport({ jobs, store: reportJobs }, interview, userId);
+  }
+
+  /**
+   * Writes duration estimates for the voice segment closed by the event at `close.bySequence`, or
+   * for the open segment when the voice limit closes it at `close.at`. Never throws.
+   */
+  async function recordVoiceEstimates(
+    interview: InterviewRow,
+    userId: string,
+    close: { bySequence: number } | { at: Date },
+  ): Promise<void> {
+    try {
+      const segments = voiceSegments(await store.listVoiceSegmentEvents(interview.id));
+      const segment = "bySequence" in close
+        ? segments.find((s) => s.closedBy?.sequence === close.bySequence)
+        : openVoiceSegment(segments);
+      if (!segment) {
+        return;
+      }
+      const endedAt = segment.endedAt ?? ("at" in close ? close.at.getTime() : segment.startedAt);
+      const scope = {
+        userId,
+        workspaceId: interview.workspace_id,
+        interviewId: interview.id,
+        realtimeModel: model,
+        transcriptionModel,
+      };
+      for (const entry of voiceDurationEstimates(scope, segment, endedAt)) {
+        await store.recordAiUsage(entry);
+      }
+    } catch (err) {
+      logGithubError(FN, err, { event: "voice_estimate_failed", code: "internal_error", interview_id: interview.id });
+    }
   }
 
   /** Report state as the owner sees it, derived from the report row and the newest report job. */
@@ -502,6 +536,7 @@ export function createInterviewsHandler({
     const elapsedSeconds = voiceSecondsUsed(await store.listVoiceEvents(interview.id), now());
     if (elapsedSeconds >= VOICE_LIMIT_SECONDS) {
       if (await store.completeInterview(interview.id, ctx.user.id, "time_limit")) {
+        await recordVoiceEstimates(interview, ctx.user.id, { at: now() });
         await queueReport(interview, ctx.user.id);
       }
       return toolResponse(toolError("interview_not_active", TIME_UP_GUIDANCE));
@@ -609,7 +644,18 @@ export function createInterviewsHandler({
       console.log(JSON.stringify({ fn: FN, interview_id: interview.id, ...entry }));
     let kind: Awaited<ReturnType<typeof analyzeFrame>> = null;
     try {
-      kind = await analyzeFrame({ ai, model: visionModel, log }, frame.data.image);
+      const recordUsage = (usage: AIUsage) =>
+        store.recordAiUsage({
+          userId: ctx.user.id,
+          workspaceId: interview.workspace_id,
+          interviewId: interview.id,
+          task: "vision",
+          model: visionModel,
+          source: "provider",
+          tokens: providerTokens(usage),
+          idempotencyKey: `vision:${reservation.checkId}`,
+        });
+      kind = await analyzeFrame({ ai, model: visionModel, log, recordUsage }, frame.data.image);
     } catch (err) {
       if (!(err instanceof AIError)) {
         throw err;
@@ -749,6 +795,27 @@ export function createInterviewsHandler({
         return apiError("event_conflict", cors);
       }
       ack = { type: event.type, status: result.status, client_event_id: event.client_event_id, turn_sequence: result.sequence };
+    } else if (event.type === "voice_usage") {
+      // Linked to the open segment only: usage relayed after a disconnect cannot be attributed.
+      const segment = openVoiceSegment(voiceSegments(await store.listVoiceSegmentEvents(interview.id)));
+      if (!segment) {
+        return apiError("voice_not_connected", cors);
+      }
+      const status = await store.recordAiUsage({
+        userId: ctx.user.id,
+        workspaceId: interview.workspace_id,
+        interviewId: interview.id,
+        task: "voice",
+        model,
+        source: "client_reported",
+        tokens: clampVoiceUsage(event),
+        voiceSegmentEventId: segment.opened.id,
+        idempotencyKey: `voice_usage:${interview.id}:${event.client_event_id}`,
+      });
+      if (status === "failed") {
+        return apiError("internal_error", cors);
+      }
+      ack = { type: event.type, status, client_event_id: event.client_event_id };
     } else {
       const result = await store.recordVoiceEvent({
         interviewId: interview.id,
@@ -762,6 +829,9 @@ export function createInterviewsHandler({
       });
       if (result.status === "event_conflict") {
         return apiError("event_conflict", cors);
+      }
+      if (event.type === "connected" || event.type === "disconnected") {
+        await recordVoiceEstimates(interview, ctx.user.id, { bySequence: result.sequence });
       }
       ack = { type: event.type, status: result.status, client_event_id: event.client_event_id, event_sequence: result.sequence };
     }
