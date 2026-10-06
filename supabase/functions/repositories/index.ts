@@ -3,8 +3,10 @@ import { createClient } from "@supabase/supabase-js";
 import { createSupabaseAuthenticator } from "../_shared/auth.ts";
 import { readEnv } from "../_shared/env.ts";
 import { createGithubApp } from "../_shared/github-app.ts";
+import { initSentry, withSentry } from "../_shared/sentry.ts";
 import { createConnectionStateWriters, createRepositoriesHandler } from "./handler.ts";
 
+initSentry("repositories");
 const env = readEnv(
   "repositories function",
   edgeEnvSchema.extend(edgeSupabaseEnvSchema.shape).extend(githubAppEnvSchema.shape),
@@ -21,11 +23,12 @@ const github = createGithubApp({
   privateKeyPem: env.GITHUB_APP_PRIVATE_KEY,
 });
 
-Deno.serve(
+Deno.serve(withSentry(
   createRepositoriesHandler({
     webOrigin: env.WEB_ORIGIN,
     authenticate: createSupabaseAuthenticator(env),
     github,
     ...createConnectionStateWriters(serviceClient),
   }),
-);
+  { webOrigin: env.WEB_ORIGIN },
+));

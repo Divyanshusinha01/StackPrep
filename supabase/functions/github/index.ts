@@ -4,8 +4,10 @@ import { createSupabaseAuthenticator } from "../_shared/auth.ts";
 import { readEnv } from "../_shared/env.ts";
 import { createGithubApp } from "../_shared/github-app.ts";
 import { logGithubError } from "../_shared/github-errors.ts";
+import { initSentry, withSentry } from "../_shared/sentry.ts";
 import { createGithubConnectHandler, createUpsertConnection } from "./handler.ts";
 
+initSentry("github");
 const env = readEnv(
   "github function",
   edgeEnvSchema.extend(edgeSupabaseEnvSchema.shape).extend(githubAppEnvSchema.shape),
@@ -23,7 +25,7 @@ const github = createGithubApp({
   onRevokeFailure: (err) => logGithubError("github", err, { event: "github_token_revoke_failed" }),
 });
 
-Deno.serve(
+Deno.serve(withSentry(
   createGithubConnectHandler({
     webOrigin: env.WEB_ORIGIN,
     authenticate: createSupabaseAuthenticator(env),
@@ -31,4 +33,5 @@ Deno.serve(
     appId: env.GITHUB_APP_ID,
     upsertConnection: createUpsertConnection(serviceClient),
   }),
-);
+  { webOrigin: env.WEB_ORIGIN },
+));

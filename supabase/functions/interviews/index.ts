@@ -7,12 +7,14 @@ import { createGithubApp } from "../_shared/github-app.ts";
 import { createInngestClient } from "../_shared/inngest.ts";
 import { createInngestJobQueue } from "../_shared/jobs.ts";
 import { createRealtimeClient } from "../_shared/realtime/openai-realtime.ts";
+import { initSentry, withSentry } from "../_shared/sentry.ts";
 import { createInterviewReader, createInterviewsHandler, createInterviewStore } from "./handler.ts";
 import { createReportJobStore } from "./report-request.ts";
 
 /** evaluate_answer runs while the candidate waits for the interviewer to speak. */
 const EVALUATION_TIMEOUT_MS = 20_000;
 
+initSentry("interviews");
 const env = readEnv(
   "interviews function",
   edgeEnvSchema
@@ -33,7 +35,7 @@ const serviceClient = createClient(env.SUPABASE_URL, env.SUPABASE_SERVICE_ROLE_K
   auth: { persistSession: false, autoRefreshToken: false, detectSessionInUrl: false },
 });
 
-Deno.serve(
+Deno.serve(withSentry(
   createInterviewsHandler({
     webOrigin: env.WEB_ORIGIN,
     authenticate: createSupabaseAuthenticator(env),
@@ -54,4 +56,5 @@ Deno.serve(
     jobs: createInngestJobQueue(createInngestClient(env)),
     reportJobs: createReportJobStore(serviceClient),
   }),
-);
+  { webOrigin: env.WEB_ORIGIN },
+));

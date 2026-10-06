@@ -5,8 +5,10 @@ import { readEnv } from "../_shared/env.ts";
 import { createGithubApp } from "../_shared/github-app.ts";
 import { createInngestClient } from "../_shared/inngest.ts";
 import { createInngestJobQueue } from "../_shared/jobs.ts";
+import { initSentry, withSentry } from "../_shared/sentry.ts";
 import { createWorkspaceReader, createWorkspacesHandler, createWorkspaceWriters } from "./handler.ts";
 
+initSentry("workspaces");
 const env = readEnv(
   "workspaces function",
   edgeEnvSchema.extend(edgeSupabaseEnvSchema.shape).extend(githubAppEnvSchema.shape).extend(inngestEnvSchema.shape),
@@ -23,7 +25,7 @@ const github = createGithubApp({
   privateKeyPem: env.GITHUB_APP_PRIVATE_KEY,
 });
 
-Deno.serve(
+Deno.serve(withSentry(
   createWorkspacesHandler({
     webOrigin: env.WEB_ORIGIN,
     authenticate: createSupabaseAuthenticator(env),
@@ -32,4 +34,5 @@ Deno.serve(
     writers: createWorkspaceWriters(serviceClient),
     jobs: createInngestJobQueue(createInngestClient(env)),
   }),
-);
+  { webOrigin: env.WEB_ORIGIN },
+));

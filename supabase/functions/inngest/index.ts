@@ -5,6 +5,7 @@ import { readEnv } from "../_shared/env.ts";
 import { createGithubApp } from "../_shared/github-app.ts";
 import { createInngestClient } from "../_shared/inngest.ts";
 import { createInngestJobQueue } from "../_shared/jobs.ts";
+import { initSentry, withSentry } from "../_shared/sentry.ts";
 import { createDeepAnalysisFunction } from "./deep-analysis.ts";
 import { createDeepAnalysisStore } from "./deep-analysis-store.ts";
 import { createRepositoryAnalysisFunction } from "./function.ts";
@@ -15,6 +16,7 @@ import { createInterviewReportFunction } from "./report.ts";
 import { createReportStore } from "./report-store.ts";
 import { createAnalysisStore } from "./store.ts";
 
+initSentry("inngest");
 const env = readEnv(
   "inngest function",
   edgeSupabaseEnvSchema.extend(githubAppEnvSchema.shape).extend(inngestEnvSchema.shape).extend(openAIEnvSchema.shape),
@@ -34,7 +36,7 @@ const github = createGithubApp({
 const inngest = createInngestClient(env);
 const ai = createOpenAIProvider({ apiKey: env.OPENAI_API_KEY });
 
-Deno.serve(
+Deno.serve(withSentry(
   createInngestHandler(inngest, [
     createRepositoryAnalysisFunction(inngest, {
       github,
@@ -57,4 +59,4 @@ Deno.serve(
       store: createReportStore(serviceClient),
     }),
   ]),
-);
+));
