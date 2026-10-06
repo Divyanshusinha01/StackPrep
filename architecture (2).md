@@ -1000,6 +1000,8 @@ Each integration has its own Zod schema in `@stackprep/shared` (`packages/shared
 
 Edge Functions read their variables with the `readEnv(name, schema)` helper in `supabase/functions/_shared/env.ts`.
 
+Sentry is optional: an empty DSN disables it. The web app wires it through `apps/web/src/lib/sentry.ts` and the Next.js instrumentation files, and Edge Functions through `supabase/functions/_shared/sentry.ts`, which reports only thrown errors and caught internal failures, never expected 4xx outcomes.
+
 ---
 
 ## 15. Scalability Strategy

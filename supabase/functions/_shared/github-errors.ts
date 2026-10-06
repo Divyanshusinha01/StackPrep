@@ -1,6 +1,7 @@
 import type { ApiError, ApiErrorCode, ConnectionErrorCode } from "@stackprep/shared";
 import { GithubError, GithubOAuthCodeError, GithubRateLimitedError, GithubUnavailableError } from "./github-app.ts";
 import { type Cors, json } from "./http.ts";
+import { reportUnexpected } from "./sentry.ts";
 
 const ERROR_MESSAGES: Record<ApiErrorCode, string> = {
   method_not_allowed: "Method not allowed",
@@ -115,13 +116,14 @@ export interface LogContext {
   interview_id?: string;
 }
 
-/** One JSON line with an allow-listed set of keys; never headers, bodies, tokens, or messages. */
+/**
+ * One JSON line with an allow-listed set of keys; never headers, bodies, tokens, or messages.
+ * Internal failures are also reported to Sentry with the same keys.
+ */
 export function logGithubError(fn: string, err: unknown, ctx: LogContext = {}): void {
-  const entry: Record<string, string | number> = {
-    event: ctx.event ?? "github_request_failed",
-    fn,
-    code: ctx.code ?? errorCode(err),
-  };
+  const event = ctx.event ?? "github_request_failed";
+  const code = ctx.code ?? errorCode(err);
+  const entry: Record<string, string | number> = { event, fn, code };
   if (err instanceof GithubError) {
     if (err.status !== undefined) {
       entry.github_status = err.status;
@@ -143,4 +145,5 @@ export function logGithubError(fn: string, err: unknown, ctx: LogContext = {}): 
     entry.interview_id = ctx.interview_id;
   }
   console.error(JSON.stringify(entry));
+  reportUnexpected(err, { ...ctx, event, fn, code });
 }

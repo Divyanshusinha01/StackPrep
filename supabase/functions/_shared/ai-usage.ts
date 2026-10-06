@@ -8,6 +8,7 @@ import {
 } from "@stackprep/shared";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { AIUsage } from "./ai/provider.ts";
+import { reportUnexpected } from "./sentry.ts";
 
 /** One `ai_usage` row before cost is computed. */
 export interface AiUsageEntry {
@@ -99,6 +100,12 @@ export async function recordAiUsage(db: SupabaseClient, entry: AiUsageEntry): Pr
       interview_id: entry.interviewId,
       reason: err instanceof Error ? err.message : "unknown",
     }));
+    reportUnexpected(err, {
+      event: "ai_usage_record_failed",
+      code: "internal_error",
+      workspace_id: entry.workspaceId,
+      ...(entry.interviewId ? { interview_id: entry.interviewId } : {}),
+    });
     return "failed";
   }
 }
