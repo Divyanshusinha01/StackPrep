@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { interviewStatusSchema } from "./workspaces.ts";
 
 // Live voice interview contracts (architecture section 10). Voice time is connected time only.
 
@@ -126,6 +127,82 @@ export const interviewEventAckSchema = z.discriminatedUnion("type", [
   voiceEventAckSchema,
   voiceUsageAckSchema,
 ]);
+
+// GET /interviews/:id/events (SSE) ------------------------------------------------
+// Server-to-client interview events, derived from rows that already exist: status transitions
+// from `interview_events` (start, completion, termination), persisted turns from
+// `interview_messages`, and the `reports` row. No transcript content is re-sent.
+
+export const INTERVIEW_STREAM_RETRY_MS = 3_000;
+export const INTERVIEW_STREAM_HEARTBEAT_MS = 15_000;
+
+export const interviewStreamEventTypeSchema = z.enum(["interview_status", "turn_persisted", "report_ready"]);
+
+/** Mapped from the `interview_events` type: start, completion, termination. */
+export const interviewStreamStatusSchema = interviewStatusSchema.extract(["in_progress", "completed", "terminated"]);
+
+export const interviewStatusStreamDataSchema = z.strictObject({
+  status: interviewStreamStatusSchema,
+  /** `interview_events.sequence` of the transition. */
+  event_sequence: z.int().min(1),
+  occurred_at: z.iso.datetime({ offset: true }),
+});
+
+/** Same identity fields as `transcriptTurnAckSchema`, so the outbox can reconcile by either. */
+export const turnPersistedStreamDataSchema = z.strictObject({
+  turn_sequence: z.int().min(1),
+  role: z.enum(["ai", "user"]),
+  client_event_id: z.uuid(),
+  item_id: z.string().min(1).max(128).optional(),
+});
+
+/** Terminal: sent once, then the server closes the stream. */
+export const reportReadyStreamDataSchema = z.strictObject({
+  generated_at: z.iso.datetime({ offset: true }),
+});
+
+export const interviewStreamEventSchema = z.discriminatedUnion("event", [
+  z.strictObject({ event: z.literal("interview_status"), data: interviewStatusStreamDataSchema }),
+  z.strictObject({ event: z.literal("turn_persisted"), data: turnPersistedStreamDataSchema }),
+  z.strictObject({ event: z.literal("report_ready"), data: reportReadyStreamDataSchema }),
+]);
+
+/**
+ * The SSE `id:` and `Last-Event-ID`: `<event_sequence>.<turn_sequence>.<report_flag>`, the highest
+ * status-event sequence, highest turn sequence, and whether `report_ready` was delivered. Every
+ * frame's id is the cursor after that frame, so a reconnect replays only strictly later events.
+ */
+export interface InterviewStreamCursor {
+  eventSequence: number;
+  turnSequence: number;
+  reportSent: boolean;
+}
+
+export const INITIAL_INTERVIEW_STREAM_CURSOR: InterviewStreamCursor = {
+  eventSequence: 0,
+  turnSequence: 0,
+  reportSent: false,
+};
+
+const STREAM_CURSOR_PATTERN = /^(\d{1,10})\.(\d{1,10})\.([01])$/;
+
+export function formatInterviewStreamCursor(cursor: InterviewStreamCursor): string {
+  return `${cursor.eventSequence}.${cursor.turnSequence}.${cursor.reportSent ? 1 : 0}`;
+}
+
+/** Null for anything that is not a well-formed cursor; callers must not fall back to zero. */
+export function parseInterviewStreamCursor(value: string): InterviewStreamCursor | null {
+  const match = STREAM_CURSOR_PATTERN.exec(value);
+  if (!match) {
+    return null;
+  }
+  const eventSequence = Number(match[1]);
+  const turnSequence = Number(match[2]);
+  if (!Number.isSafeInteger(eventSequence) || !Number.isSafeInteger(turnSequence) || eventSequence > 2_147_483_647 || turnSequence > 2_147_483_647) {
+    return null;
+  }
+  return { eventSequence, turnSequence, reportSent: match[3] === "1" };
+}
 
 // POST /interviews/:id/integrity/frames --------------------------------------------
 // One low-detail camera frame about every 10 seconds (PRD section 20). The frame is analyzed and
@@ -350,6 +427,12 @@ export type InterviewEventAckStatus = z.infer<typeof interviewEventAckStatusSche
 export type TranscriptTurnAck = z.infer<typeof transcriptTurnAckSchema>;
 export type VoiceEventAck = z.infer<typeof voiceEventAckSchema>;
 export type InterviewEventAck = z.infer<typeof interviewEventAckSchema>;
+export type InterviewStreamEventType = z.infer<typeof interviewStreamEventTypeSchema>;
+export type InterviewStreamStatus = z.infer<typeof interviewStreamStatusSchema>;
+export type InterviewStatusStreamData = z.infer<typeof interviewStatusStreamDataSchema>;
+export type TurnPersistedStreamData = z.infer<typeof turnPersistedStreamDataSchema>;
+export type ReportReadyStreamData = z.infer<typeof reportReadyStreamDataSchema>;
+export type InterviewStreamEvent = z.infer<typeof interviewStreamEventSchema>;
 export type ToolErrorCode = z.infer<typeof toolErrorCodeSchema>;
 export type ToolError = z.infer<typeof toolErrorSchema>;
 export type RealtimeToolName = z.infer<typeof realtimeToolNameSchema>;

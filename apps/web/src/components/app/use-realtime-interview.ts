@@ -6,6 +6,7 @@ import {
   apiErrorSchema,
   type PauseReason,
   realtimeSessionResponseSchema,
+  type TurnPersistedStreamData,
   VOICE_LIMIT_SECONDS,
 } from "@stackprep/shared";
 import { FunctionsHttpError } from "@supabase/supabase-js";
@@ -492,6 +493,16 @@ export function useRealtimeInterview(interviewId: string, media: InterviewMedia)
   const stop = useCallback(() => dispatchMachine({ type: "close", reason: "stopped" }), []);
   /** The backend terminated the interview (third integrity warning). */
   const terminate = useCallback(() => dispatchMachine({ type: "close", reason: "terminated" }), []);
+  /** The backend completed the interview without this session's relay seeing it (event stream). */
+  const end = useCallback(() => {
+    setEnded(true);
+    dispatchMachine({ type: "close", reason: "ended" });
+  }, []);
+  /** A turn the event stream reports as stored; an unacked copy in the outbox is not resent. */
+  const confirmTurn = useCallback((data: TurnPersistedStreamData) => {
+    highestAckedTurnRef.current = Math.max(highestAckedTurnRef.current, data.turn_sequence);
+    outboxRef.current?.confirm(data.client_event_id);
+  }, []);
 
   const status = toStatus(machine.phase);
   const error = (machine.phase === "exhausted" ? "connection_lost" : machine.phase === "failed" ? machine.error : null) as
@@ -519,5 +530,7 @@ export function useRealtimeInterview(interviewId: string, media: InterviewMedia)
     reconnect,
     stop,
     terminate,
+    end,
+    confirmTurn,
   };
 }

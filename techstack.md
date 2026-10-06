@@ -17,7 +17,7 @@
 | Text models         | **`gpt-5.6-terra`** for planning, answer evaluation, report, and deep analysis (deep analysis reuses `OPENAI_PLANNING_MODEL`); **`gpt-5.6-luna`** planned for auxiliary extraction/classification via a future `OPENAI_EXTRACTION_MODEL` (all configurable per task). Extraction AI is not implemented yet | Cheap model for simple jobs; one stronger model for everything users judge |
 | Voice               | **OpenAI Realtime API over WebRTC** | No separate voice provider; browser connects directly to OpenAI for audio |
 | Voice credentials   | **Ephemeral Realtime credential minted by Edge Function** | `OPENAI_API_KEY` stays server-side; browser only gets a short-lived credential |
-| Application communication | **HTTP + SSE**         | HTTP for commands/state; SSE for server-to-client interview events |
+| Application communication | **HTTP + SSE**         | HTTP for commands/state. SSE (`GET /interviews/:id/events`, fetch-based reader with a composite `Last-Event-ID` cursor) for interview events: `interview_status`, `turn_persisted`, `report_ready`. 4 s polling (`use-poll-while.ts`) for analysis progress, lobby readiness, and pending reports, and as the fallback when the stream fails |
 | Transcript storage  | **Supabase PostgreSQL (canonical)** | OpenAI Realtime runs the live session; StackPrep persists the interview record |
 | Vision              | **`gpt-5.6-luna`, 1 low-detail frame every 10 s** | No CV infrastructure; frames are analyzed and discarded |
 | GitHub              | **GitHub App**               | Secure repository access                             |

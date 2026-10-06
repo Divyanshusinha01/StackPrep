@@ -5,7 +5,11 @@ import {
   endInterviewInputSchema,
   evaluateAnswerOutputSchema,
   evidenceExaminedPayloadSchema,
+  formatInterviewStreamCursor,
   getFileInputSchema,
+  INITIAL_INTERVIEW_STREAM_CURSOR,
+  interviewStreamEventSchema,
+  parseInterviewStreamCursor,
   INTEGRITY_FRAME_MAX_CHARS,
   integrityFrameRequestSchema,
   integrityFrameResponseSchema,
@@ -298,8 +302,45 @@ describe("integrity frame contracts", () => {
   });
 });
 
+describe("interview stream contracts", () => {
+  it("accepts the three event types", () => {
+    expect(interviewStreamEventSchema.parse({
+      event: "interview_status",
+      data: { status: "completed", event_sequence: 12, occurred_at: "2026-10-05T12:00:00.000Z" },
+    }).event).toBe("interview_status");
+    expect(interviewStreamEventSchema.parse({
+      event: "turn_persisted",
+      data: { turn_sequence: 4, role: "user", client_event_id: CLIENT_EVENT_ID, item_id: "item_1" },
+    }).event).toBe("turn_persisted");
+    expect(interviewStreamEventSchema.parse({
+      event: "report_ready",
+      data: { generated_at: "2026-10-05T12:00:00.000Z" },
+    }).event).toBe("report_ready");
+  });
+
+  it.each([
+    ["an unstreamed event type", { event: "pause", data: {} }],
+    ["a status outside the transitions", { event: "interview_status", data: { status: "paused", event_sequence: 1, occurred_at: "2026-10-05T12:00:00.000Z" } }],
+    ["transcript content", { event: "turn_persisted", data: { turn_sequence: 1, role: "ai", client_event_id: CLIENT_EVENT_ID, content: "hi" } }],
+    ["report content", { event: "report_ready", data: { generated_at: "2026-10-05T12:00:00.000Z", report: {} } }],
+  ])("rejects %s", (_label, body) => {
+    expect(interviewStreamEventSchema.safeParse(body).success).toBe(false);
+  });
+
+  it("round-trips the composite cursor", () => {
+    const cursor = { eventSequence: 12, turnSequence: 40, reportSent: true };
+    expect(formatInterviewStreamCursor(cursor)).toBe("12.40.1");
+    expect(parseInterviewStreamCursor("12.40.1")).toEqual(cursor);
+    expect(formatInterviewStreamCursor(INITIAL_INTERVIEW_STREAM_CURSOR)).toBe("0.0.0");
+  });
+
+  it.each(["", "1.2", "1.2.2", "-1.0.0", "a.b.c", "1.2.0 ", "1.2.0.0", "99999999999.0.0"])("rejects the cursor %j", (value) => {
+    expect(parseInterviewStreamCursor(value)).toBeNull();
+  });
+});
+
 describe("interview API error codes", () => {
-  it.each(["interview_not_found", "interview_preparing", "interview_planning_failed", "interview_not_active", "realtime_unavailable", "event_conflict", "interview_interrupted", "rate_limited"])(
+  it.each(["interview_not_found", "interview_preparing", "interview_planning_failed", "interview_not_active", "realtime_unavailable", "event_conflict", "interview_interrupted", "rate_limited", "invalid_cursor"])(
     "includes %s",
     (code) => {
       expect(apiErrorCodeSchema.safeParse(code).success).toBe(true);

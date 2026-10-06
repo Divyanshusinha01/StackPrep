@@ -323,6 +323,26 @@ Browser
 
 SSE is the application's realtime event transport. WebRTC is the AI voice transport. Do not use SSE for audio, and do not use WebRTC as the general-purpose application transport.
 
+**Where SSE and polling are used:**
+
+| Surface | Transport |
+| --- | --- |
+| Interview events (`interview_status`, `turn_persisted`, `report_ready`) | SSE, `GET /interviews/:id/events` |
+| Repository analysis progress, interview lobby readiness, pending reports | Polling: the page re-renders every 4 s (`use-poll-while.ts`) from persisted job state |
+
+**Interview event stream.** Events are derived from rows that already exist; there are no stream-only tables or event types:
+
+- `interview_status`: `interview_events` rows of type `start`, `completion`, `termination`, mapped to `in_progress`, `completed`, `terminated`. Data: `{ status, event_sequence, occurred_at }`.
+- `turn_persisted`: `interview_messages` rows (interviewer and candidate). Data: `{ turn_sequence, role, client_event_id, item_id? }`, the same identity fields as the `POST /interviews/:id/events` ack, so the browser's outbox can drop an unacked copy instead of resending it. No transcript content is sent.
+- `report_ready`: the `reports` row exists. Data: `{ generated_at }`. Terminal: sent once, after which the server closes the stream.
+
+Other interview events (pause, resume, connected, integrity, tool calls, evidence) are not streamed. Contracts live in `packages/shared/src/realtime.ts`.
+
+- **Composite cursor.** The two tables have separate sequences, so each frame's SSE `id:` is the cursor after it: `<event_sequence>.<turn_sequence>.<report_flag>` (e.g. `12.40.0`). A reconnect replays only events strictly after every component, so nothing is delivered twice, and a cursor with `report_flag = 1` never receives `report_ready` again. No cursor replays from `0.0.0`; a malformed cursor returns `400 invalid_cursor` instead of replaying; a cursor ahead of the data emits nothing until new rows pass it. The cursor is read from `Last-Event-ID`, or `?last_event_id=` for readers that cannot set headers; the header wins.
+- **Server.** Authenticated with the caller's RLS client and an ownership check like other reads (`401`, `404 interview_not_found`). Responses are `text/event-stream`, `Cache-Control: no-store`. The first frame is a `retry:` hint; frames are `id:` + `event:` + single-line JSON `data:`; an idle stream gets a `: heartbeat` comment every 15 s (no `id:`, so the cursor does not move). The function reads the three sources about every 1.5 s (no Supabase Realtime dependency), merges new rows by `created_at`, and closes cleanly after `report_ready`, after 140 s (under the 150 s Edge Function wall-clock limit on the free plan), on a read failure, or when the client disconnects.
+- **Browser.** Native `EventSource` cannot send the `Authorization` header, so the interview room uses a fetch-based reader (`interview-event-stream.ts`, `use-interview-events.ts`) that keeps the last received id and sends it on every reconnect. Statuses end or terminate the room (a streamed completion waits up to 30 s for a live closing turn), `turn_persisted` confirms outbox entries, and `report_ready` moves an ended room to the report. After 3 consecutive failed connects the reader stops and the page falls back to 4 s polling for the rest of the session.
+- **Cost.** Each open stream reads the database about every 1.5 s. This is acceptable at current scale; revisit with Supabase Realtime if needed.
+
 WebSockets are not required initially because application events are primarily server-to-client streaming.
 
 #### Voice Session Flow
@@ -499,10 +519,13 @@ POST   /workspaces/:id/interviews
 POST   /interviews/:id/answers
 POST   /interviews/:id/realtime/session
 POST   /interviews/:id/events
+GET    /interviews/:id/events          (SSE)
 POST   /interviews/:id/tool-calls
 POST   /interviews/:id/integrity/frames
 GET    /interviews/:id/report
 ```
+
+`GET /interviews/:id/events` is the server-to-client event stream (see [Transport](#transport)).
 
 `POST /interviews/:id/integrity/frames` accepts one low-detail camera frame (about every 10 seconds), sends it to the vision model, stores only the detected signal, and returns any warning to show. Frames are never persisted.
 

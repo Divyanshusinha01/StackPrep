@@ -1,4 +1,5 @@
 import {
+  INITIAL_INTERVIEW_STREAM_CURSOR,
   type IntegrityFrameResponse,
   integrityFrameRequestSchema,
   integrityFrameResponseSchema,
@@ -12,6 +13,7 @@ import {
   interviewReportResponseSchema,
   interviewReportSchema,
   type InterviewStatus,
+  parseInterviewStreamCursor,
   type PlanningState,
   realtimeSessionResponseSchema,
   reportErrorCodeSchema,
@@ -31,6 +33,13 @@ import type { JobQueue } from "../_shared/jobs.ts";
 import { buildRealtimeInstructions, type InstructionsMemory } from "../_shared/realtime/instructions.ts";
 import type { RealtimeClient } from "../_shared/realtime/openai-realtime.ts";
 import { buildRealtimeTools } from "../_shared/realtime/tools.ts";
+import {
+  createInterviewStream,
+  createInterviewStreamReader,
+  DEFAULT_STREAM_TIMING,
+  type InterviewStreamReader,
+  type StreamTiming,
+} from "./events.ts";
 import {
   analyzeFrame,
   INTEGRITY_TERMINATION_MESSAGE,
@@ -146,6 +155,9 @@ export interface InterviewsHandlerOptions {
   webOrigin: string;
   authenticate: Authenticate;
   reader: (client: SupabaseClient) => InterviewReader;
+  /** RLS reads behind GET /interviews/:id/events. */
+  streamReader?: (client: SupabaseClient) => InterviewStreamReader;
+  streamTiming?: StreamTiming;
   store: InterviewStore;
   realtime: RealtimeClient;
   model: string;
@@ -358,6 +370,8 @@ export function createInterviewsHandler({
   webOrigin,
   authenticate,
   reader,
+  streamReader = createInterviewStreamReader,
+  streamTiming = DEFAULT_STREAM_TIMING,
   store,
   realtime,
   model,
@@ -751,6 +765,43 @@ export function createInterviewsHandler({
     return json(body, { status: 201, headers: cors.headers });
   }
 
+  /**
+   * SSE of interview status, persisted turns, and report readiness. Resumes strictly after the
+   * `Last-Event-ID` cursor (or `?last_event_id=` for readers that cannot set it); the header wins.
+   */
+  async function streamEvents(req: Request, id: string): Promise<Response> {
+    const ctx = await authenticate(req);
+    if (!ctx) {
+      return apiError("unauthorized", cors);
+    }
+    if (!interviewIdParamSchema.safeParse(id).success) {
+      return apiError("interview_not_found", cors);
+    }
+    const interview = await reader(ctx.supabase).getInterview(id);
+    if (!interview) {
+      return apiError("interview_not_found", cors);
+    }
+
+    const raw = req.headers.get("Last-Event-ID") || new URL(req.url).searchParams.get("last_event_id");
+    const cursor = raw ? parseInterviewStreamCursor(raw) : INITIAL_INTERVIEW_STREAM_CURSOR;
+    if (!cursor) {
+      return apiError("invalid_cursor", cors);
+    }
+
+    const body = createInterviewStream({
+      reader: streamReader(ctx.supabase),
+      interviewId: interview.id,
+      cursor,
+      signal: req.signal,
+      timing: streamTiming,
+      onError: (err) => logGithubError(FN, err, { event: "interview_stream_failed", code: "internal_error", interview_id: interview.id }),
+    });
+    return new Response(body, {
+      status: 200,
+      headers: { ...cors.headers, "Content-Type": "text/event-stream", "Cache-Control": "no-store" },
+    });
+  }
+
   /** Accepted after the interview ends too, so turns buffered during a drop are not lost. */
   async function recordEvent(req: Request, id: string): Promise<Response> {
     const ctx = await authenticate(req);
@@ -853,28 +904,31 @@ export function createInterviewsHandler({
     const routes = [
       { pattern: SESSION_ROUTE, method: "POST", run: createSession },
       { pattern: EVENTS_ROUTE, method: "POST", run: recordEvent },
+      { pattern: EVENTS_ROUTE, method: "GET", run: streamEvents },
       { pattern: TOOL_CALLS_ROUTE, method: "POST", run: callTool },
       { pattern: REPORT_ROUTE, method: "GET", run: getReport },
       { pattern: REPORT_RETRY_ROUTE, method: "POST", run: retryReport },
       { pattern: FRAMES_ROUTE, method: "POST", run: submitFrame },
     ] as const;
-    let matched: { route: (typeof routes)[number]; id: string } | null = null;
+    let id: string | null = null;
+    const candidates: (typeof routes)[number][] = [];
     for (const route of routes) {
       const match = path.match(route.pattern);
-      if (match) {
-        matched = { route, id: match[1] };
-        break;
+      if (match && (id === null || id === match[1])) {
+        id = match[1];
+        candidates.push(route);
       }
     }
-    if (!matched) {
+    if (id === null) {
       return apiError("not_found", cors);
     }
-    if (req.method !== matched.route.method) {
-      return apiError("method_not_allowed", cors, { Allow: `${matched.route.method}, OPTIONS` });
+    const route = candidates.find((candidate) => candidate.method === req.method);
+    if (!route) {
+      return apiError("method_not_allowed", cors, { Allow: `${candidates.map((c) => c.method).join(", ")}, OPTIONS` });
     }
 
     try {
-      return await matched.route.run(req, matched.id);
+      return await route.run(req, id);
     } catch (err) {
       logGithubError(FN, err, { code: "internal_error" });
       return apiError("internal_error", cors);

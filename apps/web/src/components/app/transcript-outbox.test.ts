@@ -155,6 +155,43 @@ describe("transcript outbox", () => {
     expect(onAck).not.toHaveBeenCalled();
   });
 
+  it("confirm drops a queued item the stream reports as stored, but never the in-flight one", async () => {
+    let release: (() => void) | null = null;
+    const { send, sent } = scripted([
+      (item) => new Promise((resolve) => (release = () => resolve(ack(item)))),
+    ]);
+    const storage = memoryStorage();
+    const outbox = make({ send, storage });
+    const first = outbox.enqueue(turn("one"));
+    const second = outbox.enqueue(turn("two"));
+    outbox.enqueue(turn("three"));
+    await tick();
+
+    expect(outbox.confirm(first.client_event_id)).toBe(false);
+    expect(outbox.confirm(second.client_event_id)).toBe(true);
+    expect(outbox.confirm("00000000-0000-4000-8000-0000000000ff")).toBe(false);
+    expect(JSON.parse(storage.data.get(KEY)!).queue).toHaveLength(2);
+
+    release!();
+    await tick();
+    expect(sent.map((i) => (i.type === "transcript_turn" ? i.content : i.type))).toEqual(["one", "three"]);
+    expect(outbox.pending()).toEqual([]);
+  });
+
+  it("confirm skips a head item waiting out its backoff", async () => {
+    const { send, sent } = scripted([() => ({ ok: false, retryable: true, code: "internal_error" })]);
+    const outbox = make({ send, maxDelayMs: 60_000, baseDelayMs: 60_000 });
+    const stuck = outbox.enqueue(turn("one"));
+    outbox.enqueue(turn("two"));
+    await tick();
+    expect(sent).toHaveLength(1);
+
+    expect(outbox.confirm(stuck.client_event_id)).toBe(true);
+    await tick();
+    expect(sent.map((i) => (i.type === "transcript_turn" ? i.content : i.type))).toEqual(["one", "two"]);
+    expect(outbox.pending()).toEqual([]);
+  });
+
   it("treats a duplicate ack as delivered", async () => {
     const { send } = scripted([(item) => ack(item, "duplicate")]);
     const outbox = make({ send });
