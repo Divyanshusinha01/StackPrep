@@ -78,9 +78,13 @@ Produce:
    and an opening question about the repository.
 3. strategy: difficulty, focus areas, topics to avoid repeating, follow-up style, and notes.
 
-Prior interviews are guidance for question selection only: prefer gaps and areas not yet covered,
-avoid repeating topics already explored in depth. They are never evidence of the candidate's
-current ability, so do not lower or raise expectations because of them.
+Prior interviews are guidance for question selection only. When there are any:
+- Prioritize areas listed as gaps (earlier weaknesses) in focus areas and early phases.
+- Retest areas listed as strengths at greater depth rather than repeating the same level.
+- Continue repository coverage: prefer areas not yet covered or only partially covered.
+- Avoid unnecessary repetition of topics already explored in depth.
+Prior interviews are never evidence of the candidate's current ability, so do not lower or raise
+expectations because of them; this interview is evaluated only on its own answers.
 
 Do not invent files or technologies that repository_memory does not mention.`;
 
@@ -175,6 +179,16 @@ export function renderAiMemory(ai: unknown): string {
   return lines.join("\n");
 }
 
+/** Re-projects onto the allowlisted fields so nothing else a store returns reaches the model. */
+function priorGuidance(prior: PriorOutcome[]): PriorOutcome[] {
+  return prior.map((p) => ({
+    interview_number: p.interview_number,
+    status: p.status,
+    coverage: p.coverage.map(({ id, name, status }) => ({ id, name, status })),
+    categories: p.categories.map(({ category, ratings, strengths, gaps }) => ({ category, ratings, strengths, gaps })),
+  }));
+}
+
 export function buildPlanningInput(
   target: Pick<PlanningTarget, "repository_full_name" | "commit_sha" | "interview_number">,
   memory: PlanningMemory[],
@@ -209,7 +223,7 @@ export function buildPlanningInput(
   return [
     `Interview ${target.interview_number} for repository ${fence(target.repository_full_name)} at commit ${target.commit_sha}.`,
     `<repository_memory>\n${sections.join("\n\n")}\n</repository_memory>`,
-    `<prior_interviews>\n${prior.length ? fence(JSON.stringify(prior, null, 1)) : "none"}\n</prior_interviews>`,
+    `<prior_interviews>\n${prior.length ? fence(JSON.stringify(priorGuidance(prior), null, 1)) : "none"}\n</prior_interviews>`,
   ].join("\n\n");
 }
 

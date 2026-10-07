@@ -20,6 +20,10 @@ export const INITIAL_STATE_VERSION = 1;
 const MAX_PRIOR_INTERVIEWS = 5;
 const MAX_FILE_SUMMARIES = 30;
 const MAX_PRIOR_ITEMS = 5;
+/** Evaluator-written strengths and gaps may quote an answer; only short labels are kept. */
+export const MAX_PRIOR_ITEM_CHARS = 200;
+/** Only finished interviews have outcomes; in-progress, paused, and failed ones are partial. */
+export const PRIOR_OUTCOME_STATUSES: InterviewStatus[] = ["completed", "terminated"];
 
 export interface PlanningTarget {
   job_id: string;
@@ -80,6 +84,10 @@ function check(action: string, error: { message: string } | null): void {
 
 function strings(value: unknown): string[] {
   return Array.isArray(value) ? value.filter((v): v is string => typeof v === "string") : [];
+}
+
+function priorItems(items: string[]): string[] {
+  return items.slice(0, MAX_PRIOR_ITEMS).map((item) => item.slice(0, MAX_PRIOR_ITEM_CHARS));
 }
 
 export function createPlanningStore(serviceClient: SupabaseClient): PlanningStore {
@@ -169,7 +177,7 @@ export function createPlanningStore(serviceClient: SupabaseClient): PlanningStor
         .select("id, interview_number, status, state:interview_state(coverage_map)")
         .eq("workspace_id", workspaceId)
         .neq("id", interviewId)
-        .neq("status", "created")
+        .in("status", PRIOR_OUTCOME_STATUSES)
         .order("interview_number", { ascending: false })
         .limit(MAX_PRIOR_INTERVIEWS);
       check("load prior interviews", error);
@@ -209,9 +217,10 @@ export function createPlanningStore(serviceClient: SupabaseClient): PlanningStor
             ? coverage.data.areas.map(({ id, name, status }) => ({ id, name, status }))
             : [],
           categories: [...byCategory.values()].map((c) => ({
-            ...c,
-            strengths: c.strengths.slice(0, MAX_PRIOR_ITEMS),
-            gaps: c.gaps.slice(0, MAX_PRIOR_ITEMS),
+            category: c.category,
+            ratings: c.ratings,
+            strengths: priorItems(c.strengths),
+            gaps: priorItems(c.gaps),
           })),
         };
       });
