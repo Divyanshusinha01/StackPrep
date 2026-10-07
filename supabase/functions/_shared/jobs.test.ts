@@ -25,6 +25,24 @@ Deno.test("Inngest job queue sends the event with a job-derived id and returns t
   }]);
 });
 
+Deno.test("memory embedding events are keyed by the originating job and never collide with it", async () => {
+  const sent: Parameters<EventSender["send"]>[0][] = [];
+  const queue = createInngestJobQueue({
+    send(event) {
+      sent.push(event);
+      return Promise.resolve({ ids: [] });
+    },
+  });
+  const embedding = { workspace_id: payload.workspace_id, job_id: payload.job_id, commit_sha: payload.commit_sha };
+  await queue.enqueue("repository.memory_embedding.requested", embedding);
+  await queue.enqueue("repository.analysis.requested", payload);
+  assertEquals(sent.map((e) => e.id), [
+    `repository.memory_embedding.requested:${payload.job_id}`,
+    `repository.analysis.requested:${payload.job_id}`,
+  ]);
+  assertEquals(sent[0].data, embedding);
+});
+
 Deno.test("Inngest job queue returns no event id when none is reported and propagates send errors", async () => {
   const empty = createInngestJobQueue({ send: () => Promise.resolve({ ids: [] }) });
   assertEquals(await empty.enqueue("repository.analysis.requested", payload), { eventId: null });

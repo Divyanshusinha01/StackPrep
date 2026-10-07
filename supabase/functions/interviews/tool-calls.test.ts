@@ -9,12 +9,12 @@ import {
   VOICE_WRAP_UP_SECONDS,
 } from "@stackprep/shared";
 import type { SupabaseClient, User } from "@supabase/supabase-js";
-import { AIUnavailableError, type StructuredRequest } from "../_shared/ai/provider.ts";
+import { AIUnavailableError, type EmbeddingRequest, type StructuredRequest } from "../_shared/ai/provider.ts";
 import { aiUsageCost } from "../_shared/ai-usage.ts";
 import type { Authenticate } from "../_shared/auth.ts";
 import { GithubRateLimitedError, GithubUnavailableError } from "../_shared/github-app.ts";
 import { createRealtimeClient } from "../_shared/realtime/openai-realtime.ts";
-import { createFakeAIProvider } from "../_shared/testing.ts";
+import { createFakeAIProvider, createFakeEmbeddingProvider, type FakeEmbeddingProvider } from "../_shared/testing.ts";
 import {
   createInterviewsHandler,
   type InterviewRow,
@@ -35,7 +35,13 @@ import { CLOSING_GUIDANCE, CONTINUE_GUIDANCE } from "./tools/end-interview.ts";
 import { type AnswerEvaluation, resolveCurrentQuestion } from "./tools/evaluate-answer.ts";
 import { fileWindow, MAX_WINDOW_LINES, normalizePath } from "./tools/get-file.ts";
 import { MAX_EXCERPT_CHARS } from "./tools/search-repository.ts";
-import type { InterviewStateSnapshot, MemoryEntry, TranscriptMessage } from "./tools/types.ts";
+import type {
+  InterviewStateSnapshot,
+  MemoryEntry,
+  MemoryMatch,
+  SearchEmbeddings,
+  TranscriptMessage,
+} from "./tools/types.ts";
 
 const userId = "aaaaaaaa-0000-4000-8000-000000000001";
 const webOrigin = "http://localhost:3000";
@@ -141,6 +147,7 @@ interface Setup {
   github?: ReturnType<typeof createFakeGithub>;
   ai?: (request: StructuredRequest<unknown>) => unknown;
   store?: FakeToolStore;
+  embeddings?: SearchEmbeddings;
 }
 
 function at(offsetSeconds: number): string {
@@ -156,6 +163,7 @@ function setup({
   github = createFakeGithub(files),
   ai = () => evaluation,
   store = createFakeToolStore({ memory, messages, state: stateSnapshot() }),
+  embeddings,
 }: Setup = {}) {
   const rlsClient = { rls: true } as unknown as SupabaseClient;
   const authenticate: Authenticate = (req) =>
@@ -196,6 +204,7 @@ function setup({
     github,
     ai: fakeAI,
     evaluationModel: "gpt-eval",
+    embeddings,
     visionModel: "gpt-vision",
     jobs,
     reportJobs,
@@ -461,6 +470,189 @@ Deno.test("search_repository: excerpts are capped", async () => {
   const body = await result(await handler(toolCall("search_repository", { query: "auth" })));
   assertEquals(body.results.length, 1);
   assertEquals(body.results[0].excerpt.length, MAX_EXCERPT_CHARS);
+});
+
+const matches: MemoryMatch[] = [
+  { kind: "concepts", content: "Refresh token: long-lived credential sk_live_abcdefghijklmnop", similarity: 0.71 },
+  { kind: "architecture_summary", content: "Express API with JWT auth middleware.", similarity: 0.82 },
+  { kind: "modules", content: "src/ (20 files)", similarity: 0.5 },
+];
+
+function vectorSetup(
+  respond?: (request: EmbeddingRequest) => number[][] | Error | Promise<number[][] | Error>,
+  { budgetMs, storeMatches = matches }: { budgetMs?: number; storeMatches?: MemoryMatch[] } = {},
+) {
+  const provider: FakeEmbeddingProvider = createFakeEmbeddingProvider(respond);
+  const store = createFakeToolStore({ memory, messages, state: stateSnapshot(), matches: storeMatches });
+  const ctx = setup({ store, embeddings: { provider, model: "text-embedding-3-small", budgetMs } });
+  return { ...ctx, provider };
+}
+
+async function keywordOnly(args: Record<string, unknown>) {
+  const { handler } = setup();
+  const { value: res } = await captureLogs(() => handler(toolCall("search_repository", args)));
+  return (await result(res)).results;
+}
+
+/** Runs `fn` and returns the parsed console.log lines it wrote. */
+async function captureLogs<T>(fn: () => Promise<T>): Promise<{ value: T; logs: Record<string, unknown>[] }> {
+  const lines: string[] = [];
+  const log = console.log;
+  console.log = (line: string) => lines.push(line);
+  try {
+    const value = await fn();
+    return { value, logs: lines.map((l) => JSON.parse(l)) };
+  } finally {
+    console.log = log;
+  }
+}
+
+function fallbackReason(logs: Record<string, unknown>[]): unknown {
+  return logs.find((l) => l.event === "repository_search_vector_fallback")?.reason;
+}
+
+Deno.test("search_repository: vector hits fill after keyword hits, deduplicated and ordered by similarity", async () => {
+  const keyword = await keywordOnly({ query: "jwt auth", limit: 8 });
+  const { handler, store, provider } = vectorSetup();
+  const body = await result(await handler(toolCall("search_repository", { query: "jwt auth", limit: 8 })));
+
+  assertEquals(body.results.slice(0, keyword.length), keyword, "keyword hits keep their rank");
+  assertEquals(
+    body.results.slice(keyword.length).map((r: { path: string; area: string }) => [r.path, r.area]),
+    [[".", "concepts"], [".", "modules"]],
+    "the architecture_summary vector hit duplicates a keyword hit",
+  );
+  assert(!JSON.stringify(body).includes("sk_live_abcdefghijklmnop"), "vector excerpts are scrubbed");
+  assertEquals(provider.calls.map((c) => [c.model, c.input]), [["text-embedding-3-small", ["jwt auth"]]]);
+  assertEquals(store.matchCalls.map((c) => [c.embedding.length, c.limit]), [[1536, 8]]);
+  assertEquals(store.evidence.map((e) => e.path).sort(), ["config/auth.ts", "src/auth/jwt.ts"], "vector hits are not evidence");
+
+  const usage = store.usage.filter((u) => u.task === "embedding");
+  assertEquals(usage.length, 1);
+  const { idempotencyKey, ...row } = usage[0];
+  assertEquals(row, {
+    userId,
+    workspaceId: WORKSPACE_ID,
+    interviewId: INTERVIEW_ID,
+    task: "embedding",
+    model: "text-embedding-3-small",
+    source: "provider",
+    tokens: { input_tokens: 7 },
+  });
+  assert(idempotencyKey.startsWith(`embedding:${INTERVIEW_ID}:`));
+});
+
+Deno.test("search_repository: with no keyword hits the results are vector-only and record no evidence", async () => {
+  const { handler, store } = vectorSetup();
+  const body = await result(await handler(toolCall("search_repository", { query: "kubernetes", limit: 2 })));
+  assertEquals(body.results.map((r: { area: string }) => r.area), ["architecture_summary", "concepts"]);
+  assertEquals(store.evidence, []);
+  assertEquals(store.records[0].resultSummary, { ok: true, paths: [".", "."] });
+});
+
+Deno.test("search_repository: vector excerpts are clipped", async () => {
+  const long: MemoryMatch[] = [{ kind: "concepts", content: "token ".repeat(1000), similarity: 0.9 }];
+  const { handler } = vectorSetup(undefined, { storeMatches: long });
+  const body = await result(await handler(toolCall("search_repository", { query: "kubernetes" })));
+  assertEquals(body.results[0].excerpt.length, MAX_EXCERPT_CHARS);
+});
+
+Deno.test("search_repository: enough keyword hits never call the embedding provider", async () => {
+  const { handler, provider, store } = vectorSetup();
+  const body = await result(await handler(toolCall("search_repository", { query: "jwt auth", limit: 2 })));
+  assertEquals(body.results.length, 2);
+  assertEquals([provider.calls.length, store.matchCalls.length], [0, 0]);
+});
+
+Deno.test("search_repository: any vector failure falls back to the keyword results", async () => {
+  const keyword = await keywordOnly({ query: "jwt auth", limit: 8 });
+  const cases: [string, ReturnType<typeof vectorSetup> | ReturnType<typeof setup>][] = [
+    ["embed_error", vectorSetup(() => new AIUnavailableError(503))],
+    ["embed_error", vectorSetup((r) => r.input.map(() => new Array(3072).fill(0.01)))],
+    ["no_results", vectorSetup(undefined, { storeMatches: [] })],
+    ["disabled", setup()],
+  ];
+  const rpcFailure = vectorSetup();
+  rpcFailure.store.matchImpl = () => Promise.reject(new Error("connection refused password=hunter2"));
+  cases.push(["rpc_error", rpcFailure]);
+
+  for (const [reason, { handler, store }] of cases) {
+    const { value: res, logs } = await captureLogs(() => handler(toolCall("search_repository", { query: "jwt auth", limit: 8 })));
+    assertEquals((await result(res)).results, keyword, reason);
+    assertEquals(fallbackReason(logs), reason);
+    assert(!JSON.stringify(logs).includes("hunter2"));
+    assertEquals(store.records.length, 1, "the tool call still succeeds");
+  }
+});
+
+Deno.test("search_repository: a slow embedding uses the whole budget and the match is never called", async () => {
+  const keyword = await keywordOnly({ query: "jwt auth", limit: 8 });
+  const { handler, store } = vectorSetup((r) =>
+    new Promise((_resolve, reject) => r.signal!.addEventListener("abort", () => reject(new AIUnavailableError())))
+  , { budgetMs: 50 });
+  const started = Date.now();
+  const { value: res, logs } = await captureLogs(() => handler(toolCall("search_repository", { query: "jwt auth", limit: 8 })));
+  const elapsed = Date.now() - started;
+  assertEquals((await result(res)).results, keyword);
+  assertEquals(fallbackReason(logs), "deadline");
+  assertEquals(store.matchCalls, []);
+  assert(elapsed >= 45 && elapsed < 50 + 500, `elapsed ${elapsed} ms`);
+});
+
+Deno.test("search_repository: a fast embedding then a slow match is aborted at the same deadline", async () => {
+  const { handler, store } = vectorSetup(undefined, { budgetMs: 50 });
+  store.matchImpl = (signal) =>
+    new Promise((_resolve, reject) => signal!.addEventListener("abort", () => reject(new Error("aborted"))));
+  const started = Date.now();
+  const { value: res, logs } = await captureLogs(() => handler(toolCall("search_repository", { query: "jwt auth", limit: 8 })));
+  const elapsed = Date.now() - started;
+  await result(res);
+  assertEquals(fallbackReason(logs), "deadline");
+  assertEquals(store.matchCalls.length, 1);
+  assert(store.matchCalls[0].signal!.aborted, "the match shares the fill's signal");
+  assert(elapsed < 50 + 500, `elapsed ${elapsed} ms`);
+});
+
+Deno.test("search_repository: a slow usage write is bounded by the same deadline and keeps the vector hits", async () => {
+  const store = createFakeToolStore({ memory, messages, state: stateSnapshot(), matches });
+  const record = store.recordAiUsage;
+  let release: () => void = () => {};
+  store.recordAiUsage = (entry) => new Promise((resolve) => (release = () => resolve(record(entry))));
+  const { handler } = setup({
+    store,
+    embeddings: { provider: createFakeEmbeddingProvider(), model: "text-embedding-3-small", budgetMs: 50 },
+  });
+  const started = Date.now();
+  const { value: res, logs } = await captureLogs(() => handler(toolCall("search_repository", { query: "kubernetes", limit: 2 })));
+  const elapsed = Date.now() - started;
+  assertEquals((await result(res)).results.map((r: { area: string }) => r.area), ["architecture_summary", "concepts"]);
+  assertEquals(fallbackReason(logs), undefined);
+  assert(elapsed >= 45 && elapsed < 50 + 500, `elapsed ${elapsed} ms`);
+
+  assertEquals(store.usage, [], "the write is still pending when the search returns");
+  release();
+  await new Promise((resolve) => setTimeout(resolve, 0));
+  assertEquals(store.usage.map((u) => u.task), ["embedding"]);
+});
+
+Deno.test("search_repository: a provider that ignores the abort still yields keyword results at the deadline", async () => {
+  const keyword = await keywordOnly({ query: "jwt auth", limit: 8 });
+  let release: (value: number[][]) => void = () => {};
+  const { handler, store } = vectorSetup(() => new Promise((resolve) => (release = resolve)), { budgetMs: 50 });
+  const started = Date.now();
+  const { value: res, logs } = await captureLogs(() => handler(toolCall("search_repository", { query: "jwt auth", limit: 8 })));
+  const elapsed = Date.now() - started;
+  assertEquals((await result(res)).results, keyword);
+  assertEquals(fallbackReason(logs), "deadline");
+  assert(elapsed < 50 + 500, `elapsed ${elapsed} ms`);
+
+  // A late answer is ignored: the aborted match fails and nothing changes the recorded result.
+  store.matchImpl = (signal) => (signal?.aborted ? Promise.reject(new Error("aborted")) : Promise.resolve(matches));
+  await captureLogs(async () => {
+    release([new Array(1536).fill(0.01)]);
+    await new Promise((resolve) => setTimeout(resolve, 0));
+  });
+  assertEquals(store.records.length, 1);
 });
 
 // evaluate_answer ---------------------------------------------------------------------------

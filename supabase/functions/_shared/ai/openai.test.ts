@@ -1,7 +1,13 @@
-import { assert, assertEquals, assertInstanceOf, assertRejects } from "@std/assert";
+import { assert, assertEquals, assertInstanceOf, assertRejects, assertThrows } from "@std/assert";
 import { z } from "zod";
-import { createOpenAIProvider, toStrictJsonSchema } from "./openai.ts";
-import { AIInvalidOutputError, AIRateLimitedError, AIRequestError, AIUnavailableError } from "./provider.ts";
+import { createOpenAIEmbeddingProvider, createOpenAIProvider, toStrictJsonSchema } from "./openai.ts";
+import {
+  AIInvalidOutputError,
+  AIRateLimitedError,
+  AIRequestError,
+  AIUnavailableError,
+  assertEmbeddingDimensions,
+} from "./provider.ts";
 
 const schema = z.strictObject({ title: z.string().min(1).max(20), count: z.int().min(0) });
 
@@ -116,5 +122,99 @@ Deno.test("refusals, incomplete responses, and invalid output are invalid output
     const err = await assertRejects(() => provider.generateStructured(request));
     assertInstanceOf(err, AIInvalidOutputError);
     assertEquals(err.reason, reason);
+  }
+});
+
+// Embeddings ---------------------------------------------------------------------------------
+
+function embeddingStub(respond: (init: RequestInit) => Response | Promise<Response>) {
+  const calls: { url: string; init: RequestInit }[] = [];
+  const fetchFn = ((url: string, init: RequestInit) => {
+    calls.push({ url, init });
+    return Promise.resolve(respond(init));
+  }) as typeof fetch;
+  return { provider: createOpenAIEmbeddingProvider({ apiKey: "sk-test-key", fetch: fetchFn }), calls };
+}
+
+function embeddingBody(vectors: [number, number[]][], promptTokens = 9) {
+  return {
+    object: "list",
+    data: vectors.map(([index, embedding]) => ({ object: "embedding", index, embedding })),
+    model: "text-embedding-3-small",
+    usage: { prompt_tokens: promptTokens, total_tokens: promptTokens },
+  };
+}
+
+Deno.test("embeddings: sends float encoding without dimensions and returns vectors in input order", async () => {
+  const { provider, calls } = embeddingStub(() => Response.json(embeddingBody([[1, [0.3, 0.4]], [0, [0.1, 0.2]]], 12)));
+  const result = await provider.embed({ model: "text-embedding-3-small", input: ["first", "second"] });
+  assertEquals(result, { embeddings: [[0.1, 0.2], [0.3, 0.4]], usage: { input_tokens: 12 } });
+
+  assertEquals(calls[0].url, "https://api.openai.com/v1/embeddings");
+  assertEquals((calls[0].init.headers as Record<string, string>).Authorization, "Bearer sk-test-key");
+  const body = JSON.parse(calls[0].init.body as string);
+  assertEquals(body, { model: "text-embedding-3-small", input: ["first", "second"], encoding_format: "float" });
+  assert(!("dimensions" in body), "native dimensions are never truncated");
+});
+
+Deno.test("embeddings: missing usage counts as zero tokens", async () => {
+  const { provider } = embeddingStub(() => Response.json({ data: [{ index: 0, embedding: [1] }] }));
+  assertEquals((await provider.embed({ model: "m", input: ["x"] })).usage, { input_tokens: 0 });
+});
+
+Deno.test("embeddings: a caller abort cancels the request and is unavailable", async () => {
+  const controller = new AbortController();
+  const fetchFn = ((_url: string, init: RequestInit) =>
+    new Promise<Response>((_resolve, reject) => {
+      init.signal!.addEventListener("abort", () => reject(init.signal!.reason));
+    })) as typeof fetch;
+  const provider = createOpenAIEmbeddingProvider({ apiKey: "k", fetch: fetchFn });
+  const pending = provider.embed({ model: "m", input: ["x"], signal: controller.signal });
+  controller.abort();
+  assertInstanceOf(await assertRejects(() => pending), AIUnavailableError);
+});
+
+Deno.test("embeddings: HTTP and network failures map to typed errors without exposing bodies", async () => {
+  const request = { model: "m", input: ["x"] };
+  const limited = embeddingStub(() => new Response("slow down sk-test-key", { status: 429, headers: { "Retry-After": "7" } }));
+  const e1 = await assertRejects(() => limited.provider.embed(request));
+  assertInstanceOf(e1, AIRateLimitedError);
+  assertEquals(e1.retryAfterSeconds, 7);
+  assert(!e1.message.includes("sk-test-key"));
+
+  const down = embeddingStub(() => new Response("bad gateway", { status: 503 }));
+  assertInstanceOf(await assertRejects(() => down.provider.embed(request)), AIUnavailableError);
+
+  const rejected = embeddingStub(() => new Response("bad model", { status: 400 }));
+  const e3 = await assertRejects(() => rejected.provider.embed(request));
+  assertInstanceOf(e3, AIRequestError);
+  assert(!e3.message.includes("bad model"));
+
+  const offline = createOpenAIEmbeddingProvider({ apiKey: "k", fetch: (() => Promise.reject(new TypeError("reset"))) as typeof fetch });
+  assertInstanceOf(await assertRejects(() => offline.embed(request)), AIUnavailableError);
+});
+
+Deno.test("embeddings: a wrong count, duplicate index, or malformed body is malformed output", async () => {
+  const bodies: unknown[] = [
+    embeddingBody([[0, [1]]]),
+    embeddingBody([[0, [1]], [0, [2]]]),
+    embeddingBody([[0, [1]], [2, [2]]]),
+    { data: [{ index: 0, embedding: ["x"] }, { index: 1, embedding: [1] }] },
+    { unexpected: true },
+  ];
+  for (const body of bodies) {
+    const { provider } = embeddingStub(() => Response.json(body));
+    const err = await assertRejects(() => provider.embed({ model: "m", input: ["a", "b"] }));
+    assertInstanceOf(err, AIInvalidOutputError);
+    assertEquals(err.reason, "malformed");
+  }
+});
+
+Deno.test("embedding dimensions must match exactly and be finite", () => {
+  assertEmbeddingDimensions([[0.1, 0.2, 0.3]], 3);
+  for (const vectors of [[[0.1, 0.2]], [new Array(3072).fill(0.1)], [[0.1, Number.NaN, 0.3]], [[0.1, Infinity, 0.3]]]) {
+    const err = assertThrows(() => assertEmbeddingDimensions(vectors, 3));
+    assertInstanceOf(err, AIInvalidOutputError);
+    assertEquals(err.reason, "dimension_mismatch");
   }
 });

@@ -14,6 +14,16 @@ export interface JobEvents {
     /** The analyzed commit whose memory is enriched. */
     commit_sha: string;
   };
+  "repository.memory_embedding.requested": {
+    workspace_id: string;
+    /**
+     * The job that triggered the run (baseline analysis or deep analysis). There is no embedding
+     * jobs row; the id only keys the event and the run's idempotency.
+     */
+    job_id: string;
+    /** The analyzed commit whose memory rows are embedded. */
+    commit_sha: string;
+  };
   "interview.planning.requested": {
     interview_id: string;
     workspace_id: string;
@@ -47,8 +57,8 @@ export interface EventSender {
 }
 
 /**
- * Sends jobs as Inngest events. The event id is derived from the job id, so a re-sent event for
- * the same job is deduplicated by Inngest instead of starting a second run.
+ * Sends jobs as Inngest events. The event id is derived from the event name and job id, so a
+ * re-sent event for the same job is deduplicated by Inngest instead of starting a second run.
  */
 export function createInngestJobQueue(sender: EventSender): JobQueue {
   return {

@@ -29,6 +29,7 @@ returns text language sql as $$
 $$;
 
 create temp table checks (name text primary key, id uuid);
+grant select, insert on checks to service_role;
 
 -- now() is fixed inside the test transaction, so p_age moves earlier reservations out of the
 -- 10 s window first.

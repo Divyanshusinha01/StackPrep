@@ -48,6 +48,12 @@ export const openAIEnvSchema = z.object({
   OPENAI_REALTIME_TRANSCRIPTION_MODEL: secret.default("gpt-4o-mini-transcribe"),
   /** Checks one low-detail camera frame for integrity signals. */
   OPENAI_VISION_MODEL: secret.default("gpt-5.6-luna"),
+  /**
+   * Embeds repository memory and search queries. Must natively produce
+   * REPOSITORY_MEMORY_EMBEDDING_DIMENSIONS-sized vectors: output is never truncated, and a
+   * mismatching model fails at runtime instead of writing embeddings.
+   */
+  OPENAI_EMBEDDING_MODEL: secret.default("text-embedding-3-small"),
 });
 
 export const githubAppEnvSchema = z.object({

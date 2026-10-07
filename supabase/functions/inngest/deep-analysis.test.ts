@@ -8,6 +8,7 @@ import {
   AIUnavailableError,
 } from "../_shared/ai/provider.ts";
 import { type AiUsageEntry, aiUsageCost } from "../_shared/ai-usage.ts";
+import type { JobQueue } from "../_shared/jobs.ts";
 import { createFakeAIProvider } from "../_shared/testing.ts";
 import {
   buildDeepAnalysisInput,
@@ -30,6 +31,7 @@ import type {
   DeepAnalysisTarget,
 } from "./deep-analysis-store.ts";
 import type { StepRunner } from "./function.ts";
+import { MEMORY_EMBEDDING_EVENT } from "./memory-embedding.ts";
 
 const SHA = "a".repeat(40);
 const OTHER_SHA = "b".repeat(40);
@@ -84,6 +86,7 @@ interface Setup {
   /** Memory keyed by commit; deep analysis must only ever read the pinned commit. */
   memory?: Record<string, DeepAnalysisMemory>;
   ai?: () => unknown;
+  enqueue?: () => Promise<{ eventId: string | null }>;
 }
 
 function setup({
@@ -98,8 +101,10 @@ function setup({
     },
   },
   ai = aiOutput,
+  enqueue = () => Promise.resolve({ eventId: "evt-1" }),
 }: Setup = {}) {
   const calls: string[] = [];
+  const enqueued: [string, unknown][] = [];
   const saved: DeepAnalysisPayload[] = [];
   const failures: [string, string][] = [];
   const logs: string[] = [];
@@ -137,9 +142,16 @@ function setup({
     },
   };
 
+  const jobs: JobQueue = {
+    enqueue: (name, payload) => {
+      enqueued.push([name, payload]);
+      return enqueue();
+    },
+  };
+
   const provider = createFakeAIProvider(() => ai());
-  const deps: DeepAnalysisDeps = { ai: provider, model: "gpt-test", store, log: (line) => logs.push(line) };
-  return { deps, provider, calls, saved, failures, logs, usage };
+  const deps: DeepAnalysisDeps = { ai: provider, model: "gpt-test", store, jobs, log: (line) => logs.push(line) };
+  return { deps, provider, calls, saved, failures, logs, usage, enqueued };
 }
 
 /** Records step outputs; memoizes completed steps across runs like Inngest's durable replay. */
@@ -165,7 +177,7 @@ Deno.test("a successful run loads memory, analyzes, and saves the normalized res
   const result = await runDeepAnalysis(deps, { data: event, runId: "run-1", step });
 
   assertEquals(result, { outcome: "analyzed", modules: 1, concepts: 2 });
-  assertEquals(order, ["verify", "load-memory", "analyze", "write"]);
+  assertEquals(order, ["verify", "load-memory", "analyze", "write", "queue-memory-embedding"]);
   assertEquals(calls, [
     `target:${event.job_id}:${event.workspace_id}`,
     `memory:${event.workspace_id}:${SHA}`,
@@ -206,6 +218,32 @@ Deno.test("a successful run loads memory, analyzes, and saves the normalized res
   });
   assert(idempotencyKey.startsWith(`deep_analysis:${event.job_id}:run-1:`));
   assertAlmostEquals(aiUsageCost({ ...row, model: "gpt-5.6-terra" })!, (100 * 2 + 50 * 12) / 1_000_000, 1e-15);
+});
+
+Deno.test("memory embedding is enqueued after the write, keyed by the deep analysis job", async () => {
+  const { deps, enqueued } = setup();
+  await runDeepAnalysis(deps, { data: event, runId: "r", step: stepRunner().step });
+  assertEquals(enqueued, [[MEMORY_EMBEDDING_EVENT, event]]);
+});
+
+Deno.test("a failed embedding enqueue is swallowed and does not change the result", async () => {
+  const { deps, saved, logs } = setup({ enqueue: () => Promise.reject(new Error("inngest down")) });
+  const result = await runDeepAnalysis(deps, { data: event, runId: "r", step: stepRunner().step });
+  assertEquals(result, { outcome: "analyzed", modules: 1, concepts: 2 });
+  assertEquals(saved.length, 1);
+  assert(logs.some((l) => JSON.parse(l).event === "memory_embedding_enqueue_failed"));
+  assert(!logs.join("\n").includes("inngest down"));
+});
+
+Deno.test("skipped and failed runs never enqueue memory embedding", async () => {
+  for (const t of [target({ job_status: "succeeded" }), target({ already_analyzed: true })]) {
+    const { deps, enqueued } = setup({ target: t });
+    await runDeepAnalysis(deps, { data: event, runId: "r", step: stepRunner().step });
+    assertEquals(enqueued, []);
+  }
+  const failing = setup({ ai: () => new AIUnavailableError(503) });
+  await assertRejects(() => runDeepAnalysis(failing.deps, { data: event, runId: "r", step: stepRunner().step }));
+  assertEquals(failing.enqueued, []);
 });
 
 Deno.test("a failed usage write does not fail the analysis", async () => {

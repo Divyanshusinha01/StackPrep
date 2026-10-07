@@ -9,6 +9,7 @@ import type {
   EvaluationRecord,
   InterviewStateSnapshot,
   MemoryEntry,
+  MemoryMatch,
   RepositoryAccess,
   ToolCallRecord,
   ToolStore,
@@ -34,6 +35,11 @@ export interface FakeToolStore extends ToolStore {
   completions: ("time_limit" | null)[];
   stateUpdates: InterviewStateSnapshot[];
   memory: MemoryEntry[];
+  /** Answer of matchRepositoryMemory, already ordered nearest first. */
+  matches: MemoryMatch[];
+  matchCalls: { embedding: number[]; limit: number; signal?: AbortSignal }[];
+  /** When set, replaces the default match answer (to delay, fail, or ignore the abort). */
+  matchImpl: ((signal?: AbortSignal) => Promise<MemoryMatch[]>) | null;
   messages: TranscriptMessage[];
   state: InterviewStateSnapshot | null;
   access: RepositoryAccess | null;
@@ -45,7 +51,9 @@ export interface FakeToolStore extends ToolStore {
 }
 
 /** In-memory ToolStore with the same dedupe semantics as record_tool_call and complete_interview. */
-export function createFakeToolStore(init: Partial<Pick<FakeToolStore, "memory" | "messages" | "state" | "access">> = {}): FakeToolStore {
+export function createFakeToolStore(
+  init: Partial<Pick<FakeToolStore, "memory" | "matches" | "messages" | "state" | "access">> = {},
+): FakeToolStore {
   const store: FakeToolStore = {
     records: [],
     evidence: [],
@@ -54,6 +62,9 @@ export function createFakeToolStore(init: Partial<Pick<FakeToolStore, "memory" |
     completions: [],
     stateUpdates: [],
     memory: init.memory ?? [],
+    matches: init.matches ?? [],
+    matchCalls: [],
+    matchImpl: null,
     messages: init.messages ?? [],
     state: init.state ?? null,
     access: init.access === undefined ? { installationId: 42, owner: "alice", name: "demo" } : init.access,
@@ -98,6 +109,10 @@ export function createFakeToolStore(init: Partial<Pick<FakeToolStore, "memory" |
       return Promise.resolve(store.recentReads + store.records.filter((r) => tools.includes(r.tool)).length);
     },
     listRepositoryMemory: () => Promise.resolve(store.memory),
+    matchRepositoryMemory(_workspaceId, _commitSha, embedding, limit, signal) {
+      store.matchCalls.push({ embedding, limit, signal });
+      return store.matchImpl ? store.matchImpl(signal) : Promise.resolve(store.matches.slice(0, limit));
+    },
     getRepositoryAccess: () => Promise.resolve(store.access),
     getInterviewState: () => Promise.resolve(store.state ? structuredClone(store.state) : null),
     updateInterviewState(interviewId, expectedVersion, next) {

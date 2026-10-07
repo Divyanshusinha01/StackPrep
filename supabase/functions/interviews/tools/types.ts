@@ -5,7 +5,7 @@ import type {
   ToolError,
   ToolErrorCode,
 } from "@stackprep/shared";
-import type { AIProvider } from "../../_shared/ai/provider.ts";
+import type { AIProvider, EmbeddingProvider } from "../../_shared/ai/provider.ts";
 import type { AiUsageRecorder } from "../../_shared/ai-usage.ts";
 import type { GithubApp } from "../../_shared/github-app.ts";
 import type { InterviewStatePayload } from "../../_shared/interview-state.ts";
@@ -61,6 +61,14 @@ export interface MemoryEntry {
   structured: Record<string, unknown>;
 }
 
+/** A `match_repository_memory` row; the vector itself is never returned. */
+export interface MemoryMatch {
+  kind: string;
+  content: string;
+  /** 1 - cosine distance. */
+  similarity: number;
+}
+
 export interface RepositoryAccess {
   installationId: number;
   owner: string;
@@ -90,6 +98,14 @@ export interface ToolStore extends AiUsageRecorder {
   recordToolCall(record: ToolCallRecord): Promise<ToolCallRecordResult>;
   countToolCallsSince(interviewId: string, tools: RealtimeToolName[], since: Date): Promise<number>;
   listRepositoryMemory(workspaceId: string, commitSha: string): Promise<MemoryEntry[]>;
+  /** Embedded memory rows of the commit, nearest first. Rows without an embedding are skipped. */
+  matchRepositoryMemory(
+    workspaceId: string,
+    commitSha: string,
+    embedding: number[],
+    limit: number,
+    signal?: AbortSignal,
+  ): Promise<MemoryMatch[]>;
   /** Null when the repository's GitHub connection is missing or suspended. */
   getRepositoryAccess(workspaceId: string): Promise<RepositoryAccess | null>;
   getInterviewState(interviewId: string): Promise<InterviewStateSnapshot | null>;
@@ -106,6 +122,13 @@ export interface ToolStore extends AiUsageRecorder {
   completeInterview(interviewId: string, userId: string, reason: "time_limit" | null): Promise<boolean>;
 }
 
+export interface SearchEmbeddings {
+  provider: EmbeddingProvider;
+  model: string;
+  /** Total budget for the vector fill (query embedding plus match); defaults to VECTOR_SEARCH_BUDGET_MS. */
+  budgetMs?: number;
+}
+
 export interface ToolContext {
   interview: ToolInterview;
   userId: string;
@@ -114,6 +137,8 @@ export interface ToolContext {
   trees: TreeCache;
   ai: AIProvider;
   evaluationModel: string;
+  /** Enables the vector fill in search_repository; keyword search alone without it. */
+  embeddings?: SearchEmbeddings;
   elapsedSeconds: number;
   /** Queues report generation after this call completed the interview. Never throws. */
   requestReport: () => Promise<void>;

@@ -1,5 +1,5 @@
 import { assert } from "@std/assert";
-import type { AIProvider, AIUsage, StructuredRequest } from "./ai/provider.ts";
+import type { AIProvider, AIUsage, EmbeddingProvider, EmbeddingRequest, StructuredRequest } from "./ai/provider.ts";
 
 export interface FakeAIProvider extends AIProvider {
   calls: StructuredRequest<unknown>[];
@@ -27,6 +27,40 @@ export function createFakeAIProvider(
       } catch (err) {
         return Promise.reject(err);
       }
+    },
+  };
+}
+
+/** A deterministic vector derived from `text`, so equal inputs embed equally. */
+export function fakeEmbedding(text: string, dimensions = 1536): number[] {
+  let h = 2166136261;
+  for (const c of text) {
+    h = Math.imul(h ^ c.charCodeAt(0), 16777619) >>> 0;
+  }
+  return Array.from({ length: dimensions }, (_, i) => ((h + i * 2654435761) % 1000) / 1000);
+}
+
+export interface FakeEmbeddingProvider extends EmbeddingProvider {
+  calls: EmbeddingRequest[];
+}
+
+/**
+ * Returns `respond(request)` (default: `fakeEmbedding` per input) with 7 input tokens per input.
+ * A thrown or returned Error is rethrown as-is; a returned promise is awaited, so tests can delay.
+ */
+export function createFakeEmbeddingProvider(
+  respond: (request: EmbeddingRequest) => number[][] | Error | Promise<number[][] | Error> = (r) => r.input.map((t) => fakeEmbedding(t)),
+): FakeEmbeddingProvider {
+  const calls: EmbeddingRequest[] = [];
+  return {
+    calls,
+    async embed(request) {
+      calls.push(request);
+      const value = await respond(request);
+      if (value instanceof Error) {
+        throw value;
+      }
+      return { embeddings: value, usage: { input_tokens: 7 * request.input.length } };
     },
   };
 }

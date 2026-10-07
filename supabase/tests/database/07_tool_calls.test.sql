@@ -110,7 +110,7 @@ select is(
 select is(pg_temp.event_count('evidence_examined'), 2, 'evidence is deduped per interview and path');
 select is(
   pg_temp.tool('call_3', 'advance_interview', '{}', '{"ok": true, "guidance": "stored"}'),
-  'created:9',
+  'created:9:stored',
   'a state-changing call stores its result'
 );
 select is(pg_temp.tool('call_3', 'advance_interview', '{}'), 'duplicate:9:stored', 'a replay returns the stored result');

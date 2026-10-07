@@ -101,6 +101,7 @@ describe("integration env schemas", () => {
       OPENAI_REALTIME_MODEL: "gpt-realtime-2.1-mini",
       OPENAI_REALTIME_TRANSCRIPTION_MODEL: "gpt-4o-mini-transcribe",
       OPENAI_VISION_MODEL: "gpt-5.6-luna",
+      OPENAI_EMBEDDING_MODEL: "text-embedding-3-small",
     });
     expect(
       parseEnv("openai", openAIEnvSchema, { OPENAI_API_KEY: "sk-test", OPENAI_VISION_MODEL: "gpt-vision" })
@@ -117,6 +118,19 @@ describe("integration env schemas", () => {
     expect(() =>
       parseEnv("openai", openAIEnvSchema, { OPENAI_API_KEY: "sk-test", OPENAI_PLANNING_MODEL: " " })
     ).toThrowError(/OPENAI_PLANNING_MODEL/);
+  });
+
+  it("defaults the embedding model and rejects an empty one", () => {
+    expect(parseEnv("openai", openAIEnvSchema, { OPENAI_API_KEY: "sk-test" }).OPENAI_EMBEDDING_MODEL).toBe(
+      "text-embedding-3-small",
+    );
+    expect(
+      parseEnv("openai", openAIEnvSchema, { OPENAI_API_KEY: "sk-test", OPENAI_EMBEDDING_MODEL: "embed-custom" })
+        .OPENAI_EMBEDDING_MODEL,
+    ).toBe("embed-custom");
+    expect(() =>
+      parseEnv("openai", openAIEnvSchema, { OPENAI_API_KEY: "sk-test", OPENAI_EMBEDDING_MODEL: "" })
+    ).toThrowError(/OPENAI_EMBEDDING_MODEL/);
   });
 
   it("parses and rejects GitHub App env", () => {
