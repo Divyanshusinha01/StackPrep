@@ -474,15 +474,24 @@ Deep analysis does not block interviews. Planning includes the `structured.ai` s
 
 **Memory embeddings** (Inngest event `repository.memory_embedding.requested`, function `memory-embedding`) give each repository memory row of a commit a `pgvector` embedding for semantic retrieval in `search_repository`:
 
-- **Trigger.** A best-effort step (`queue-memory-embedding`) after the baseline completes with the workspace ready, both after a fresh analysis and when existing memory is reused (which backfills already analyzed commits), and another after deep analysis writes its result, since that creates or rewrites the `concepts` row. A failed enqueue is logged (`memory_embedding_enqueue_failed`) and never changes the triggering job's result. The event carries `workspace_id`, the originating `job_id` (baseline or deep analysis job), and `commit_sha`. There is no `jobs` row: embeddings are invisible to users, and failures are visible only in logs and Sentry.
+- **Trigger.** A best-effort step (`queue-memory-embedding`) after the baseline completes with the workspace ready, both after a fresh analysis and when existing memory is reused (which backfills already analyzed commits), another after deep analysis writes its result, since that creates or rewrites the `concepts` row, and another after the code index saves its `code_module` and `file_summary` rows. A failed enqueue is logged (`memory_embedding_enqueue_failed`) and never changes the triggering job's result. The event carries `workspace_id`, the originating `job_id` (baseline or deep analysis job), and `commit_sha`. There is no `jobs` row: embeddings are invisible to users, and failures are visible only in logs and Sentry.
 - **Input.** Every row of the commit with non-empty content, embedded as `kind` + newline + `content` (scrubbed again, capped at 8,000 characters). `structured` (including `structured.ai`) is not embedded, so deep analysis adding `structured.ai` to baseline rows does not re-embed them.
 - **Change detection.** `metadata.embedding` stores `model`, `dimensions`, `input_hash`, `input_version`, and `embedded_at`. `input_hash` is a SHA-256 of the model, input version, kind, and content. A row is embedded when its embedding is null or its hash differs, so unchanged content is never re-embedded and a model or input-version change re-embeds deliberately.
 - **Writes.** Rows are embedded in batches of at most 64 and written one by one with a compare-and-set on `updated_at`, so a concurrent `save_deep_analysis` marker is never clobbered. On a miss the row is reloaded once: if its content is unchanged the write is retried with the fresh metadata and the vector already computed; otherwise the row is skipped as superseded and the run triggered by that change covers it. A retried batch drops rows that are already current. Rows of other commits are never touched.
 - **Failures.** Rate limits are retried after the provider's delay, unavailability and malformed output are retried, and rejected requests and dimension mismatches are non-retriable. Memory, jobs, and workspace status are never changed; rows without an embedding are skipped by `match_repository_memory`, and search keeps working with keyword results.
 
-Embeddings are per memory row (about seven per commit), not per file, so vector hits answer conceptual questions at summary level while path-precise lookups stay keyword-driven. Per-file or chunk embeddings are future work.
+Embeddings are per memory row, not per AST node or chunk: about seven baseline rows per commit, plus the code index's `code_module` and symbol-outline `file_summary` rows (below). Vector hits answer conceptual questions at summary, directory and file-outline level, while path- and symbol-precise lookups stay keyword-driven. Raw source is never embedded.
 
-Tree-sitter parsing is deferred; baseline fact extraction is sufficient initially.
+**Code index** (`code_indexing` job, Inngest event `repository.code_index.requested`, function `code-index`) parses source files with Tree-sitter and stores commit-pinned syntactic facts:
+
+- **Parser.** `packages/code-parser` is a project-agnostic package (no StackPrep, Supabase, GitHub or Inngest imports) built on `web-tree-sitter` with vendored, version-pinned WASM grammars for TypeScript/TSX, JavaScript/JSX, Python, Java and Go. A language registry maps extensions to a grammar and declarative Tree-sitter queries; adding a language is a registry entry, not an engine change (C/C++ are deferred). `parseFile` returns `CodeFacts` (symbols with parent links and 1-based ranges, imports, exports, call sites, error ranges, `status: ok | partial | failed | unsupported`) and never throws for bad input. Facts are syntactic only: no type inference, no name resolution, no cross-file call graph. `PARSER_VERSION` is stored with every file so a logic change forces a re-parse.
+- **Runtime.** It runs inside the `inngest` Edge Function; the grammars ship as `static_files`. A hard-gate spike on hosted Supabase Edge (bundle size, cold starts, CPU and memory per batch, malformed input) set the limits: at most 400 files and 4 MB per commit, 64 KB per file, and at most 25 files / 600 KB per durable step.
+- **Trigger.** A best-effort `queue-code-index` step after the baseline completes with the workspace ready (also when memory is reused), next to the deep analysis step. `request_code_index` returns no job when the commit has no baseline, is already indexed with the current parser version, or a code index is already active (`jobs_active_code_indexing_key`). It never affects workspace readiness; interviews start without it and tools behave as before until it exists.
+- **Selection.** Blobs that pass the baseline `classifyPath` filter and have a registered language, ordered by baseline relevance then path. Oversized files are recorded as skipped without being fetched. Limits hit are recorded.
+- **Per-file isolation.** Each batch is its own `step.run`. Undecodable (non-UTF-8 or NUL), secret-bearing (the same `scrubSecrets` check as `get_file`), unfetchable, unsupported or failed files become `code_files` rows with a `parse_status` and `skipped_reason`; the run still succeeds. Only systemic failures (GitHub rate limits, outages, lost access, database errors) retry, mapped to the baseline's fixed error codes.
+- **Storage.** Migrations `20261008100000_code_indexing_job_type.sql`, `20261008100100_code_index.sql` and `20261008100200_code_memory.sql` add `code_files`, `code_symbols`, `code_imports` and `code_calls`, owned like `repository_memory` (composite FK to `workspaces`, owner-select RLS, writes only through service-role functions). Source text is never stored: only names, kinds, ranges, specifiers, callee text and a short signature. `replace_code_index` writes one batch; a file whose facts hash and parser version are unchanged is left as is, any other file at the same commit and path is replaced with its facts, so stale facts never survive and other commits are never touched. `complete_code_index` records counts, languages and limits in the commit's metadata-only `code_index` memory row (empty content, never embedded); `prune_code_index` then drops other commits except the workspace target and commits pinned by active interviews.
+- **Memory rows.** `save_code_memory` replaces the commit's code-index rows (`metadata.source = 'code_index'`): one `code_module` row per directory (indexed files, top exported symbols, directories it imports from, external imports) and a symbol-outline `file_summary` row for each of the 40 most relevant files with declarations. Unchanged rows keep their embedding. They enter the existing memory embedding pipeline after the run. Readers that load commit summaries (planning, deep analysis, report, realtime instructions, evaluation) skip `code_index` and `code_module` rows.
+- **Reads.** Security-invoker functions `find_symbol`, `find_importers`, `find_dependencies`, `find_callers` and `search_code_symbols`, all scoped to a workspace and commit. `resolved_path` on imports is a path-only guess for relative specifiers. Results are labeled syntactic (name-based, unresolved) and must not be presented as precise semantics.
 
 ```text
 Repository
@@ -735,6 +744,10 @@ searchRepositoryOutput = z.object({
     path: z.string(),
     area: z.string().optional(),        // module / repository area
     excerpt: z.string().max(1500),      // secret-scrubbed, delimited as data
+    symbol: z.string().optional(),      // code index hit: `name` or `Parent.name`
+    kind: z.string().optional(),        // function, method, class, ...
+    startLine: z.int().optional(),      // declaration range at the pinned commit
+    endLine: z.int().optional(),
   })),
 });
 
@@ -743,6 +756,7 @@ getFileInput = z.object({
   path: z.string().min(1).max(512),
   startLine: z.int().min(1).optional(),
   endLine: z.int().min(1).optional(),   // window capped server-side (~200 lines)
+  symbol: z.string().min(1).max(256).optional(), // read one declaration; not combined with lines
 });
 getFileOutput = z.object({
   ok: z.literal(true),
@@ -752,7 +766,10 @@ getFileOutput = z.object({
   totalLines: z.int(),
   content: z.string(),
   truncated: z.boolean(),
+  symbol: fileSymbol.optional(),        // what a `symbol` request resolved to
+  symbols: z.array(fileSymbol).max(50).optional(), // declarations overlapping the window
 });
+// fileSymbol = { name, kind, parent?, startLine, endLine }
 
 // evaluate_answer (server resolves the current question)
 evaluateAnswerInput = z.object({
@@ -790,7 +807,8 @@ endInterviewOutput = z.object({
 
 - Outputs never contain scores, internal reasoning, or coverage progress.
 - `get_file` returns `excluded` for generated, binary, oversized, or secret-bearing files.
-- `search_repository` ranks Repository Context by keyword first; when that finds fewer than `limit` hits, embedded memory rows fill the rest (see [`search_repository` / `get_file`](#search_repository--get_file)). The contract is unchanged.
+- `search_repository` ranks Repository Context by keyword first, adds code index symbol hits, and when that finds fewer than `limit` hits, embedded memory rows fill the rest (see [`search_repository` / `get_file`](#search_repository--get_file)). The symbol fields are optional, so existing results stay valid.
+- `get_file` with `symbol` returns `not_found` when the file is not in the code index or has no such declaration, and `invalid_arguments` when combined with `startLine`/`endLine`.
 
 #### `evaluate_answer`
 
@@ -826,6 +844,7 @@ Edge Function
 Ownership-checked query scoped to the workspace's indexed commit SHA
        ↓
 Keyword search over Repository Context (file tree, important files, excerpts)
+  + symbol search over the code index (search_code_symbols, 1.5 s budget)
        ↓ fewer than `limit` hits
 Vector fill: embed the query, match_repository_memory (one 3 s budget; keyword-only on any failure)
        ↓
@@ -837,7 +856,10 @@ Realtime
 - Results only come from the indexed Repository Context for the interview's commit SHA (see [Repository Context](#6-repository-context)).
 - Secret scrubbing and secret-bearing-file exclusion apply to tool output exactly as they do to AI ingestion.
 - File content is returned as clearly delimited data. Repository content is untrusted and cannot override interviewer instructions.
-- Examined files are recorded as `evidence_examined` interview events, which feed report scope evidence.
+- Examined files are recorded as `evidence_examined` interview events, which feed report scope evidence. The payload is `{path, area?, tool}` plus an optional trace `{symbol?, startLine?, endLine?, commit_sha?}`, so every fact stays traceable to repository, commit, file, symbol and range. `record_evidence_examined` keeps each well-formed trace field and drops malformed ones individually; there is still one event per path per interview, keeping the first examination's range. The report lists the symbol and range next to the path.
+- **Symbol hits.** Query terms are matched against the commit's `code_symbols` names (`search_code_symbols`: case-insensitive substring, ranked by matched terms, exported first, shorter names first). Hits carry `symbol`, `kind`, `startLine` and `endLine`, and an excerpt with the location, declaration and signature. They take at most half of `limit` unless keyword hits leave more room, so path and summary hits stay visible. A missing index returns no symbols; an error or the 1.5 s budget (`SYMBOL_SEARCH_BUDGET_MS`) logs `repository_search_symbol_fallback` and the search goes on without them. `code_module` rows are directory candidates; the `code_index` row is skipped.
+- **`get_file` by symbol.** `symbol` (`name` or `Parent.name`, exact case first, then case-insensitive, first in source order) resolves through `code_symbols` to the declaration's lines at the pinned commit. Window limits and secret withholding are unchanged. When the file is indexed, the output lists the declarations overlapping the returned window. A failing code index never blocks a plain read.
+- Symbol results are name-based and unresolved; the interviewer instructions say so, and the `find_*` functions are internal read capabilities, not Realtime tools.
 - **Vector fill.** Keyword hits are always computed first and keep their rank, so path lookups stay precise. When they are fewer than `limit` and an embedding provider is configured, the query is embedded with `OPENAI_EMBEDDING_MODEL` and matched with `match_repository_memory` against the commit's embedded memory rows. Matches are appended after the keyword hits, ordered by similarity then kind, de-duplicated by path and area, until `limit`. Each is a row-level hit (`path: "."`, `area: kind`, scrubbed and clipped `content`), the same shape keyword search uses for summary rows, and is never recorded as `evidence_examined`. The query embedding is recorded in `ai_usage` with task `embedding` and the interview.
 - **Latency budget.** The whole vector fill (query embedding, then the match, then mapping) shares one hard 3 s deadline (`VECTOR_SEARCH_BUDGET_MS`): both calls receive the same abort signal, and the fill is also raced against the deadline so the tool returns even if a client ignores the abort. Total added latency is never more than 3 s; typical cost is a few hundred milliseconds. On the deadline or any failure (no provider, provider error, dimension mismatch, match error, no embedded rows) the keyword hits are returned immediately, without a retry, and `repository_search_vector_fallback` is logged with a fixed `reason` (`deadline`, `embed_error`, `rpc_error`, `no_results`, `disabled`) and `elapsed_ms`. Vector search never fails the tool call.
 - The match runs with the service client, which bypasses RLS, like every other tool read; the workspace and commit come from the already authorized interview, never from tool arguments.
@@ -926,10 +948,11 @@ Use background jobs for:
 | --------------------- | --------------------------------------- | --------------------------------------- |
 | `repository_indexing` | Workspace created / analysis retried    | Baseline repository memory; workspace `ready` |
 | `deep_analysis`       | Baseline analysis succeeded (best-effort chained step) | `structured.ai` on the commit's `architecture_summary` and `modules` rows, plus a `concepts` row |
+| `code_indexing`       | Baseline analysis succeeded (best-effort chained step) | Commit-pinned `code_files` / `code_symbols` / `code_imports` / `code_calls`, `code_index` and `code_module` memory rows, symbol-outline `file_summary` rows |
 | `interview_planning`  | `POST /workspaces/:id/interviews`       | Coverage map, plan, strategy in `interview_state` |
 | `report_generation`   | Backend marks interview complete        | Interview report                        |
 
-Memory embedding (Inngest event `repository.memory_embedding.requested`, function `memory-embedding`) also runs in the background, but it has no `jobs` row and no job type: it is triggered by best-effort steps after the baseline and after deep analysis, keyed by the originating job's id, and its failures only reach logs and Sentry (see [Repository Context](#6-repository-context)).
+Memory embedding (Inngest event `repository.memory_embedding.requested`, function `memory-embedding`) also runs in the background, but it has no `jobs` row and no job type: it is triggered by best-effort steps after the baseline, after deep analysis and after the code index, keyed by the originating job's id, and its failures only reach logs and Sentry (see [Repository Context](#6-repository-context)).
 
 ### Implementation — Inngest
 

@@ -12,6 +12,7 @@ import type { SupabaseClient, User } from "@supabase/supabase-js";
 import { AIUnavailableError, type EmbeddingRequest, type StructuredRequest } from "../_shared/ai/provider.ts";
 import { aiUsageCost } from "../_shared/ai-usage.ts";
 import type { Authenticate } from "../_shared/auth.ts";
+import type { FileSymbol, SymbolSearchHit } from "../_shared/code-index/reader.ts";
 import { GithubRateLimitedError, GithubUnavailableError } from "../_shared/github-app.ts";
 import { createRealtimeClient } from "../_shared/realtime/openai-realtime.ts";
 import { createFakeAIProvider, createFakeEmbeddingProvider, type FakeEmbeddingProvider } from "../_shared/testing.ts";
@@ -34,7 +35,7 @@ import { pickNextArea } from "./tools/advance-interview.ts";
 import { CLOSING_GUIDANCE, CONTINUE_GUIDANCE } from "./tools/end-interview.ts";
 import { type AnswerEvaluation, resolveCurrentQuestion } from "./tools/evaluate-answer.ts";
 import { fileWindow, MAX_WINDOW_LINES, normalizePath } from "./tools/get-file.ts";
-import { MAX_EXCERPT_CHARS } from "./tools/search-repository.ts";
+import { MAX_EXCERPT_CHARS, memoryCandidates, mergeSymbolHits } from "./tools/search-repository.ts";
 import type {
   InterviewStateSnapshot,
   MemoryEntry,
@@ -363,7 +364,7 @@ Deno.test("get_file: returns a window of the file at the pinned commit and recor
     truncated: false,
   });
   await result(await handler(toolCall("get_file", { path: "./src/server.ts", startLine: 2 })));
-  assertEquals(store.evidence, [{ path: "src/server.ts", area: "src", tool: "get_file" }]);
+  assertEquals(store.evidence, [{ path: "src/server.ts", area: "src", tool: "get_file", startLine: 1, endLine: 3, commit_sha: SHA }]);
   assertEquals(store.records.length, 2);
   assertEquals(github.treeCalls, 1, "the tree is cached per commit");
   assert(!JSON.stringify(store.records).includes("express()"), "file content is never stored");
@@ -844,6 +845,143 @@ Deno.test("end_interview: accepted with sufficient evidence before 30 minutes", 
   assertEquals(body.accepted, true);
   assertEquals(store.status, "completed");
   assertEquals(jobs.sent.length, 1);
+});
+
+// Code index (symbol-aware lookups) -------------------------------------------------------------
+
+const longSymbols: FileSymbol[] = [
+  { name: "Service", kind: "class", parent: null, start_line: 10, end_line: 20, exported: true },
+  { name: "load", kind: "method", parent: "Service", start_line: 12, end_line: 14, exported: false },
+  { name: "other", kind: "function", parent: null, start_line: 300, end_line: 310, exported: false },
+];
+
+function symbolHit(hit: Partial<SymbolSearchHit> & Pick<SymbolSearchHit, "path" | "name">): SymbolSearchHit {
+  return {
+    language: "typescript",
+    kind: "function",
+    parent_name: null,
+    start_line: 1,
+    end_line: 2,
+    exported: false,
+    signature: null,
+    matched_terms: 0,
+    ...hit,
+  };
+}
+
+Deno.test("get_file: a symbol reads that declaration's lines and is traced in evidence", async () => {
+  const store = createFakeToolStore({ memory, messages, state: stateSnapshot(), fileSymbols: { "src/long.ts": longSymbols } });
+  const { handler } = setup({ store });
+  const body = await result(await handler(toolCall("get_file", { path: "src/long.ts", symbol: "Service.load" })));
+  assertEquals([body.startLine, body.endLine, body.content.split("\n")[0]], [12, 14, "line 12"]);
+  assertEquals(body.symbol, { name: "load", kind: "method", parent: "Service", startLine: 12, endLine: 14 });
+  assertEquals(body.symbols.map((s: { name: string }) => s.name), ["Service", "load"], "only declarations overlapping the window");
+  assertEquals(store.evidence, [{
+    path: "src/long.ts",
+    area: "src",
+    tool: "get_file",
+    symbol: "Service.load",
+    startLine: 12,
+    endLine: 14,
+    commit_sha: SHA,
+  }]);
+  assertEquals(store.records[0].resultSummary.symbol, "Service.load");
+});
+
+Deno.test("get_file: a plain read lists the symbols in its window", async () => {
+  const store = createFakeToolStore({ memory, messages, state: stateSnapshot(), fileSymbols: { "src/long.ts": longSymbols } });
+  const { handler } = setup({ store });
+  const body = await result(await handler(toolCall("get_file", { path: "src/long.ts", startLine: 1, endLine: 11 })));
+  assertEquals(body.symbols, [{ name: "Service", kind: "class", startLine: 10, endLine: 20 }]);
+  assertEquals(body.symbol, undefined);
+});
+
+Deno.test("get_file: unknown or unindexed symbols are not_found; a symbol with explicit lines is invalid", async () => {
+  const store = createFakeToolStore({ memory, messages, state: stateSnapshot(), fileSymbols: { "src/long.ts": longSymbols } });
+  const { handler, github } = setup({ store });
+  await expectToolError(await handler(toolCall("get_file", { path: "src/long.ts", symbol: "missing" })), "not_found");
+  await expectToolError(await handler(toolCall("get_file", { path: "src/server.ts", symbol: "app" })), "not_found");
+  await expectToolError(await handler(toolCall("get_file", { path: "src/long.ts", symbol: "load", startLine: 3 })), "invalid_arguments");
+  assertEquals([github.blobCalls, store.evidence.length], [0, 0]);
+  const folded = await result(await handler(toolCall("get_file", { path: "src/long.ts", symbol: "service" })));
+  assertEquals([folded.startLine, folded.endLine], [10, 20], "a case-insensitive match is the fallback");
+});
+
+Deno.test("get_file: a failing code index never blocks reading the file", async () => {
+  const store = createFakeToolStore({ memory, messages, state: stateSnapshot(), fileSymbols: { "src/long.ts": longSymbols } });
+  store.codeIndexError = new Error("db down");
+  const { handler } = setup({ store });
+  const { value: res, logs } = await captureLogs(() => handler(toolCall("get_file", { path: "src/long.ts", startLine: 1, endLine: 11 })));
+  const body = await result(res);
+  assertEquals([body.startLine, body.endLine, body.symbols], [1, 11, undefined]);
+  assert(logs.some((l) => l.event === "get_file_symbols_unavailable"));
+  assert(!JSON.stringify(logs).includes("db down"), "the raw error is not logged");
+});
+
+Deno.test("search_repository: declarations from the code index come back with their line range", async () => {
+  const symbols = [
+    symbolHit({ path: "src/auth/jwt.ts", name: "verifyJwt", start_line: 3, end_line: 9, exported: true, signature: "export function verifyJwt(token: string)" }),
+    symbolHit({ path: "src/auth/session.ts", name: "refresh", kind: "method", parent_name: "SessionStore", start_line: 20, end_line: 30 }),
+  ];
+  const store = createFakeToolStore({ memory, messages, state: stateSnapshot(), symbols });
+  const { handler } = setup({ store });
+  const { value: res } = await captureLogs(() => handler(toolCall("search_repository", { query: "verifyJwt", limit: 5 })));
+  const body = await result(res);
+  const hit = body.results.find((r: { symbol?: string }) => r.symbol === "verifyJwt");
+  assertEquals([hit.path, hit.kind, hit.startLine, hit.endLine], ["src/auth/jwt.ts", "function", 3, 9]);
+  assert(hit.excerpt.startsWith("src/auth/jwt.ts:3-9\nexported function verifyJwt"));
+  assert(body.results.some((r: { symbol?: string; path: string }) => !r.symbol && r.path === "src/auth/jwt.ts"), "keyword hits stay");
+  assertEquals(store.evidence, [{
+    path: "src/auth/jwt.ts",
+    area: "src",
+    tool: "search_repository",
+    symbol: "verifyJwt",
+    startLine: 3,
+    endLine: 9,
+    commit_sha: SHA,
+  }], "the symbol trace wins over the plain file hit of the same path");
+  assertEquals(store.records[0].resultSummary.symbols, 1);
+
+  const member = await result(await handler(toolCall("search_repository", { query: "refresh", limit: 5 })));
+  assertEquals(member.results.find((r: { symbol?: string }) => r.symbol)?.symbol, "SessionStore.refresh");
+});
+
+Deno.test("search_repository: symbols take at most half the results while keyword hits remain", async () => {
+  const symbols = ["authMiddleware", "authorize", "authHeader"].map((name) => symbolHit({ path: `src/auth/${name}.ts`, name }));
+  const store = createFakeToolStore({ memory, messages, state: stateSnapshot(), symbols });
+  const { handler } = setup({ store });
+  const { value: res } = await captureLogs(() => handler(toolCall("search_repository", { query: "auth", limit: 2 })));
+  const body = await result(res);
+  assertEquals(body.results.map((r: { symbol?: string }) => r.symbol ?? null), [null, "authorize"]);
+});
+
+Deno.test("search_repository: a failing code index falls back to the existing results", async () => {
+  const keyword = await keywordOnly({ query: "jwt auth", limit: 8 });
+  const store = createFakeToolStore({ memory, messages, state: stateSnapshot(), symbols: [symbolHit({ path: "src/a.ts", name: "jwtAuth" })] });
+  store.codeIndexError = new Error("db down");
+  const { handler } = setup({ store });
+  const { value: res, logs } = await captureLogs(() => handler(toolCall("search_repository", { query: "jwt auth", limit: 8 })));
+  assertEquals((await result(res)).results, keyword);
+  assertEquals(logs.find((l) => l.event === "repository_search_symbol_fallback")?.reason, "rpc_error");
+});
+
+Deno.test("search_repository: code_module rows are directory candidates and code_index rows are skipped", () => {
+  const rows: MemoryEntry[] = [
+    { kind: "code_module", content: "Module src/auth/ (typescript; 2 indexed files: jwt.ts, session.ts)", structured: { path: "src/auth/" } },
+    { kind: "code_module", content: "Module ./ (python; 1 indexed files: main.py)", structured: { path: "./" } },
+    { kind: "code_index", content: "", structured: { counts: { files: 3 } } },
+  ];
+  assertEquals(memoryCandidates(rows).map((c) => [c.path, c.area, c.isFile]), [["src/auth/", "src", false], [".", "code_module", false]]);
+});
+
+Deno.test("mergeSymbolHits gives symbols the free slots, else half", () => {
+  const hit = (path: string, symbol = false) => ({ path, excerpt: "", isFile: true, score: 1, ...(symbol ? { symbol: { name: path, kind: "function", startLine: 1, endLine: 1 } } : {}) });
+  const keyword = ["k1", "k2", "k3", "k4"].map((p) => hit(p));
+  const symbols = ["s1", "s2", "s3", "s4"].map((p) => hit(p, true));
+  assertEquals(mergeSymbolHits(keyword, symbols, 4).map((h) => h.path), ["k1", "k2", "s1", "s2"]);
+  assertEquals(mergeSymbolHits(keyword.slice(0, 1), symbols, 4).map((h) => h.path), ["k1", "s1", "s2", "s3"]);
+  assertEquals(mergeSymbolHits(keyword, [], 4).map((h) => h.path), ["k1", "k2", "k3", "k4"]);
+  assertEquals(mergeSymbolHits([], symbols, 3).map((h) => h.path), ["s1", "s2", "s3"]);
 });
 
 // Units ---------------------------------------------------------------------------------------

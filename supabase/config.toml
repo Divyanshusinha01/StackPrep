@@ -56,3 +56,5 @@ entrypoint = "./functions/interviews/index.ts"
 enabled = true
 verify_jwt = false
 entrypoint = "./functions/inngest/index.ts"
+# Tree-sitter runtime and grammars read by @stackprep/code-parser at run time.
+static_files = ["../packages/code-parser/grammars/*.wasm"]

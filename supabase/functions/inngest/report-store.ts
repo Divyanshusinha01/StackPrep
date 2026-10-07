@@ -6,6 +6,7 @@ import {
 } from "@stackprep/shared";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { type AiUsageRecorder, createAiUsageRecorder } from "../_shared/ai-usage.ts";
+import { NON_SUMMARY_KINDS } from "../_shared/code-index/memory.ts";
 import { createPlanningStore, type PlanningMemory, type PriorOutcome } from "./planning-store.ts";
 
 const MAX_MESSAGES = 400;
@@ -48,6 +49,14 @@ export interface ReportEvaluation {
 export interface ReportEvidence {
   path: string;
   area: string | null;
+  /** Symbol-level trace, when the examination was of one symbol or line range. */
+  symbol?: string;
+  startLine?: number;
+  endLine?: number;
+}
+
+function positiveInt(value: unknown): number | undefined {
+  return typeof value === "number" && Number.isSafeInteger(value) && value > 0 ? value : undefined;
 }
 
 export interface ReportCoverage {
@@ -147,7 +156,7 @@ export function createReportStore(serviceClient: SupabaseClient): ReportStore {
         serviceClient.from("interview_events").select("payload")
           .eq("interview_id", id).eq("event_type", "evidence_examined").order("sequence").limit(MAX_EVIDENCE),
         serviceClient.from("interview_state").select("coverage_map").eq("interview_id", id).maybeSingle(),
-        memory().neq("kind", "file_summary").order("kind"),
+        memory().not("kind", "in", NON_SUMMARY_KINDS).order("kind"),
         memory().eq("kind", "file_summary").order("created_at").limit(MAX_FILE_SUMMARIES),
         planning.loadPriorOutcomes(target.workspace_id, id),
       ]);
@@ -171,10 +180,18 @@ export function createReportStore(serviceClient: SupabaseClient): ReportStore {
           discrepancy: e.discrepancy === true,
         })),
         evidence: (evidence.data ?? []).flatMap((row) => {
-          const payload = row.payload as { path?: unknown; area?: unknown };
-          return typeof payload.path === "string"
-            ? [{ path: payload.path, area: typeof payload.area === "string" ? payload.area : null }]
-            : [];
+          const payload = row.payload as { path?: unknown; area?: unknown; symbol?: unknown; startLine?: unknown; endLine?: unknown };
+          if (typeof payload.path !== "string") {
+            return [];
+          }
+          const startLine = positiveInt(payload.startLine);
+          const endLine = positiveInt(payload.endLine);
+          return [{
+            path: payload.path,
+            area: typeof payload.area === "string" ? payload.area : null,
+            ...(typeof payload.symbol === "string" ? { symbol: payload.symbol } : {}),
+            ...(startLine !== undefined && endLine !== undefined && endLine >= startLine ? { startLine, endLine } : {}),
+          }];
         }),
         memory: [...(summaries.data ?? []), ...(files.data ?? [])] as PlanningMemory[],
         coverage: coverage.success ? coverage.data.areas.map(({ id, name, status }) => ({ id, name, status })) : [],

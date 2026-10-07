@@ -1,11 +1,14 @@
-import type { GetFileInput, GetFileOutput } from "@stackprep/shared";
+import type { FileSymbol as GetFileSymbol, GetFileInput, GetFileOutput } from "@stackprep/shared";
 import { classifyPath, DEFAULT_ANALYSIS_LIMITS } from "../../_shared/analysis/filter.ts";
 import { scrubSecrets } from "../../_shared/analysis/scrub.ts";
+import { type FileSymbol, pickFileSymbol } from "../../_shared/code-index/reader.ts";
 import { type GithubApp, GithubError, GithubRateLimitedError, type RepositoryTree } from "../../_shared/github-app.ts";
 import { failed, type ToolContext, type ToolOutcome, topLevelArea } from "./types.ts";
 
 export const MAX_WINDOW_LINES = 200;
 export const MAX_WINDOW_CHARS = 24_000;
+export const MAX_WINDOW_SYMBOLS = 50;
+const MAX_SYMBOL_NAME_CHARS = 256;
 const TREE_TTL_MS = 5 * 60_000;
 const MAX_CACHED_TREES = 20;
 
@@ -101,19 +104,55 @@ export function fileWindow(text: string, startLine?: number, endLine?: number): 
 
 // Tool --------------------------------------------------------------------------------------
 
+/**
+ * The file's code index symbols; null when the file is not indexed or the lookup fails, so
+ * reading the file never depends on the index.
+ */
+async function loadSymbols(ctx: ToolContext, path: string): Promise<FileSymbol[] | null> {
+  try {
+    return await ctx.store.listFileSymbols(ctx.interview.workspace_id, ctx.interview.repository_commit_sha, path);
+  } catch {
+    ctx.log({ event: "get_file_symbols_unavailable" });
+    return null;
+  }
+}
+
+function toOutputSymbol(s: FileSymbol): GetFileSymbol {
+  return { name: s.name, kind: s.kind, ...(s.parent ? { parent: s.parent } : {}), startLine: s.start_line, endLine: s.end_line };
+}
+
+/** Declarations overlapping the window, in source order, capped. */
+export function windowSymbols(symbols: readonly FileSymbol[], startLine: number, endLine: number): GetFileSymbol[] {
+  return symbols
+    .filter((s) => s.start_line <= endLine && s.end_line >= startLine && s.name.length <= MAX_SYMBOL_NAME_CHARS)
+    .slice(0, MAX_WINDOW_SYMBOLS)
+    .map(toOutputSymbol);
+}
+
 export async function getFile(ctx: ToolContext, input: GetFileInput): Promise<ToolOutcome> {
   const path = normalizePath(input.path);
-  if (!path) {
+  if (!path || (input.symbol !== undefined && (input.startLine !== undefined || input.endLine !== undefined))) {
     return failed("invalid_arguments");
   }
   if (classifyPath(path) !== null) {
     return failed("excluded");
   }
 
-  const access = await ctx.store.getRepositoryAccess(ctx.interview.workspace_id);
+  const [access, symbols] = await Promise.all([
+    ctx.store.getRepositoryAccess(ctx.interview.workspace_id),
+    loadSymbols(ctx, path),
+  ]);
   if (!access) {
     ctx.log({ event: "get_file_failed", reason: "repository_not_accessible" });
     return failed("internal", false);
+  }
+
+  let requested: FileSymbol | null = null;
+  if (input.symbol !== undefined) {
+    requested = symbols ? pickFileSymbol(symbols, input.symbol) : null;
+    if (!requested) {
+      return failed("not_found");
+    }
   }
 
   let bytes: Uint8Array | null;
@@ -141,15 +180,39 @@ export async function getFile(ctx: ToolContext, input: GetFileInput): Promise<To
   if (text === null || scrubSecrets(text) !== text) {
     return failed("excluded");
   }
-  const window = fileWindow(text, input.startLine, input.endLine);
+  const window = requested
+    ? fileWindow(text, requested.start_line, requested.end_line)
+    : fileWindow(text, input.startLine, input.endLine);
   if (!window) {
     return failed("invalid_arguments");
   }
-  const output: GetFileOutput = { ok: true, path, ...window };
+  const outline = symbols && window.endLine >= window.startLine ? windowSymbols(symbols, window.startLine, window.endLine) : [];
+  const symbolName = requested ? (requested.parent ? `${requested.parent}.${requested.name}` : requested.name) : null;
+  const output: GetFileOutput = {
+    ok: true,
+    path,
+    ...window,
+    ...(requested ? { symbol: toOutputSymbol(requested) } : {}),
+    ...(outline.length ? { symbols: outline } : {}),
+  };
   const area = topLevelArea(path);
   return {
     output,
-    summary: { ok: true, path, startLine: window.startLine, endLine: window.endLine, totalLines: window.totalLines },
-    evidence: [{ path, ...(area ? { area } : {}), tool: "get_file" }],
+    summary: {
+      ok: true,
+      path,
+      startLine: window.startLine,
+      endLine: window.endLine,
+      totalLines: window.totalLines,
+      ...(symbolName ? { symbol: symbolName } : {}),
+    },
+    evidence: [{
+      path,
+      ...(area ? { area } : {}),
+      tool: "get_file",
+      ...(symbolName && symbolName.length <= MAX_SYMBOL_NAME_CHARS ? { symbol: symbolName } : {}),
+      ...(window.endLine >= window.startLine ? { startLine: window.startLine, endLine: window.endLine } : {}),
+      commit_sha: ctx.interview.repository_commit_sha,
+    }],
   };
 }

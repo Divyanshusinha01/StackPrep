@@ -7,6 +7,7 @@ import type {
 } from "@stackprep/shared";
 import type { AIProvider, EmbeddingProvider } from "../../_shared/ai/provider.ts";
 import type { AiUsageRecorder } from "../../_shared/ai-usage.ts";
+import type { FileSymbol, SymbolSearchHit } from "../../_shared/code-index/reader.ts";
 import type { GithubApp } from "../../_shared/github-app.ts";
 import type { InterviewStatePayload } from "../../_shared/interview-state.ts";
 import type { TreeCache } from "./get-file.ts";
@@ -106,6 +107,10 @@ export interface ToolStore extends AiUsageRecorder {
     limit: number,
     signal?: AbortSignal,
   ): Promise<MemoryMatch[]>;
+  /** Code index symbols of the commit whose name contains a term; empty when the commit is not indexed. */
+  searchCodeSymbols(workspaceId: string, commitSha: string, terms: string[], limit: number, signal?: AbortSignal): Promise<SymbolSearchHit[]>;
+  /** The file's code index symbols in source order; null when the file has no parsed facts. */
+  listFileSymbols(workspaceId: string, commitSha: string, path: string): Promise<FileSymbol[] | null>;
   /** Null when the repository's GitHub connection is missing or suspended. */
   getRepositoryAccess(workspaceId: string): Promise<RepositoryAccess | null>;
   getInterviewState(interviewId: string): Promise<InterviewStateSnapshot | null>;

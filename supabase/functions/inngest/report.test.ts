@@ -216,6 +216,20 @@ Deno.test("untrusted transcript and memory cannot close their delimiters", () =>
   assertEquals(input.match(/<\/repository_memory>/g)?.length, 1);
 });
 
+Deno.test("examined evidence lists the symbol and line range next to the path", () => {
+  const input = buildReportInput(target(), context({
+    evidence: [
+      { path: "src/auth/jwt.ts", area: "src", symbol: "verifyJwt", startLine: 3, endLine: 9 },
+      { path: "src/server.ts", area: "src", startLine: 1, endLine: 40 },
+      { path: "README.md", area: null },
+    ],
+  }));
+  const block = input.slice(input.indexOf("<evidence_examined>"), input.indexOf("</evidence_examined>"));
+  assert(block.includes("src/auth/jwt.ts (verifyJwt, lines 3-9)\n"));
+  assert(block.includes("src/server.ts (lines 1-40)\n"));
+  assert(block.includes("README.md\n"));
+});
+
 Deno.test("the transcript sent to the model is bounded", () => {
   const messages = Array.from({ length: 300 }, (_, i) => ({
     id: `m${i}`,

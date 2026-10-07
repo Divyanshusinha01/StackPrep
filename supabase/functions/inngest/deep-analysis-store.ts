@@ -106,7 +106,7 @@ export function createDeepAnalysisStore(serviceClient: SupabaseClient): DeepAnal
       const [summaries, files] = await Promise.all([
         serviceClient.from("repository_memory").select("kind, content, structured")
           .eq("workspace_id", workspaceId).eq("repository_commit_sha", commitSha)
-          .not("kind", "in", "(file_summary,concepts)").order("kind"),
+          .not("kind", "in", "(file_summary,concepts,code_index,code_module)").order("kind"),
         serviceClient.from("repository_memory").select("kind, content")
           .eq("workspace_id", workspaceId).eq("repository_commit_sha", commitSha)
           .eq("kind", "file_summary").order("created_at").limit(MAX_FILE_SUMMARIES),

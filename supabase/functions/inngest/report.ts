@@ -10,7 +10,7 @@ import {
 } from "../_shared/ai/provider.ts";
 import { providerTokens } from "../_shared/ai-usage.ts";
 import type { StepRunner } from "./function.ts";
-import type { ReportContext, ReportStore, ReportTarget } from "./report-store.ts";
+import type { ReportContext, ReportEvidence, ReportStore, ReportTarget } from "./report-store.ts";
 
 export const REPORT_EVENT = "interview.report.requested";
 export const REPORT_FUNCTION_ID = "interview-report";
@@ -55,7 +55,8 @@ export const REPORT_SYSTEM_PROMPT = `You write the final report for a technical 
 You receive delimited blocks:
 - <transcript>: the interview, one turn per line, prefixed "Interviewer:" or "Candidate:".
 - <evaluations>: per-answer assessments recorded during the interview (category, rating, strengths, gaps, repository evidence, and the question).
-- <evidence_examined>: repository files the interviewer opened during the interview.
+- <evidence_examined>: repository files the interviewer opened during the interview, one per line,
+  optionally followed by the examined symbol and line range in parentheses (not part of the path).
 - <repository_memory>: derived summaries of the repository at the interview's commit.
 - <coverage>: which interview areas were explored.
 - <prior_interviews>: outcomes of earlier interviews on this repository.
@@ -147,6 +148,15 @@ function block(name: string, body: string): string {
   return `<${name}>\n${body || "none"}\n</${name}>`;
 }
 
+/** `path`, optionally followed by the examined symbol and line range, e.g. `src/a.ts (login, lines 3-9)`. */
+function evidenceLine(e: ReportEvidence): string {
+  const detail = [
+    e.symbol ?? null,
+    e.startLine !== undefined && e.endLine !== undefined ? `lines ${e.startLine}-${e.endLine}` : null,
+  ].filter(Boolean);
+  return detail.length ? `${e.path} (${detail.join(", ")})` : e.path;
+}
+
 export function buildReportInput(
   target: Pick<ReportTarget, "repository_full_name" | "commit_sha" | "interview_number">,
   context: ReportContext,
@@ -194,7 +204,7 @@ export function buildReportInput(
     `Report for interview ${target.interview_number} on repository ${fence(target.repository_full_name)} at commit ${target.commit_sha}.`,
     block("transcript", turns.join("\n")),
     block("evaluations", json(evaluations)),
-    block("evidence_examined", context.evidence.map((e) => fence(e.path)).join("\n")),
+    block("evidence_examined", context.evidence.map((e) => fence(evidenceLine(e))).join("\n")),
     block("repository_memory", memory.join("\n\n")),
     block("coverage", json(context.coverage)),
     block("prior_interviews", json(context.prior)),

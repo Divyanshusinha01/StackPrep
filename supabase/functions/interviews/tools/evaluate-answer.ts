@@ -3,6 +3,7 @@ import { z } from "zod";
 import { scrubSecrets } from "../../_shared/analysis/scrub.ts";
 import { AIError } from "../../_shared/ai/provider.ts";
 import { providerTokens } from "../../_shared/ai-usage.ts";
+import { NON_SUMMARY_KIND_LIST } from "../../_shared/code-index/memory.ts";
 import { parseState, raiseStatus, updateCoverage } from "./coverage.ts";
 import { type EvaluationRecord, failed, type MemoryEntry, type ToolContext, type ToolOutcome, type TranscriptMessage } from "./types.ts";
 
@@ -109,7 +110,7 @@ export function buildEvaluationInput(input: EvaluationPromptInput): string {
 
   let memoryBudget = MAX_MEMORY_CHARS;
   const memory: string[] = [];
-  for (const row of input.memory.filter((m) => m.kind !== "file_summary")) {
+  for (const row of input.memory.filter((m) => !NON_SUMMARY_KIND_LIST.includes(m.kind))) {
     if (memoryBudget <= 0) {
       break;
     }

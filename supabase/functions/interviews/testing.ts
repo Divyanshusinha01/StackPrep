@@ -1,5 +1,6 @@
 import type { EvidenceExaminedPayload, IntegritySignalKind } from "@stackprep/shared";
 import type { AiUsageEntry } from "../_shared/ai-usage.ts";
+import type { FileSymbol, SymbolSearchHit } from "../_shared/code-index/reader.ts";
 import { GithubUnexpectedResponseError, type GithubApp, type RepositoryTreeEntry } from "../_shared/github-app.ts";
 import { StaleInterviewStateError } from "../_shared/interview-state.ts";
 import type { JobEventName, JobEvents, JobQueue } from "../_shared/jobs.ts";
@@ -35,6 +36,12 @@ export interface FakeToolStore extends ToolStore {
   completions: ("time_limit" | null)[];
   stateUpdates: InterviewStateSnapshot[];
   memory: MemoryEntry[];
+  /** Code index symbols of the interview's commit; empty means the commit is not indexed. */
+  symbols: SymbolSearchHit[];
+  /** File outlines keyed by path, as listFileSymbols returns them. */
+  fileSymbols: Record<string, FileSymbol[]>;
+  /** When set, searchCodeSymbols and listFileSymbols reject with it. */
+  codeIndexError: Error | null;
   /** Answer of matchRepositoryMemory, already ordered nearest first. */
   matches: MemoryMatch[];
   matchCalls: { embedding: number[]; limit: number; signal?: AbortSignal }[];
@@ -52,7 +59,7 @@ export interface FakeToolStore extends ToolStore {
 
 /** In-memory ToolStore with the same dedupe semantics as record_tool_call and complete_interview. */
 export function createFakeToolStore(
-  init: Partial<Pick<FakeToolStore, "memory" | "matches" | "messages" | "state" | "access">> = {},
+  init: Partial<Pick<FakeToolStore, "memory" | "symbols" | "fileSymbols" | "matches" | "messages" | "state" | "access">> = {},
 ): FakeToolStore {
   const store: FakeToolStore = {
     records: [],
@@ -62,6 +69,9 @@ export function createFakeToolStore(
     completions: [],
     stateUpdates: [],
     memory: init.memory ?? [],
+    symbols: init.symbols ?? [],
+    fileSymbols: init.fileSymbols ?? {},
+    codeIndexError: null,
     matches: init.matches ?? [],
     matchCalls: [],
     matchImpl: null,
@@ -112,6 +122,25 @@ export function createFakeToolStore(
     matchRepositoryMemory(_workspaceId, _commitSha, embedding, limit, signal) {
       store.matchCalls.push({ embedding, limit, signal });
       return store.matchImpl ? store.matchImpl(signal) : Promise.resolve(store.matches.slice(0, limit));
+    },
+    searchCodeSymbols(_workspaceId, _commitSha, terms, limit) {
+      if (store.codeIndexError) {
+        return Promise.reject(store.codeIndexError);
+      }
+      const matched = (name: string) => terms.filter((t) => name.toLowerCase().includes(t.toLowerCase())).length;
+      return Promise.resolve(
+        store.symbols
+          .map((s) => ({ ...s, matched_terms: matched(s.name) }))
+          .filter((s) => s.matched_terms > 0)
+          .sort((a, b) => b.matched_terms - a.matched_terms || Number(b.exported) - Number(a.exported) || a.name.length - b.name.length)
+          .slice(0, limit),
+      );
+    },
+    listFileSymbols(_workspaceId, _commitSha, path) {
+      if (store.codeIndexError) {
+        return Promise.reject(store.codeIndexError);
+      }
+      return Promise.resolve(store.fileSymbols[path] ?? null);
     },
     getRepositoryAccess: () => Promise.resolve(store.access),
     getInterviewState: () => Promise.resolve(store.state ? structuredClone(store.state) : null),

@@ -7,6 +7,7 @@ import {
 } from "@stackprep/shared";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { type AiUsageRecorder, createAiUsageRecorder } from "../_shared/ai-usage.ts";
+import { NON_SUMMARY_KINDS } from "../_shared/code-index/memory.ts";
 import {
   type InterviewStateRpcClient,
   StaleInterviewStateError,
@@ -149,7 +150,7 @@ export function createPlanningStore(serviceClient: SupabaseClient): PlanningStor
       const [summaries, files] = await Promise.all([
         serviceClient.from("repository_memory").select("kind, content, ai:structured->ai")
           .eq("workspace_id", workspaceId).eq("repository_commit_sha", commitSha)
-          .neq("kind", "file_summary").order("kind"),
+          .not("kind", "in", NON_SUMMARY_KINDS).order("kind"),
         serviceClient.from("repository_memory").select("kind, content")
           .eq("workspace_id", workspaceId).eq("repository_commit_sha", commitSha)
           .eq("kind", "file_summary").order("created_at").limit(MAX_FILE_SUMMARIES),
