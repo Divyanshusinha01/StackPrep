@@ -1,3 +1,4 @@
+import { PARSER_VERSION } from "@stackprep/code-parser";
 import { type AnalysisErrorCode, analysisErrorCodeSchema, gitCommitShaSchema } from "@stackprep/shared";
 import { type Inngest, NonRetriableError, RetryAfterError } from "inngest";
 import { z } from "zod";
@@ -12,6 +13,7 @@ import {
   GithubUnavailableError,
 } from "../_shared/github-app.ts";
 import type { JobQueue } from "../_shared/jobs.ts";
+import { CODE_INDEX_EVENT, CODE_INDEX_FAILURE_MESSAGES } from "./code-index.ts";
 import { DEEP_ANALYSIS_EVENT, DEEP_ANALYSIS_FAILURE_MESSAGES } from "./deep-analysis.ts";
 import { queueMemoryEmbedding } from "./memory-embedding.ts";
 import type { AnalysisStore, AnalysisTarget } from "./store.ts";
@@ -168,6 +170,40 @@ async function queueDeepAnalysis(deps: AnalysisDeps, step: StepRunner, event: An
   });
 }
 
+/**
+ * Best-effort enqueue of the code index, in its own step after the baseline is complete. Like the
+ * deep analysis enqueue, every failure is logged and swallowed, so it never changes readiness.
+ */
+async function queueCodeIndex(deps: AnalysisDeps, step: StepRunner, event: AnalysisEvent): Promise<void> {
+  const ids = { workspace_id: event.workspace_id, analysis_job_id: event.job_id };
+  await step.run("queue-code-index", async () => {
+    let jobId: string | null = null;
+    try {
+      jobId = await deps.store.requestCodeIndex(event.workspace_id, event.commit_sha, PARSER_VERSION);
+      if (jobId === null) {
+        return { queued: false };
+      }
+      await deps.jobs.enqueue(CODE_INDEX_EVENT, {
+        workspace_id: event.workspace_id,
+        job_id: jobId,
+        commit_sha: event.commit_sha,
+      });
+      logLine(deps, { event: "code_index_queued", ...ids, job_id: jobId });
+      return { queued: true };
+    } catch {
+      if (jobId !== null) {
+        try {
+          await deps.store.failCodeIndex(event.workspace_id, jobId, "enqueue_failed", CODE_INDEX_FAILURE_MESSAGES.enqueue_failed);
+        } catch {
+          // The job is left queued and blocks further code indexing for the workspace until cleared.
+        }
+      }
+      logLine(deps, { event: "code_index_enqueue_failed", ...ids, ...(jobId ? { job_id: jobId } : {}) });
+      return { queued: false };
+    }
+  });
+}
+
 function decodeText(bytes: Uint8Array): string | null {
   if (bytes.includes(0)) {
     return null;
@@ -209,6 +245,7 @@ export async function runRepositoryAnalysis(
     logLine(deps, { event: "analysis_skipped", reason: "memory_exists", ...ids });
     if (ready) {
       await queueDeepAnalysis(deps, step, event);
+      await queueCodeIndex(deps, step, event);
       await queueMemoryEmbedding(deps, step, { workspace_id: event.workspace_id, job_id: event.job_id, commit_sha: event.commit_sha });
     }
     return { outcome: "skipped", reason: "memory_exists", ready };
@@ -261,6 +298,7 @@ export async function runRepositoryAnalysis(
   });
   if (ready) {
     await queueDeepAnalysis(deps, step, event);
+    await queueCodeIndex(deps, step, event);
     await queueMemoryEmbedding(deps, step, { workspace_id: event.workspace_id, job_id: event.job_id, commit_sha: event.commit_sha });
   }
   return { outcome: "completed", ready, memory_rows: memory.length };

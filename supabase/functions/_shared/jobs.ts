@@ -14,10 +14,17 @@ export interface JobEvents {
     /** The analyzed commit whose memory is enriched. */
     commit_sha: string;
   };
+  "repository.code_index.requested": {
+    workspace_id: string;
+    /** The `code_indexing` jobs row that projects this run's progress. */
+    job_id: string;
+    /** The analyzed commit whose source files are parsed. */
+    commit_sha: string;
+  };
   "repository.memory_embedding.requested": {
     workspace_id: string;
     /**
-     * The job that triggered the run (baseline analysis or deep analysis). There is no embedding
+     * The job that triggered the run (baseline analysis, deep analysis or code index). There is no embedding
      * jobs row; the id only keys the event and the run's idempotency.
      */
     job_id: string;

@@ -1,0 +1,27 @@
+{
+  "name": "@stackprep/code-parser",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "files": [
+    "src",
+    "grammars"
+  ],
+  "scripts": {
+    "lint": "eslint .",
+    "typecheck": "tsc",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "web-tree-sitter": "0.27.0"
+  },
+  "devDependencies": {
+    "@types/node": "^26.6.3",
+    "eslint": "^9.39.5",
+    "typescript": "^6.0.3",
+    "vitest": "^5.0.3"
+  }
+}

@@ -10,7 +10,7 @@
     "dev": "pnpm --filter @stackprep/web dev",
     "dev:functions": "supabase functions serve --env-file supabase/functions/.env",
     "dev:inngest": "npx --yes inngest-cli@latest dev -u http://127.0.0.1:54321/functions/v1/inngest --no-discovery",
-    "test:functions": "deno test --allow-env --config supabase/functions/deno.json supabase/functions",
+    "test:functions": "deno test --allow-env --allow-read=packages/code-parser/grammars --config supabase/functions/deno.json supabase/functions",
     "typecheck:functions": "deno check --config supabase/functions/deno.json supabase/functions",
     "lint:functions": "deno lint supabase/functions",
     "db:reset": "supabase db reset",

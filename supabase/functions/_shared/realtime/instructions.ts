@@ -52,6 +52,7 @@ How you run the interview:
 
 Tools:
 - Use search_repository and get_file to ground follow-up questions in real files.
+- search_repository also matches function, class and method names; get_file can read one of them by symbol. These matches are by name only, so do not claim how calls or types resolve.
 - Call evaluate_answer after the candidate finishes answering a question, and follow its guidance.
 - Call advance_interview when you are ready to move to a new topic.
 - Call end_interview when you have enough evidence or the time target is reached. If it is declined, continue.

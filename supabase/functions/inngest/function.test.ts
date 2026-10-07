@@ -1,4 +1,5 @@
 import { assert, assertEquals, assertInstanceOf, assertRejects } from "@std/assert";
+import { PARSER_VERSION } from "@stackprep/code-parser";
 import { NonRetriableError, RetryAfterError } from "inngest";
 import type { MemoryRow } from "../_shared/analysis/context.ts";
 import {
@@ -9,6 +10,7 @@ import {
   type RepositoryTreeEntry,
 } from "../_shared/github-app.ts";
 import type { JobQueue } from "../_shared/jobs.ts";
+import { CODE_INDEX_EVENT, CODE_INDEX_FAILURE_MESSAGES } from "./code-index.ts";
 import { DEEP_ANALYSIS_EVENT, DEEP_ANALYSIS_FAILURE_MESSAGES } from "./deep-analysis.ts";
 import {
   type AnalysisDeps,
@@ -74,6 +76,7 @@ function target(extra: Partial<AnalysisTarget> = {}): AnalysisTarget {
 }
 
 const DEEP_JOB_ID = "eeeeeeee-0000-4000-8000-000000000004";
+const CODE_JOB_ID = "ffffffff-0000-4000-8000-000000000005";
 
 interface Setup {
   target?: AnalysisTarget | null;
@@ -82,7 +85,9 @@ interface Setup {
   tree?: () => Promise<{ entries: RepositoryTreeEntry[]; truncated: boolean }>;
   blobError?: () => Error | null;
   requestDeepAnalysis?: () => Promise<string | null>;
-  enqueue?: () => Promise<{ eventId: string | null }>;
+  /** Defaults to null (nothing to index), so most tests only see the deep analysis chain. */
+  requestCodeIndex?: () => Promise<string | null>;
+  enqueue?: (name: string) => Promise<{ eventId: string | null }>;
 }
 
 function setup({
@@ -92,6 +97,7 @@ function setup({
   tree,
   blobError,
   requestDeepAnalysis = () => Promise.resolve(DEEP_JOB_ID),
+  requestCodeIndex = () => Promise.resolve(null),
   enqueue = () => Promise.resolve({ eventId: "evt-1" }),
 }: Setup = {}) {
   const calls: string[] = [];
@@ -99,6 +105,7 @@ function setup({
   const completed: { memory: MemoryRow[] }[] = [];
   const failures: [string, string][] = [];
   const deepFailures: [string, string][] = [];
+  const codeFailures: [string, string][] = [];
   const enqueued: [string, unknown][] = [];
   const logs: string[] = [];
 
@@ -129,13 +136,21 @@ function setup({
       deepFailures.push([`${jobId}:${code}`, message]);
       return Promise.resolve();
     },
+    requestCodeIndex: (workspaceId, sha, parserVersion) => {
+      calls.push(`request-code:${workspaceId}:${sha}:${parserVersion}`);
+      return requestCodeIndex();
+    },
+    failCodeIndex: (_w, jobId, code, message) => {
+      codeFailures.push([`${jobId}:${code}`, message]);
+      return Promise.resolve();
+    },
   };
 
   const jobs: JobQueue = {
     enqueue: (name, payload) => {
       calls.push(`enqueue:${name}`);
       enqueued.push([name, payload]);
-      return enqueue();
+      return enqueue(name);
     },
   };
 
@@ -156,7 +171,7 @@ function setup({
   };
 
   const deps: AnalysisDeps = { github, store, jobs, log: (line) => logs.push(line) };
-  return { deps, calls, stages, completed, failures, deepFailures, enqueued, logs };
+  return { deps, calls, stages, completed, failures, deepFailures, codeFailures, enqueued, logs };
 }
 
 /** Records step outputs; memoizes completed steps across runs like Inngest's durable replay. */
@@ -182,7 +197,17 @@ Deno.test("a successful run scans, analyzes, prepares context, and completes", a
   const result = await runRepositoryAnalysis(deps, { data: event, runId: "run-1", step });
 
   assertEquals(result, { outcome: "completed", ready: true, memory_rows: 6 });
-  assertEquals(order, ["verify", "check-existing", "scanning", "analyzing", "preparing_context", "complete", "queue-deep-analysis", "queue-memory-embedding"]);
+  assertEquals(order, [
+    "verify",
+    "check-existing",
+    "scanning",
+    "analyzing",
+    "preparing_context",
+    "complete",
+    "queue-deep-analysis",
+    "queue-code-index",
+    "queue-memory-embedding",
+  ]);
   assertEquals(stages, ["scanning:10:run-1", "analyzing:40:run-1", "preparing_context:80:run-1"]);
   assertEquals(calls[0], `load:${event.job_id}:${event.workspace_id}`);
   assertEquals(calls[1], `tree:7:alice/demo@${SHA}`);
@@ -305,6 +330,7 @@ Deno.test("deep analysis is requested and enqueued only after the baseline compl
     "complete",
     `request-deep:${event.workspace_id}:${SHA}`,
     `enqueue:${DEEP_ANALYSIS_EVENT}`,
+    `request-code:${event.workspace_id}:${SHA}:${PARSER_VERSION}`,
     `enqueue:${MEMORY_EMBEDDING_EVENT}`,
   ]);
   assertEquals(enqueued, [
@@ -318,7 +344,7 @@ Deno.test("reused memory also chains into deep analysis", async () => {
   const { step, order } = stepRunner();
   const result = await runRepositoryAnalysis(deps, { data: event, runId: "r", step });
   assertEquals(result, { outcome: "skipped", reason: "memory_exists", ready: true });
-  assertEquals(order, ["verify", "check-existing", "complete", "queue-deep-analysis", "queue-memory-embedding"]);
+  assertEquals(order, ["verify", "check-existing", "complete", "queue-deep-analysis", "queue-code-index", "queue-memory-embedding"]);
   assertEquals(enqueued.map(([name]) => name), [DEEP_ANALYSIS_EVENT, MEMORY_EMBEDDING_EVENT]);
 });
 
@@ -356,8 +382,8 @@ Deno.test("nothing is requested when the analyzed commit is no longer the worksp
     const { step, order } = stepRunner();
     const result = await runRepositoryAnalysis(deps, { data: event, runId: "r", step });
     assertEquals(result.ready, false);
-    assert(!order.includes("queue-deep-analysis") && !order.includes("queue-memory-embedding"));
-    assert(!calls.some((c) => c.startsWith("request-deep:")));
+    assert(!order.includes("queue-deep-analysis") && !order.includes("queue-code-index") && !order.includes("queue-memory-embedding"));
+    assert(!calls.some((c) => c.startsWith("request-deep:") || c.startsWith("request-code:")));
     assertEquals(enqueued, []);
   }
 });
@@ -378,6 +404,40 @@ Deno.test("a failed embedding enqueue is swallowed and keeps the baseline result
   const entry = JSON.parse(logs.find((l) => l.includes("memory_embedding_enqueue_failed"))!);
   assertEquals(entry.job_id, event.job_id);
   assert(!logs.join("\n").includes("inngest down"));
+});
+
+Deno.test("the code index is requested for the parser version and enqueued after the baseline", async () => {
+  const { deps, calls, enqueued, failures } = setup({ requestCodeIndex: () => Promise.resolve(CODE_JOB_ID) });
+  const result = await runRepositoryAnalysis(deps, { data: event, runId: "r", step: stepRunner().step });
+  assertEquals(result, { outcome: "completed", ready: true, memory_rows: 6 });
+  assert(calls.indexOf(`request-code:${event.workspace_id}:${SHA}:${PARSER_VERSION}`) > calls.indexOf("complete"));
+  assertEquals(enqueued.map(([name]) => name), [DEEP_ANALYSIS_EVENT, CODE_INDEX_EVENT, MEMORY_EMBEDDING_EVENT]);
+  assertEquals(enqueued[1][1], { workspace_id: event.workspace_id, job_id: CODE_JOB_ID, commit_sha: SHA });
+  assertEquals(failures, []);
+});
+
+Deno.test("a failed code index enqueue records enqueue_failed on its job and keeps the baseline result", async () => {
+  const { deps, codeFailures, deepFailures, failures, enqueued, logs } = setup({
+    requestCodeIndex: () => Promise.resolve(CODE_JOB_ID),
+    enqueue: (name) => name === CODE_INDEX_EVENT ? Promise.reject(new Error("inngest down")) : Promise.resolve({ eventId: "evt" }),
+  });
+  const result = await runRepositoryAnalysis(deps, { data: event, runId: "r", step: stepRunner().step });
+  assertEquals(result, { outcome: "completed", ready: true, memory_rows: 6 });
+  assertEquals(codeFailures, [[`${CODE_JOB_ID}:enqueue_failed`, CODE_INDEX_FAILURE_MESSAGES.enqueue_failed]]);
+  assertEquals(deepFailures, []);
+  assertEquals(failures, [], "the baseline job is never failed");
+  assert(enqueued.some(([name]) => name === MEMORY_EMBEDDING_EVENT), "embedding is queued independently");
+  const entry = JSON.parse(logs.find((l) => l.includes("code_index_enqueue_failed"))!);
+  assertEquals(entry.job_id, CODE_JOB_ID);
+  assert(!logs.join("\n").includes("inngest down"));
+});
+
+Deno.test("a failed code index request is swallowed", async () => {
+  const { deps, codeFailures, logs } = setup({ requestCodeIndex: () => Promise.reject(new Error("db down")) });
+  const result = await runRepositoryAnalysis(deps, { data: event, runId: "r", step: stepRunner().step });
+  assertEquals(result.outcome, "completed");
+  assertEquals(codeFailures, []);
+  assert(logs.some((l) => JSON.parse(l).event === "code_index_enqueue_failed"));
 });
 
 Deno.test("onFailure records a fixed code and message, never the raw error", async () => {

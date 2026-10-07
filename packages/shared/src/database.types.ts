@@ -106,6 +106,250 @@ export type Database = {
           },
         ]
       }
+      code_calls: {
+        Row: {
+          callee_name: string
+          callee_text: string
+          caller_ord: number | null
+          col: number
+          file_id: string
+          id: number
+          line: number
+          ord: number
+          repository_commit_sha: string
+          user_id: string
+          workspace_id: string
+        }
+        Insert: {
+          callee_name?: never
+          callee_text: string
+          caller_ord?: number | null
+          col: number
+          file_id: string
+          id?: never
+          line: number
+          ord: number
+          repository_commit_sha: string
+          user_id: string
+          workspace_id: string
+        }
+        Update: {
+          callee_name?: never
+          callee_text?: string
+          caller_ord?: number | null
+          col?: number
+          file_id?: string
+          id?: never
+          line?: number
+          ord?: number
+          repository_commit_sha?: string
+          user_id?: string
+          workspace_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "code_calls_file_id_caller_ord_fkey"
+            columns: ["file_id", "caller_ord"]
+            isOneToOne: false
+            referencedRelation: "code_symbols"
+            referencedColumns: ["file_id", "ord"]
+          },
+          {
+            foreignKeyName: "code_calls_file_id_workspace_id_repository_commit_sha_user_fkey"
+            columns: ["file_id", "workspace_id", "repository_commit_sha", "user_id"]
+            isOneToOne: false
+            referencedRelation: "code_files"
+            referencedColumns: ["id", "workspace_id", "repository_commit_sha", "user_id"]
+          },
+        ]
+      }
+      code_files: {
+        Row: {
+          blob_sha: string
+          created_at: string
+          facts_hash: string
+          id: string
+          language: string | null
+          line_count: number | null
+          parse_error_count: number
+          parse_status: string
+          parser_version: string
+          path: string
+          repository_commit_sha: string
+          repository_id: string
+          size_bytes: number
+          skipped_reason: string | null
+          stats: Json
+          user_id: string
+          workspace_id: string
+        }
+        Insert: {
+          blob_sha: string
+          created_at?: string
+          facts_hash: string
+          id?: string
+          language?: string | null
+          line_count?: number | null
+          parse_error_count?: number
+          parse_status: string
+          parser_version: string
+          path: string
+          repository_commit_sha: string
+          repository_id: string
+          size_bytes: number
+          skipped_reason?: string | null
+          stats?: Json
+          user_id: string
+          workspace_id: string
+        }
+        Update: {
+          blob_sha?: string
+          created_at?: string
+          facts_hash?: string
+          id?: string
+          language?: string | null
+          line_count?: number | null
+          parse_error_count?: number
+          parse_status?: string
+          parser_version?: string
+          path?: string
+          repository_commit_sha?: string
+          repository_id?: string
+          size_bytes?: number
+          skipped_reason?: string | null
+          stats?: Json
+          user_id?: string
+          workspace_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "code_files_workspace_id_repository_id_user_id_fkey"
+            columns: ["workspace_id", "repository_id", "user_id"]
+            isOneToOne: false
+            referencedRelation: "workspaces"
+            referencedColumns: ["id", "repository_id", "user_id"]
+          },
+        ]
+      }
+      code_imports: {
+        Row: {
+          file_id: string
+          id: number
+          kind: string
+          line: number
+          names: string[]
+          ord: number
+          repository_commit_sha: string
+          resolved_path: string | null
+          source: string
+          user_id: string
+          workspace_id: string
+        }
+        Insert: {
+          file_id: string
+          id?: never
+          kind: string
+          line: number
+          names?: string[]
+          ord: number
+          repository_commit_sha: string
+          resolved_path?: string | null
+          source: string
+          user_id: string
+          workspace_id: string
+        }
+        Update: {
+          file_id?: string
+          id?: never
+          kind?: string
+          line?: number
+          names?: string[]
+          ord?: number
+          repository_commit_sha?: string
+          resolved_path?: string | null
+          source?: string
+          user_id?: string
+          workspace_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "code_imports_file_id_workspace_id_repository_commit_sha_us_fkey"
+            columns: ["file_id", "workspace_id", "repository_commit_sha", "user_id"]
+            isOneToOne: false
+            referencedRelation: "code_files"
+            referencedColumns: ["id", "workspace_id", "repository_commit_sha", "user_id"]
+          },
+        ]
+      }
+      code_symbols: {
+        Row: {
+          end_col: number
+          end_line: number
+          exported: boolean
+          file_id: string
+          id: number
+          kind: string
+          name: string
+          ord: number
+          parent_ord: number | null
+          repository_commit_sha: string
+          signature: string | null
+          start_col: number
+          start_line: number
+          user_id: string
+          workspace_id: string
+        }
+        Insert: {
+          end_col: number
+          end_line: number
+          exported?: boolean
+          file_id: string
+          id?: never
+          kind: string
+          name: string
+          ord: number
+          parent_ord?: number | null
+          repository_commit_sha: string
+          signature?: string | null
+          start_col: number
+          start_line: number
+          user_id: string
+          workspace_id: string
+        }
+        Update: {
+          end_col?: number
+          end_line?: number
+          exported?: boolean
+          file_id?: string
+          id?: never
+          kind?: string
+          name?: string
+          ord?: number
+          parent_ord?: number | null
+          repository_commit_sha?: string
+          signature?: string | null
+          start_col?: number
+          start_line?: number
+          user_id?: string
+          workspace_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "code_symbols_file_id_parent_ord_fkey"
+            columns: ["file_id", "parent_ord"]
+            isOneToOne: false
+            referencedRelation: "code_symbols"
+            referencedColumns: ["file_id", "ord"]
+          },
+          {
+            foreignKeyName: "code_symbols_file_id_workspace_id_repository_commit_sha_us_fkey"
+            columns: ["file_id", "workspace_id", "repository_commit_sha", "user_id"]
+            isOneToOne: false
+            referencedRelation: "code_files"
+            referencedColumns: ["id", "workspace_id", "repository_commit_sha", "user_id"]
+          },
+        ]
+      }
       evaluations: {
         Row: {
           category: string
@@ -786,6 +1030,16 @@ export type Database = {
       }
     }
     Functions: {
+      complete_code_index: {
+        Args: {
+          p_commit_sha: string
+          p_job_id: string
+          p_parser_version: string
+          p_summary: Json
+          p_workspace_id: string
+        }
+        Returns: undefined
+      }
       complete_interview: {
         Args: {
           p_interview_id: string
@@ -837,6 +1091,15 @@ export type Database = {
           isSetofReturn: false
         }
       }
+      fail_code_index: {
+        Args: {
+          p_error_code: string
+          p_error_message: string
+          p_job_id: string
+          p_workspace_id: string
+        }
+        Returns: undefined
+      }
       fail_deep_analysis: {
         Args: {
           p_error_code: string
@@ -855,6 +1118,77 @@ export type Database = {
         }
         Returns: undefined
       }
+      find_callers: {
+        Args: {
+          p_commit_sha: string
+          p_limit?: number
+          p_name: string
+          p_workspace_id: string
+        }
+        Returns: {
+          callee_text: string
+          caller_kind: string
+          caller_name: string
+          col: number
+          exact: boolean
+          line: number
+          path: string
+        }[]
+      }
+      find_dependencies: {
+        Args: {
+          p_commit_sha: string
+          p_limit?: number
+          p_path: string
+          p_workspace_id: string
+        }
+        Returns: {
+          kind: string
+          line: number
+          names: string[]
+          resolved_path: string
+          source: string
+        }[]
+      }
+      find_importers: {
+        Args: {
+          p_commit_sha: string
+          p_limit?: number
+          p_target: string
+          p_workspace_id: string
+        }
+        Returns: {
+          kind: string
+          line: number
+          names: string[]
+          path: string
+          resolved_path: string
+          source: string
+        }[]
+      }
+      find_symbol: {
+        Args: {
+          p_commit_sha: string
+          p_kind?: string
+          p_limit?: number
+          p_name: string
+          p_workspace_id: string
+        }
+        Returns: {
+          end_col: number
+          end_line: number
+          exact: boolean
+          exported: boolean
+          kind: string
+          language: string
+          name: string
+          parent_name: string
+          path: string
+          signature: string
+          start_col: number
+          start_line: number
+        }[]
+      }
       match_repository_memory: {
         Args: {
           p_commit_sha: string
@@ -870,6 +1204,10 @@ export type Database = {
           similarity: number
           structured: Json
         }[]
+      }
+      prune_code_index: {
+        Args: { p_keep_commits: string[]; p_workspace_id: string }
+        Returns: number
       }
       record_evidence_examined: {
         Args: { p_evidence: Json; p_interview_id: string; p_user_id: string }
@@ -932,6 +1270,23 @@ export type Database = {
           status: string
         }[]
       }
+      replace_code_index: {
+        Args: {
+          p_commit_sha: string
+          p_files: Json
+          p_parser_version: string
+          p_workspace_id: string
+        }
+        Returns: number
+      }
+      request_code_index: {
+        Args: {
+          p_commit_sha: string
+          p_parser_version: string
+          p_workspace_id: string
+        }
+        Returns: string
+      }
       request_deep_analysis: {
         Args: { p_commit_sha: string; p_workspace_id: string }
         Returns: string
@@ -951,6 +1306,15 @@ export type Database = {
         Args: { p_user_id: string; p_workspace_id: string }
         Returns: string
       }
+      save_code_memory: {
+        Args: {
+          p_commit_sha: string
+          p_job_id: string
+          p_rows: Json
+          p_workspace_id: string
+        }
+        Returns: number
+      }
       save_deep_analysis: {
         Args: {
           p_commit_sha: string
@@ -963,6 +1327,26 @@ export type Database = {
       save_report: {
         Args: { p_content: Json; p_interview_id: string; p_job_id: string }
         Returns: undefined
+      }
+      search_code_symbols: {
+        Args: {
+          p_commit_sha: string
+          p_limit?: number
+          p_terms: string[]
+          p_workspace_id: string
+        }
+        Returns: {
+          end_line: number
+          exported: boolean
+          kind: string
+          language: string
+          matched_terms: number
+          name: string
+          parent_name: string
+          path: string
+          signature: string
+          start_line: number
+        }[]
       }
       start_interview: {
         Args: {
@@ -1025,6 +1409,7 @@ export type Database = {
         | "deep_analysis"
         | "report_generation"
         | "interview_planning"
+        | "code_indexing"
       message_role: "ai" | "user" | "system"
       termination_reason:
         | "integrity_violation"
@@ -1198,6 +1583,7 @@ export const Constants = {
         "deep_analysis",
         "report_generation",
         "interview_planning",
+        "code_indexing",
       ],
       message_role: ["ai", "user", "system"],
       termination_reason: [

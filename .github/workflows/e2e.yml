@@ -5,6 +5,7 @@ on:
     paths:
       - apps/web/**
       - packages/shared/**
+      - packages/code-parser/**
       - supabase/**
       - package.json
       - pnpm-lock.yaml
@@ -14,6 +15,7 @@ on:
     paths:
       - apps/web/**
       - packages/shared/**
+      - packages/code-parser/**
       - supabase/**
       - package.json
       - pnpm-lock.yaml

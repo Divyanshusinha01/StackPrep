@@ -1,6 +1,8 @@
 import type { AnalysisErrorCode, AnalysisStage, DeepAnalysisErrorCode } from "@stackprep/shared";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { MemoryRow } from "../_shared/analysis/context.ts";
+import { NON_SUMMARY_KINDS } from "../_shared/code-index/memory.ts";
+import type { CodeIndexErrorCode } from "./code-index.ts";
 
 export interface AnalysisTarget {
   job_id: string;
@@ -28,6 +30,9 @@ export interface AnalysisStore {
   /** Queues a deep_analysis job for the commit; null when already analyzed, active, or without memory. */
   requestDeepAnalysis(workspaceId: string, commitSha: string): Promise<string | null>;
   failDeepAnalysis(workspaceId: string, jobId: string, code: DeepAnalysisErrorCode, message: string): Promise<void>;
+  /** Queues a code_indexing job for the commit; null when already indexed with this parser version, active, or without memory. */
+  requestCodeIndex(workspaceId: string, commitSha: string, parserVersion: string): Promise<string | null>;
+  failCodeIndex(workspaceId: string, jobId: string, code: CodeIndexErrorCode, message: string): Promise<void>;
 }
 
 const TARGET_COLUMNS = "id, status, repository_commit_sha, workspace_id, " +
@@ -90,7 +95,7 @@ export function createAnalysisStore(serviceClient: SupabaseClient): AnalysisStor
         .select("id", { count: "exact", head: true })
         .eq("workspace_id", workspaceId)
         .eq("repository_commit_sha", commitSha)
-        .neq("kind", "file_summary");
+        .not("kind", "in", NON_SUMMARY_KINDS);
       if (error) {
         throw new Error(`Failed to count repository memory: ${error.message}`);
       }
@@ -152,6 +157,28 @@ export function createAnalysisStore(serviceClient: SupabaseClient): AnalysisStor
       });
       if (error) {
         throw new Error(`Failed to record deep analysis failure: ${error.message}`);
+      }
+    },
+    async requestCodeIndex(workspaceId, commitSha, parserVersion) {
+      const { data, error } = await serviceClient.rpc("request_code_index", {
+        p_workspace_id: workspaceId,
+        p_commit_sha: commitSha,
+        p_parser_version: parserVersion,
+      });
+      if (error) {
+        throw new Error(`Failed to request code index: ${error.message}`);
+      }
+      return typeof data === "string" ? data : null;
+    },
+    async failCodeIndex(workspaceId, jobId, code, message) {
+      const { error } = await serviceClient.rpc("fail_code_index", {
+        p_workspace_id: workspaceId,
+        p_job_id: jobId,
+        p_error_code: code,
+        p_error_message: message,
+      });
+      if (error) {
+        throw new Error(`Failed to record code index failure: ${error.message}`);
       }
     },
   };

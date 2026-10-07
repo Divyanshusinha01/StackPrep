@@ -26,6 +26,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { AIError, type AIProvider, type AIUsage } from "../_shared/ai/provider.ts";
 import { providerTokens } from "../_shared/ai-usage.ts";
 import type { Authenticate } from "../_shared/auth.ts";
+import { NON_SUMMARY_KINDS } from "../_shared/code-index/memory.ts";
 import type { GithubApp } from "../_shared/github-app.ts";
 import { apiError, logGithubError } from "../_shared/github-errors.ts";
 import { createCors, json } from "../_shared/http.ts";
@@ -268,7 +269,7 @@ export function createInterviewStore(serviceClient: SupabaseClient): InterviewSt
         serviceClient.from("workspaces")
           .select("repository:repositories!workspaces_repository_id_user_id_fkey(full_name)")
           .eq("id", workspaceId).maybeSingle(),
-        memory().neq("kind", "file_summary").order("kind").order("id"),
+        memory().not("kind", "in", NON_SUMMARY_KINDS).order("kind").order("id"),
         memory().eq("kind", "file_summary").order("created_at").order("id").limit(MAX_FILE_SUMMARIES),
       ]);
       check("load workspace", workspace.error);

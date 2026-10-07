@@ -1,5 +1,6 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { createAiUsageRecorder } from "../../_shared/ai-usage.ts";
+import { createCodeIndexReader } from "../../_shared/code-index/reader.ts";
 import { type InterviewStateRpcClient, updateInterviewState } from "../../_shared/interview-state.ts";
 import type { MemoryEntry, MemoryMatch, ToolCallRecordResult, ToolStore, TranscriptMessage } from "./types.ts";
 
@@ -23,9 +24,13 @@ interface AccessRow {
 export function createToolStore(serviceClient: SupabaseClient): ToolStore {
   const toolCalls = (interviewId: string) =>
     serviceClient.from("interview_events").select("payload").eq("interview_id", interviewId).eq("event_type", "tool_call");
+  const codeIndex = createCodeIndexReader(serviceClient);
 
   return {
     ...createAiUsageRecorder(serviceClient),
+    searchCodeSymbols: (workspaceId, commitSha, terms, limit, signal) =>
+      codeIndex.searchSymbols(workspaceId, commitSha, terms, limit, signal),
+    listFileSymbols: (workspaceId, commitSha, path) => codeIndex.fileSymbols(workspaceId, commitSha, path),
     async findToolCall(interviewId, callId) {
       const { data, error } = await toolCalls(interviewId).eq("payload->>call_id", callId).maybeSingle();
       check("load tool call", error);

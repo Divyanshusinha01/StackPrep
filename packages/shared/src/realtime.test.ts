@@ -78,6 +78,9 @@ describe("tool schemas", () => {
     expect(searchRepositoryInputSchema.safeParse({ query: "x".repeat(201) }).success).toBe(false);
     expect(getFileInputSchema.safeParse({ path: "", startLine: 1 }).success).toBe(false);
     expect(getFileInputSchema.safeParse({ path: "src/a.ts", startLine: 0 }).success).toBe(false);
+    expect(getFileInputSchema.parse({ path: "src/a.ts", symbol: " Auth.login " })).toEqual({ path: "src/a.ts", symbol: "Auth.login" });
+    expect(getFileInputSchema.safeParse({ path: "src/a.ts", symbol: "" }).success).toBe(false);
+    expect(getFileInputSchema.safeParse({ path: "src/a.ts", symbol: "x".repeat(257) }).success).toBe(false);
   });
 
   it("keeps evaluation output free of scores", () => {
@@ -122,7 +125,13 @@ describe("toolCallResponseSchema", () => {
   it.each([
     { ok: false, error: { code: "interview_not_active" }, guidance: "Close now." },
     { ok: true, results: [{ path: "src/a.ts", excerpt: "x" }] },
+    { ok: true, results: [{ path: "src/a.ts", excerpt: "x", symbol: "Auth.login", kind: "method", startLine: 3, endLine: 9 }] },
     { ok: true, path: "a", startLine: 1, endLine: 1, totalLines: 1, content: "", truncated: false },
+    {
+      ok: true, path: "a", startLine: 3, endLine: 9, totalLines: 20, content: "", truncated: false,
+      symbol: { name: "login", kind: "method", parent: "Auth", startLine: 3, endLine: 9 },
+      symbols: [{ name: "Auth", kind: "class", startLine: 1, endLine: 20 }],
+    },
     { ok: true, guidance: "follow_up", focus: "token rotation" },
     { ok: true, nextFocus: { area: "src/auth", category: "Security", angle: "x" }, depth: "deep", elapsedMinutes: 3 },
     { ok: true, accepted: false, guidance: "Continue." },
@@ -142,6 +151,14 @@ describe("tool event payloads", () => {
     expect(evidenceExaminedPayloadSchema.safeParse({ path: "src/a.ts", tool: "evaluate_answer" }).success).toBe(false);
     expect(evidenceExaminedPayloadSchema.safeParse({ path: "src/a.ts", tool: "get_file", content: "x" }).success)
       .toBe(false);
+  });
+
+  it("accepts an optional symbol-level trace on evidence_examined", () => {
+    const traced = { path: "src/a.ts", tool: "get_file", symbol: "Auth.login", startLine: 3, endLine: 9, commit_sha: "a".repeat(40) };
+    expect(evidenceExaminedPayloadSchema.parse(traced)).toEqual(traced);
+    expect(evidenceExaminedPayloadSchema.safeParse({ ...traced, startLine: 0 }).success).toBe(false);
+    expect(evidenceExaminedPayloadSchema.safeParse({ ...traced, endLine: 1.5 }).success).toBe(false);
+    expect(evidenceExaminedPayloadSchema.safeParse({ ...traced, commit_sha: "HEAD" }).success).toBe(false);
   });
 
   it("validates tool_call payloads", () => {

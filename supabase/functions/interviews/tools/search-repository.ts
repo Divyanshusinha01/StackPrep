@@ -18,9 +18,12 @@ import {
 export const MAX_EXCERPT_CHARS = 1500;
 /** Hard upper bound for the whole vector fill (query embedding, match, mapping) on the voice path. */
 export const VECTOR_SEARCH_BUDGET_MS = 3_000;
+/** Upper bound for the code index symbol lookup; past it the search goes on without symbols. */
+export const SYMBOL_SEARCH_BUDGET_MS = 1_500;
 const MAX_TERMS = 12;
 const MAX_TERM_HITS = 5;
 const PATH_HIT_WEIGHT = 3;
+const MAX_SYMBOL_NAME_CHARS = 256;
 /** "." stands for the repository as a whole (summaries that are not about one path). */
 const REPOSITORY_ROOT = ".";
 
@@ -32,12 +35,21 @@ interface Candidate {
   isFile: boolean;
 }
 
+/** A declaration from the code index: matched by name, never resolved. */
+export interface SymbolRef {
+  name: string;
+  kind: string;
+  startLine: number;
+  endLine: number;
+}
+
 export interface SearchHit {
   path: string;
   area?: string;
   excerpt: string;
   isFile: boolean;
   score: number;
+  symbol?: SymbolRef;
 }
 
 /** Ranks indexed repository memory for a query. Vector hits only fill what this leaves under the limit. */
@@ -125,6 +137,18 @@ export function memoryCandidates(memory: MemoryEntry[]): Candidate[] {
             });
           }
         }
+        break;
+      case "code_module": {
+        // Directory keys look like `src/auth/`, or `./` for the repository root.
+        const path = str(structured.path);
+        if (path) {
+          const dir = path === "./" ? REPOSITORY_ROOT : path;
+          out.push({ path: dir, area: topLevelArea(dir) ?? row.kind, text: row.content, isFile: false });
+        }
+        break;
+      }
+      case "code_index":
+        // Metadata only (counts and limits), nothing to search.
         break;
       default:
         out.push({ path: REPOSITORY_ROOT, area: row.kind, text: [row.content, ...strings(structured.observations)].join("\n"), isFile: false });
@@ -295,26 +319,96 @@ async function fillWithVectorHits(ctx: ToolContext, query: string, limit: number
   }
 }
 
+/**
+ * Declarations of the interview's commit whose name contains a query term, from the code index.
+ * Empty when the commit is not indexed; on an error or past the budget the search goes on without them.
+ */
+async function symbolHits(ctx: ToolContext, query: string, limit: number): Promise<SearchHit[]> {
+  const terms = queryTerms(query);
+  if (terms.length === 0) {
+    return [];
+  }
+  const startedAt = Date.now();
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), SYMBOL_SEARCH_BUDGET_MS);
+  try {
+    const rows = await ctx.store.searchCodeSymbols(
+      ctx.interview.workspace_id,
+      ctx.interview.repository_commit_sha,
+      terms,
+      limit,
+      controller.signal,
+    );
+    return rows.flatMap((row): SearchHit[] => {
+      const name = row.parent_name ? `${row.parent_name}.${row.name}` : row.name;
+      if (name.length > MAX_SYMBOL_NAME_CHARS || row.path.length > 512) {
+        return [];
+      }
+      const header = `${row.path}:${row.start_line}-${row.end_line}\n${row.exported ? "exported " : ""}${row.kind} ${name}`;
+      const area = topLevelArea(row.path);
+      return [{
+        path: row.path,
+        ...(area ? { area } : {}),
+        excerpt: clip(scrubSecrets(row.signature ? `${header}\n${row.signature}` : header), MAX_EXCERPT_CHARS),
+        isFile: true,
+        score: row.matched_terms,
+        symbol: { name, kind: row.kind, startLine: row.start_line, endLine: row.end_line },
+      }];
+    });
+  } catch {
+    ctx.log({ event: "repository_search_symbol_fallback", reason: controller.signal.aborted ? "deadline" : "rpc_error", elapsed_ms: Date.now() - startedAt });
+    return [];
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+/**
+ * Keyword hits first, then symbol hits. Symbols take at most half the slots unless keyword hits
+ * leave more free, so path and summary hits stay visible next to precise declarations.
+ */
+export function mergeSymbolHits(keyword: SearchHit[], symbols: SearchHit[], limit: number): SearchHit[] {
+  const symbolSlots = Math.min(symbols.length, Math.max(Math.ceil(limit / 2), limit - keyword.length));
+  return [...keyword.slice(0, limit - symbolSlots), ...symbols.slice(0, symbolSlots)];
+}
+
 export async function searchRepository(
   ctx: ToolContext,
   input: SearchRepositoryInput,
   search: RepositorySearch = keywordSearch,
 ): Promise<ToolOutcome> {
-  const memory = await ctx.store.listRepositoryMemory(ctx.interview.workspace_id, ctx.interview.repository_commit_sha);
-  const keywordHits = search(memory, input.query, input.limit);
-  const hits = keywordHits.length < input.limit
-    ? await fillWithVectorHits(ctx, input.query, input.limit, keywordHits)
-    : keywordHits;
+  const [memory, symbols] = await Promise.all([
+    ctx.store.listRepositoryMemory(ctx.interview.workspace_id, ctx.interview.repository_commit_sha),
+    symbolHits(ctx, input.query, input.limit),
+  ]);
+  const indexedHits = mergeSymbolHits(search(memory, input.query, input.limit), symbols, input.limit);
+  const hits = indexedHits.length < input.limit
+    ? await fillWithVectorHits(ctx, input.query, input.limit, indexedHits)
+    : indexedHits;
   const output: SearchRepositoryOutput = {
     ok: true,
-    results: hits.map(({ path, area, excerpt }) => (area ? { path, area, excerpt } : { path, excerpt })),
+    results: hits.map(({ path, area, excerpt, symbol }) => ({
+      path,
+      ...(area ? { area } : {}),
+      excerpt,
+      ...(symbol ? { symbol: symbol.name, kind: symbol.kind, startLine: symbol.startLine, endLine: symbol.endLine } : {}),
+    })),
   };
-  const evidence: EvidenceExaminedPayload[] = hits
+  const commitSha = ctx.interview.repository_commit_sha;
+  // Evidence is kept once per path, first entry wins: symbol hits go first to keep their range.
+  const evidence: EvidenceExaminedPayload[] = [...hits.filter((hit) => hit.symbol), ...hits.filter((hit) => !hit.symbol)]
     .filter((hit) => hit.isFile && hit.path.length <= 512)
-    .map((hit) => ({ path: hit.path, ...(hit.area ? { area: hit.area } : {}), tool: "search_repository" }));
+    .map((hit) => ({
+      path: hit.path,
+      ...(hit.area ? { area: hit.area } : {}),
+      tool: "search_repository",
+      ...(hit.symbol ? { symbol: hit.symbol.name, startLine: hit.symbol.startLine, endLine: hit.symbol.endLine } : {}),
+      commit_sha: commitSha,
+    }));
+  const symbolCount = hits.filter((hit) => hit.symbol).length;
   return {
     output,
-    summary: { ok: true, paths: hits.map((hit) => hit.path) },
+    summary: { ok: true, paths: hits.map((hit) => hit.path), ...(symbolCount ? { symbols: symbolCount } : {}) },
     evidence,
   };
 }
