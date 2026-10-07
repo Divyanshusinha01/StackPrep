@@ -113,7 +113,7 @@ Supabase Auth handles user authentication. Supabase Storage holds file artifacts
 
 ### Background Jobs — Inngest
 
-Durable, event-driven jobs for repository indexing, deep analysis, interview planning, and report generation. See [Background Processing](#12-background-processing).
+Durable, event-driven jobs for repository indexing, deep analysis, repository memory embedding, interview planning, and report generation. See [Background Processing](#12-background-processing).
 
 ### GitHub — GitHub App
 
@@ -150,12 +150,15 @@ Each task reads its model from an environment variable, so models can change wit
 | Deep analysis                          | `gpt-5.6-terra`              | `OPENAI_PLANNING_MODEL`  |
 | Answer evaluation, report generation   | `gpt-5.6-terra`              | `OPENAI_EVALUATION_MODEL` |
 | Integrity monitoring                   | `gpt-5.6-luna`               | `OPENAI_VISION_MODEL`    |
+| Repository memory and search query embeddings | `text-embedding-3-small` | `OPENAI_EMBEDDING_MODEL` |
 
 Planning and evaluation use the same model today but keep separate variables, so either can change on its own.
 
 The transcription model is set on the Realtime session when the backend mints the credential. It transcribes only the candidate's speech for the persisted transcript; the interviewer's own transcript comes from the voice model.
 
 Deep analysis is a single structured call per analyzed commit and reuses `OPENAI_PLANNING_MODEL` rather than adding its own variable. Its token usage is persisted to `ai_usage` with task `deep_analysis` and no interview, like every other AI call (see [Usage tracking](#usage-tracking)).
+
+The embedding model must natively produce 1536-dimensional vectors, the size of `repository_memory.embedding` (`vector(1536)`, `REPOSITORY_MEMORY_EMBEDDING_DIMENSIONS`). `OPENAI_EMBEDDING_MODEL` may only change to a model that outputs 1536 dimensions natively. The request never sends `dimensions`, so output is never truncated implicitly (for example, `text-embedding-3-large` with `dimensions: 1536` is not supported); that would be a separate decision with its own configuration and a re-embed. Every returned vector is checked for exactly 1536 finite values: a mismatch fails the background run with the non-retriable `embedding_dimension_mismatch` without writing anything, and search falls back to keyword results. Embeddings from different models are not comparable; changing the model re-embeds a commit's rows the next time its embedding run executes.
 
 #### Cost controls
 
@@ -171,7 +174,7 @@ The live voice session is the main AI cost, so most controls target it.
 
 #### Usage tracking
 
-Every AI call writes a row to `ai_usage` (migration `20261006100000_ai_usage.sql`): user, workspace, interview (null for repository analysis), task (`voice`, `auxiliary`, `deep_analysis`, `planning`, `evaluation`, `report`, `vision`), model, `source`, input / cached-input / output tokens split into text and audio, `audio_seconds` for duration estimates, the voice segment for voice rows, estimated cost in USD, an idempotency key, and a timestamp. `auxiliary` is a reserved task with no callers; it stays in the enum because Postgres enum values cannot be dropped cleanly. The table is service-role only and append-only: updates are rejected, and the service role can only select and insert.
+Every AI call writes a row to `ai_usage` (migration `20261006100000_ai_usage.sql`): user, workspace, interview (null for repository analysis), task (`voice`, `auxiliary`, `deep_analysis`, `planning`, `evaluation`, `report`, `vision`, `embedding`), model, `source`, input / cached-input / output tokens split into text and audio, `audio_seconds` for duration estimates, the voice segment for voice rows, estimated cost in USD, an idempotency key, and a timestamp. `auxiliary` is a reserved task with no callers; it stays in the enum because Postgres enum values cannot be dropped cleanly. The table is service-role only and append-only: updates are rejected, and the service role can only select and insert. `embedding` (migration `20261007100000_ai_usage_embedding_task.sql`) covers both repository memory embeddings (no interview) and `search_repository` query embeddings (with the interview); embeddings bill input tokens only.
 
 Cost is computed by `estimateCostUsd` from the price table in `@stackprep/shared` (`AI_PRICES`, USD per 1M tokens). Following OpenAI's `usage`, input counts include their cached portion, so each modality is billed as `(input − cached) × input rate + cached × cached rate + output × output rate`; a model without a cached rate bills cached tokens at the input rate. A model missing from the table gets a null cost, and the row is still written. Raw token counts are kept, so rows can be recalculated if prices change.
 
@@ -469,7 +472,17 @@ How it runs:
 
 Deep analysis does not block interviews. Planning includes the `structured.ai` sections inside its fenced repository memory, within a fixed budget, and uses the baseline alone when deep analysis has not finished. Repository memory persists across interviews, so this understanding is computed once per commit SHA rather than per interview; re-analysis of a new commit runs deep analysis again for that commit.
 
-Tree-sitter parsing is deferred; baseline fact extraction is sufficient initially. Semantic/vector retrieval can be introduced later with `pgvector` if repository scale requires it.
+**Memory embeddings** (Inngest event `repository.memory_embedding.requested`, function `memory-embedding`) give each repository memory row of a commit a `pgvector` embedding for semantic retrieval in `search_repository`:
+
+- **Trigger.** A best-effort step (`queue-memory-embedding`) after the baseline completes with the workspace ready, both after a fresh analysis and when existing memory is reused (which backfills already analyzed commits), and another after deep analysis writes its result, since that creates or rewrites the `concepts` row. A failed enqueue is logged (`memory_embedding_enqueue_failed`) and never changes the triggering job's result. The event carries `workspace_id`, the originating `job_id` (baseline or deep analysis job), and `commit_sha`. There is no `jobs` row: embeddings are invisible to users, and failures are visible only in logs and Sentry.
+- **Input.** Every row of the commit with non-empty content, embedded as `kind` + newline + `content` (scrubbed again, capped at 8,000 characters). `structured` (including `structured.ai`) is not embedded, so deep analysis adding `structured.ai` to baseline rows does not re-embed them.
+- **Change detection.** `metadata.embedding` stores `model`, `dimensions`, `input_hash`, `input_version`, and `embedded_at`. `input_hash` is a SHA-256 of the model, input version, kind, and content. A row is embedded when its embedding is null or its hash differs, so unchanged content is never re-embedded and a model or input-version change re-embeds deliberately.
+- **Writes.** Rows are embedded in batches of at most 64 and written one by one with a compare-and-set on `updated_at`, so a concurrent `save_deep_analysis` marker is never clobbered. On a miss the row is reloaded once: if its content is unchanged the write is retried with the fresh metadata and the vector already computed; otherwise the row is skipped as superseded and the run triggered by that change covers it. A retried batch drops rows that are already current. Rows of other commits are never touched.
+- **Failures.** Rate limits are retried after the provider's delay, unavailability and malformed output are retried, and rejected requests and dimension mismatches are non-retriable. Memory, jobs, and workspace status are never changed; rows without an embedding are skipped by `match_repository_memory`, and search keeps working with keyword results.
+
+Embeddings are per memory row (about seven per commit), not per file, so vector hits answer conceptual questions at summary level while path-precise lookups stay keyword-driven. Per-file or chunk embeddings are future work.
+
+Tree-sitter parsing is deferred; baseline fact extraction is sufficient initially.
 
 ```text
 Repository
@@ -478,7 +491,7 @@ Commit SHA
     ↓
 Baseline analysis  →  workspace ready
     ↓
-Deep analysis (background)
+Deep analysis + memory embeddings (background)
     ↓
 Repository Context
     ↓
@@ -777,7 +790,7 @@ endInterviewOutput = z.object({
 
 - Outputs never contain scores, internal reasoning, or coverage progress.
 - `get_file` returns `excluded` for generated, binary, oversized, or secret-bearing files.
-- `search_repository` starts as a keyword search over Repository Context; a pgvector retrieval layer can replace it without changing the contract.
+- `search_repository` ranks Repository Context by keyword first; when that finds fewer than `limit` hits, embedded memory rows fill the rest (see [`search_repository` / `get_file`](#search_repository--get_file)). The contract is unchanged.
 
 #### `evaluate_answer`
 
@@ -812,7 +825,9 @@ Edge Function
        ↓
 Ownership-checked query scoped to the workspace's indexed commit SHA
        ↓
-Repository Context (file tree, important files, excerpts; later pgvector chunks)
+Keyword search over Repository Context (file tree, important files, excerpts)
+       ↓ fewer than `limit` hits
+Vector fill: embed the query, match_repository_memory (one 3 s budget; keyword-only on any failure)
        ↓
 Secret-scrubbed, size-limited structured results
        ↓
@@ -823,7 +838,9 @@ Realtime
 - Secret scrubbing and secret-bearing-file exclusion apply to tool output exactly as they do to AI ingestion.
 - File content is returned as clearly delimited data. Repository content is untrusted and cannot override interviewer instructions.
 - Examined files are recorded as `evidence_examined` interview events, which feed report scope evidence.
-- This is the integration point for a future RAG/pgvector retrieval layer; the tool contract does not change.
+- **Vector fill.** Keyword hits are always computed first and keep their rank, so path lookups stay precise. When they are fewer than `limit` and an embedding provider is configured, the query is embedded with `OPENAI_EMBEDDING_MODEL` and matched with `match_repository_memory` against the commit's embedded memory rows. Matches are appended after the keyword hits, ordered by similarity then kind, de-duplicated by path and area, until `limit`. Each is a row-level hit (`path: "."`, `area: kind`, scrubbed and clipped `content`), the same shape keyword search uses for summary rows, and is never recorded as `evidence_examined`. The query embedding is recorded in `ai_usage` with task `embedding` and the interview.
+- **Latency budget.** The whole vector fill (query embedding, then the match, then mapping) shares one hard 3 s deadline (`VECTOR_SEARCH_BUDGET_MS`): both calls receive the same abort signal, and the fill is also raced against the deadline so the tool returns even if a client ignores the abort. Total added latency is never more than 3 s; typical cost is a few hundred milliseconds. On the deadline or any failure (no provider, provider error, dimension mismatch, match error, no embedded rows) the keyword hits are returned immediately, without a retry, and `repository_search_vector_fallback` is logged with a fixed `reason` (`deadline`, `embed_error`, `rpc_error`, `no_results`, `disabled`) and `elapsed_ms`. Vector search never fails the tool call.
+- The match runs with the service client, which bypasses RLS, like every other tool read; the workspace and commit come from the already authorized interview, never from tool arguments.
 
 ### Server-decided mutations
 
@@ -911,6 +928,8 @@ Use background jobs for:
 | `deep_analysis`       | Baseline analysis succeeded (best-effort chained step) | `structured.ai` on the commit's `architecture_summary` and `modules` rows, plus a `concepts` row |
 | `interview_planning`  | `POST /workspaces/:id/interviews`       | Coverage map, plan, strategy in `interview_state` |
 | `report_generation`   | Backend marks interview complete        | Interview report                        |
+
+Memory embedding (Inngest event `repository.memory_embedding.requested`, function `memory-embedding`) also runs in the background, but it has no `jobs` row and no job type: it is triggered by best-effort steps after the baseline and after deep analysis, keyed by the originating job's id, and its failures only reach logs and Sentry (see [Repository Context](#6-repository-context)).
 
 ### Implementation — Inngest
 
@@ -1012,7 +1031,7 @@ Each integration has its own Zod schema in `@stackprep/shared` (`packages/shared
 | `edgeEnvSchema` (required) | `WEB_ORIGIN`                                                                                  |
 | `edgeSupabaseEnvSchema`    | `SUPABASE_URL`, `SUPABASE_ANON_KEY`, `SUPABASE_SERVICE_ROLE_KEY` (injected by the runtime)     |
 | `inngestEnvSchema`         | `INNGEST_EVENT_KEY`, `INNGEST_SIGNING_KEY`                                                    |
-| `openAIEnvSchema`          | `OPENAI_API_KEY`, `OPENAI_REALTIME_MODEL`, `OPENAI_REALTIME_TRANSCRIPTION_MODEL`, `OPENAI_PLANNING_MODEL`, `OPENAI_EVALUATION_MODEL`, `OPENAI_VISION_MODEL`. |
+| `openAIEnvSchema`          | `OPENAI_API_KEY`, `OPENAI_REALTIME_MODEL`, `OPENAI_REALTIME_TRANSCRIPTION_MODEL`, `OPENAI_PLANNING_MODEL`, `OPENAI_EVALUATION_MODEL`, `OPENAI_VISION_MODEL`, `OPENAI_EMBEDDING_MODEL` (default `text-embedding-3-small`; must natively output 1536 dimensions). |
 | `githubAppEnvSchema`       | `GITHUB_APP_ID`, `GITHUB_APP_CLIENT_ID`, `GITHUB_APP_CLIENT_SECRET`, `GITHUB_APP_PRIVATE_KEY`, `GITHUB_APP_WEBHOOK_SECRET` |
 | `edgeSentryEnvSchema`      | `SENTRY_DSN`, `SENTRY_ENVIRONMENT`                                                            |
 

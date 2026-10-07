@@ -18,6 +18,7 @@ import {
   AIUnavailableError,
 } from "../_shared/ai/provider.ts";
 import { providerTokens } from "../_shared/ai-usage.ts";
+import type { JobQueue } from "../_shared/jobs.ts";
 import type {
   DeepAnalysisMemoryRow,
   DeepAnalysisPayload,
@@ -25,6 +26,7 @@ import type {
   DeepAnalysisTarget,
 } from "./deep-analysis-store.ts";
 import type { StepRunner } from "./function.ts";
+import { queueMemoryEmbedding } from "./memory-embedding.ts";
 
 export const DEEP_ANALYSIS_EVENT = "repository.deep_analysis.requested";
 export const DEEP_ANALYSIS_FUNCTION_ID = "deep-analysis";
@@ -57,6 +59,8 @@ export interface DeepAnalysisDeps {
   ai: AIProvider;
   model: string;
   store: DeepAnalysisStore;
+  /** Sends the best-effort memory embedding that follows a successful write. */
+  jobs: JobQueue;
   log?: (line: string) => void;
 }
 
@@ -357,6 +361,8 @@ export async function runDeepAnalysis(
     classified(() =>
       deps.store.complete(event.workspace_id, event.job_id, event.commit_sha, toDeepAnalysisPayload(result, deps.model))
     ));
+  // The concepts row's content is new or rewritten; baseline rows are skipped by their content hash.
+  await queueMemoryEmbedding(deps, step, event);
 
   logLine(deps, {
     event: "deep_analysis_completed",

@@ -1,6 +1,6 @@
 import { edgeEnvSchema, edgeSupabaseEnvSchema, githubAppEnvSchema, inngestEnvSchema, openAIEnvSchema } from "@stackprep/shared";
 import { createClient } from "@supabase/supabase-js";
-import { createOpenAIProvider } from "../_shared/ai/openai.ts";
+import { createOpenAIEmbeddingProvider, createOpenAIProvider } from "../_shared/ai/openai.ts";
 import { createSupabaseAuthenticator } from "../_shared/auth.ts";
 import { readEnv } from "../_shared/env.ts";
 import { createGithubApp } from "../_shared/github-app.ts";
@@ -52,6 +52,8 @@ Deno.serve(withSentry(
     }),
     ai: createOpenAIProvider({ apiKey: env.OPENAI_API_KEY, timeoutMs: EVALUATION_TIMEOUT_MS }),
     evaluationModel: env.OPENAI_EVALUATION_MODEL,
+    // No provider timeout: search_repository bounds the whole vector fill with one shared deadline.
+    embeddings: { provider: createOpenAIEmbeddingProvider({ apiKey: env.OPENAI_API_KEY }), model: env.OPENAI_EMBEDDING_MODEL },
     visionModel: env.OPENAI_VISION_MODEL,
     jobs: createInngestJobQueue(createInngestClient(env)),
     reportJobs: createReportJobStore(serviceClient),

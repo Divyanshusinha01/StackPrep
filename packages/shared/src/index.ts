@@ -9,4 +9,5 @@ export * from "./interview-planning.ts";
 export * from "./profile.ts";
 export * from "./realtime.ts";
 export * from "./reports.ts";
+export * from "./repository-memory.ts";
 export * from "./workspaces.ts";

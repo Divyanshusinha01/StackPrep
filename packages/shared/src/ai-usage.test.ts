@@ -53,6 +53,12 @@ describe("estimateCostUsd", () => {
     expect(estimateCostUsd("gpt-unknown", { input_tokens: 10, output_tokens: 10 })).toBeNull();
   });
 
+  it("bills embeddings by input tokens only", () => {
+    // 1M input tokens on text-embedding-3-small: 1M * 0.02
+    expect(estimateCostUsd("text-embedding-3-small", { input_tokens: 1_000_000 })).toBeCloseTo(0.02, 10);
+    expect(estimateCostUsd("text-embedding-3-small", { input_tokens: 500 })).toBeCloseTo((500 * 0.02) / 1_000_000, 15);
+  });
+
   it("returns null when tokens are present for an unpriced modality", () => {
     expect(estimateCostUsd("gpt-5.6-terra", { audio_input_tokens: 10 })).toBeNull();
   });
@@ -71,7 +77,16 @@ describe("estimateTranscriptionCostUsd", () => {
 
 describe("enums", () => {
   it("lists the architecture's tasks and sources", () => {
-    expect(aiTaskSchema.options).toEqual(["voice", "auxiliary", "deep_analysis", "planning", "evaluation", "report", "vision"]);
+    expect(aiTaskSchema.options).toEqual([
+      "voice",
+      "auxiliary",
+      "deep_analysis",
+      "planning",
+      "evaluation",
+      "report",
+      "vision",
+      "embedding",
+    ]);
     expect(aiUsageSourceSchema.options).toEqual(["provider", "client_reported", "duration_estimate"]);
   });
 });

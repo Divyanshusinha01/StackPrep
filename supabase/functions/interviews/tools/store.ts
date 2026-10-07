@@ -1,7 +1,7 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { createAiUsageRecorder } from "../../_shared/ai-usage.ts";
 import { type InterviewStateRpcClient, updateInterviewState } from "../../_shared/interview-state.ts";
-import type { MemoryEntry, ToolCallRecordResult, ToolStore, TranscriptMessage } from "./types.ts";
+import type { MemoryEntry, MemoryMatch, ToolCallRecordResult, ToolStore, TranscriptMessage } from "./types.ts";
 
 const MAX_MEMORY_ROWS = 200;
 const MAX_EVIDENCE_PATHS = 50;
@@ -70,6 +70,20 @@ export function createToolStore(serviceClient: SupabaseClient): ToolStore {
         .limit(MAX_MEMORY_ROWS);
       check("load repository memory", error);
       return (data ?? []) as MemoryEntry[];
+    },
+    async matchRepositoryMemory(workspaceId, commitSha, embedding, limit, signal) {
+      let query = serviceClient.rpc("match_repository_memory", {
+        p_workspace_id: workspaceId,
+        p_query_embedding: JSON.stringify(embedding),
+        p_commit_sha: commitSha,
+        p_match_count: limit,
+      });
+      if (signal) {
+        query = query.abortSignal(signal);
+      }
+      const { data, error } = await query;
+      check("match repository memory", error);
+      return ((data ?? []) as MemoryMatch[]).map(({ kind, content, similarity }) => ({ kind, content, similarity }));
     },
     async getRepositoryAccess(workspaceId) {
       const { data, error } = await serviceClient

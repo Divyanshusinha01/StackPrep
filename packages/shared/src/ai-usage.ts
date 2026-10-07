@@ -4,7 +4,16 @@ import { z } from "zod";
 // below so rows can be recalculated when prices change.
 
 /** `auxiliary` is reserved and has no callers; it mirrors a Postgres enum value that cannot be dropped. */
-export const aiTaskSchema = z.enum(["voice", "auxiliary", "deep_analysis", "planning", "evaluation", "report", "vision"]);
+export const aiTaskSchema = z.enum([
+  "voice",
+  "auxiliary",
+  "deep_analysis",
+  "planning",
+  "evaluation",
+  "report",
+  "vision",
+  "embedding",
+]);
 export type AiTask = z.infer<typeof aiTaskSchema>;
 
 /**
@@ -48,6 +57,8 @@ export const AI_PRICES: Readonly<Record<string, ModelPrice>> = {
     audio: { input: 10.0, cachedInput: 0.3, output: 20.0 },
   },
   "gpt-4o-mini-transcribe": { audio: { input: 1.25, output: 5.0 } },
+  /** Embeddings bill input tokens only. */
+  "text-embedding-3-small": { text: { input: 0.02, output: 0 } },
 };
 
 /** Per-minute estimate for transcription, used when no token counts are available. */

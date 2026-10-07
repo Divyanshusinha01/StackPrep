@@ -13,6 +13,7 @@ import {
 } from "../_shared/github-app.ts";
 import type { JobQueue } from "../_shared/jobs.ts";
 import { DEEP_ANALYSIS_EVENT, DEEP_ANALYSIS_FAILURE_MESSAGES } from "./deep-analysis.ts";
+import { queueMemoryEmbedding } from "./memory-embedding.ts";
 import type { AnalysisStore, AnalysisTarget } from "./store.ts";
 
 export const ANALYSIS_EVENT = "repository.analysis.requested";
@@ -44,7 +45,7 @@ export const FAILURE_MESSAGES: Record<AnalysisErrorCode, string> = {
 export interface AnalysisDeps {
   github: Pick<GithubApp, "getRepositoryTree" | "getBlob">;
   store: AnalysisStore;
-  /** Sends the best-effort deep analysis that follows a successful baseline. */
+  /** Sends the best-effort deep analysis and memory embedding that follow a successful baseline. */
   jobs: JobQueue;
   limits?: AnalysisLimits;
   log?: (line: string) => void;
@@ -208,6 +209,7 @@ export async function runRepositoryAnalysis(
     logLine(deps, { event: "analysis_skipped", reason: "memory_exists", ...ids });
     if (ready) {
       await queueDeepAnalysis(deps, step, event);
+      await queueMemoryEmbedding(deps, step, { workspace_id: event.workspace_id, job_id: event.job_id, commit_sha: event.commit_sha });
     }
     return { outcome: "skipped", reason: "memory_exists", ready };
   }
@@ -259,6 +261,7 @@ export async function runRepositoryAnalysis(
   });
   if (ready) {
     await queueDeepAnalysis(deps, step, event);
+    await queueMemoryEmbedding(deps, step, { workspace_id: event.workspace_id, job_id: event.job_id, commit_sha: event.commit_sha });
   }
   return { outcome: "completed", ready, memory_rows: memory.length };
 }

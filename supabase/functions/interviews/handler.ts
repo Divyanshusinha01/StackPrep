@@ -53,7 +53,7 @@ import { buildResumeContext, RESUME_MESSAGES } from "./resume.ts";
 import { createTreeCache, type TreeCache } from "./tools/get-file.ts";
 import { parseToolCall, READ_TOOLS, runTool } from "./tools/index.ts";
 import { createToolStore } from "./tools/store.ts";
-import { type ToolContext, toolError, type ToolStore } from "./tools/types.ts";
+import { type SearchEmbeddings, type ToolContext, toolError, type ToolStore } from "./tools/types.ts";
 import {
   clampVoiceUsage,
   openVoiceSegment,
@@ -165,6 +165,8 @@ export interface InterviewsHandlerOptions {
   github: GithubApp;
   ai: AIProvider;
   evaluationModel: string;
+  /** Vector fill for search_repository; omitted means keyword search only. */
+  embeddings?: SearchEmbeddings;
   visionModel: string;
   jobs: JobQueue;
   reportJobs: ReportJobStore;
@@ -379,6 +381,7 @@ export function createInterviewsHandler({
   github,
   ai,
   evaluationModel,
+  embeddings,
   visionModel,
   jobs,
   reportJobs,
@@ -570,6 +573,7 @@ export function createInterviewsHandler({
       trees,
       ai,
       evaluationModel,
+      embeddings,
       elapsedSeconds,
       requestReport: async () => {
         await queueReport(interview, ctx.user.id);

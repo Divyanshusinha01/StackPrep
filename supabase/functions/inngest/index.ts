@@ -1,6 +1,6 @@
 import { edgeSupabaseEnvSchema, githubAppEnvSchema, inngestEnvSchema, openAIEnvSchema } from "@stackprep/shared";
 import { createClient } from "@supabase/supabase-js";
-import { createOpenAIProvider } from "../_shared/ai/openai.ts";
+import { createOpenAIEmbeddingProvider, createOpenAIProvider } from "../_shared/ai/openai.ts";
 import { readEnv } from "../_shared/env.ts";
 import { createGithubApp } from "../_shared/github-app.ts";
 import { createInngestClient } from "../_shared/inngest.ts";
@@ -10,6 +10,8 @@ import { createDeepAnalysisFunction } from "./deep-analysis.ts";
 import { createDeepAnalysisStore } from "./deep-analysis-store.ts";
 import { createRepositoryAnalysisFunction } from "./function.ts";
 import { createInngestHandler } from "./handler.ts";
+import { createMemoryEmbeddingFunction } from "./memory-embedding.ts";
+import { createMemoryEmbeddingStore } from "./memory-embedding-store.ts";
 import { createInterviewPlanningFunction } from "./planning.ts";
 import { createPlanningStore } from "./planning-store.ts";
 import { createInterviewReportFunction } from "./report.ts";
@@ -35,18 +37,25 @@ const github = createGithubApp({
 
 const inngest = createInngestClient(env);
 const ai = createOpenAIProvider({ apiKey: env.OPENAI_API_KEY });
+const jobs = createInngestJobQueue(inngest);
 
 Deno.serve(withSentry(
   createInngestHandler(inngest, [
     createRepositoryAnalysisFunction(inngest, {
       github,
       store: createAnalysisStore(serviceClient),
-      jobs: createInngestJobQueue(inngest),
+      jobs,
     }),
     createDeepAnalysisFunction(inngest, {
       ai,
       model: env.OPENAI_PLANNING_MODEL,
       store: createDeepAnalysisStore(serviceClient),
+      jobs,
+    }),
+    createMemoryEmbeddingFunction(inngest, {
+      embedding: createOpenAIEmbeddingProvider({ apiKey: env.OPENAI_API_KEY }),
+      model: env.OPENAI_EMBEDDING_MODEL,
+      store: createMemoryEmbeddingStore(serviceClient),
     }),
     createInterviewPlanningFunction(inngest, {
       ai,

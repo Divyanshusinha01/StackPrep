@@ -32,6 +32,24 @@ export interface AIProvider {
   generateStructured<T>(request: StructuredRequest<T>): Promise<StructuredResult<T>>;
 }
 
+export interface EmbeddingRequest {
+  model: string;
+  input: string[];
+  /** Aborts the call; an abort surfaces as AIUnavailableError. */
+  signal?: AbortSignal;
+}
+
+export interface EmbeddingResult {
+  /** One vector per input, in input order. */
+  embeddings: number[][];
+  usage: { input_tokens: number };
+}
+
+/** Text embeddings, kept separate from AIProvider so text-generation fakes need not implement it. */
+export interface EmbeddingProvider {
+  embed(request: EmbeddingRequest): Promise<EmbeddingResult>;
+}
+
 export class AIError extends Error {
   override name = "AIError";
 }
@@ -66,7 +84,19 @@ export class AIRequestError extends AIError {
 export class AIInvalidOutputError extends AIError {
   override name = "AIInvalidOutputError";
 
-  constructor(readonly reason: "refusal" | "incomplete" | "malformed" | "schema_mismatch") {
+  constructor(readonly reason: "refusal" | "incomplete" | "malformed" | "schema_mismatch" | "dimension_mismatch") {
     super(`AI output was invalid (${reason})`);
+  }
+}
+
+/**
+ * Every vector must have exactly `dimensions` finite values. Vectors are never truncated or padded:
+ * a model with a different native size is a configuration error.
+ */
+export function assertEmbeddingDimensions(embeddings: number[][], dimensions: number): void {
+  for (const vector of embeddings) {
+    if (vector.length !== dimensions || !vector.every((value) => typeof value === "number" && Number.isFinite(value))) {
+      throw new AIInvalidOutputError("dimension_mismatch");
+    }
   }
 }

@@ -998,6 +998,7 @@ export type Database = {
         | "evaluation"
         | "report"
         | "vision"
+        | "embedding"
       ai_usage_source: "provider" | "client_reported" | "duration_estimate"
       event_type:
         | "start"
@@ -1167,6 +1168,7 @@ export const Constants = {
         "evaluation",
         "report",
         "vision",
+        "embedding",
       ],
       ai_usage_source: ["provider", "client_reported", "duration_estimate"],
       event_type: [

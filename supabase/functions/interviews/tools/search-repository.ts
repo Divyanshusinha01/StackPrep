@@ -1,8 +1,23 @@
-import type { EvidenceExaminedPayload, SearchRepositoryInput, SearchRepositoryOutput } from "@stackprep/shared";
+import {
+  type EvidenceExaminedPayload,
+  REPOSITORY_MEMORY_EMBEDDING_DIMENSIONS,
+  type SearchRepositoryInput,
+  type SearchRepositoryOutput,
+} from "@stackprep/shared";
+import { assertEmbeddingDimensions } from "../../_shared/ai/provider.ts";
 import { scrubSecrets } from "../../_shared/analysis/scrub.ts";
-import { type MemoryEntry, type ToolContext, type ToolOutcome, topLevelArea } from "./types.ts";
+import {
+  type MemoryEntry,
+  type MemoryMatch,
+  type SearchEmbeddings,
+  type ToolContext,
+  type ToolOutcome,
+  topLevelArea,
+} from "./types.ts";
 
 export const MAX_EXCERPT_CHARS = 1500;
+/** Hard upper bound for the whole vector fill (query embedding, match, mapping) on the voice path. */
+export const VECTOR_SEARCH_BUDGET_MS = 3_000;
 const MAX_TERMS = 12;
 const MAX_TERM_HITS = 5;
 const PATH_HIT_WEIGHT = 3;
@@ -25,7 +40,7 @@ export interface SearchHit {
   score: number;
 }
 
-/** Ranks indexed repository memory for a query. A pgvector retriever can replace this behind the same shape. */
+/** Ranks indexed repository memory for a query. Vector hits only fill what this leaves under the limit. */
 export type RepositorySearch = (memory: MemoryEntry[], query: string, limit: number) => SearchHit[];
 
 function str(value: unknown): string | null {
@@ -164,13 +179,132 @@ export const keywordSearch: RepositorySearch = (memory, query, limit) => {
     .slice(0, limit);
 };
 
+type FallbackReason = "deadline" | "embed_error" | "rpc_error" | "no_results" | "disabled";
+
+class VectorFallback extends Error {
+  constructor(readonly reason: FallbackReason) {
+    super(reason);
+  }
+}
+
+/** Embeds the query and matches it against embedded memory rows; throws VectorFallback on any failure. */
+async function vectorHits(
+  ctx: ToolContext,
+  embeddings: SearchEmbeddings,
+  query: string,
+  limit: number,
+  signal: AbortSignal,
+  onUsage: (usage: Promise<unknown>) => unknown,
+): Promise<SearchHit[]> {
+  const { interview } = ctx;
+  let vector: number[];
+  try {
+    const result = await embeddings.provider.embed({ model: embeddings.model, input: [query], signal });
+    onUsage(ctx.store.recordAiUsage({
+      userId: ctx.userId,
+      workspaceId: interview.workspace_id,
+      interviewId: interview.id,
+      task: "embedding",
+      model: embeddings.model,
+      source: "provider",
+      tokens: { input_tokens: result.usage.input_tokens },
+      idempotencyKey: `embedding:${interview.id}:${crypto.randomUUID()}`,
+    }));
+    if (result.embeddings.length !== 1) {
+      throw new Error("unexpected embedding count");
+    }
+    assertEmbeddingDimensions(result.embeddings, REPOSITORY_MEMORY_EMBEDDING_DIMENSIONS);
+    vector = result.embeddings[0];
+  } catch {
+    throw new VectorFallback(signal.aborted ? "deadline" : "embed_error");
+  }
+
+  let matches: MemoryMatch[];
+  try {
+    matches = await ctx.store.matchRepositoryMemory(interview.workspace_id, interview.repository_commit_sha, vector, limit, signal);
+  } catch {
+    throw new VectorFallback(signal.aborted ? "deadline" : "rpc_error");
+  }
+  if (matches.length === 0) {
+    throw new VectorFallback("no_results");
+  }
+  return [...matches]
+    .sort((a, b) => b.similarity - a.similarity || (a.kind < b.kind ? -1 : a.kind > b.kind ? 1 : 0))
+    .map((m) => ({
+      path: REPOSITORY_ROOT,
+      area: m.kind,
+      excerpt: clip(scrubSecrets(m.content), MAX_EXCERPT_CHARS),
+      isFile: false,
+      score: m.similarity,
+    }));
+}
+
+/**
+ * Appends vector hits after the keyword hits, skipping duplicates by path and area, up to `limit`.
+ * The whole fill (query embedding plus match) shares one deadline; on the deadline or any failure
+ * the keyword hits are returned unchanged, without a retry.
+ */
+async function fillWithVectorHits(ctx: ToolContext, query: string, limit: number, hits: SearchHit[]): Promise<SearchHit[]> {
+  const embeddings = ctx.embeddings;
+  const startedAt = Date.now();
+  const fallback = (reason: FallbackReason) => {
+    ctx.log({ event: "repository_search_vector_fallback", reason, elapsed_ms: Date.now() - startedAt });
+    return hits;
+  };
+  if (!embeddings) {
+    return fallback("disabled");
+  }
+
+  const controller = new AbortController();
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const expired = new Promise<void>((resolve) => {
+    timer = setTimeout(() => {
+      controller.abort();
+      resolve();
+    }, embeddings.budgetMs ?? VECTOR_SEARCH_BUDGET_MS);
+  });
+  const deadline = expired.then((): never => {
+    throw new VectorFallback("deadline");
+  });
+  const usage: Promise<unknown>[] = [];
+  try {
+    const vector = await Promise.race([
+      vectorHits(ctx, embeddings, query, limit, controller.signal, (p) => usage.push(p)),
+      deadline,
+    ]);
+    const seen = new Set(hits.map((h) => `${h.path}\u0000${h.area ?? ""}`));
+    const filled = [...hits];
+    for (const hit of vector) {
+      if (filled.length >= limit) {
+        break;
+      }
+      const key = `${hit.path}\u0000${hit.area ?? ""}`;
+      if (!seen.has(key)) {
+        seen.add(key);
+        filled.push(hit);
+      }
+    }
+    return filled;
+  } catch (err) {
+    return fallback(err instanceof VectorFallback ? err.reason : "embed_error");
+  } finally {
+    // Recording never throws. It is awaited only until the same deadline; a write still pending then,
+    // or a spend that only completes after it, is recorded in the background.
+    await Promise.race([Promise.all(usage), expired]);
+    clearTimeout(timer);
+  }
+}
+
 export async function searchRepository(
   ctx: ToolContext,
   input: SearchRepositoryInput,
   search: RepositorySearch = keywordSearch,
 ): Promise<ToolOutcome> {
   const memory = await ctx.store.listRepositoryMemory(ctx.interview.workspace_id, ctx.interview.repository_commit_sha);
-  const hits = search(memory, input.query, input.limit);
+  const keywordHits = search(memory, input.query, input.limit);
+  const hits = keywordHits.length < input.limit
+    ? await fillWithVectorHits(ctx, input.query, input.limit, keywordHits)
+    : keywordHits;
   const output: SearchRepositoryOutput = {
     ok: true,
     results: hits.map(({ path, area, excerpt }) => (area ? { path, area, excerpt } : { path, excerpt })),

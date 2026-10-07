@@ -51,9 +51,9 @@ from public.interviews as i
 where i.workspace_id = 'aa000000-0000-4000-8000-000000000004';
 
 insert into public.interview_events (id, interview_id, user_id, sequence, event_type)
-select connected_id, interview_id, 'aa000000-0000-4000-8000-000000000001', 1, 'connected' from ids
+select connected_id, interview_id, 'aa000000-0000-4000-8000-000000000001'::uuid, 1, 'connected'::public.event_type from ids
 union all
-select start_id, interview_id, 'aa000000-0000-4000-8000-000000000001', 2, 'start' from ids;
+select start_id, interview_id, 'aa000000-0000-4000-8000-000000000001'::uuid, 2, 'start'::public.event_type from ids;
 
 create function pg_temp.usage(p_key text, p_task text, p_model text, p_source text, p_segment uuid)
 returns void language sql as $$
