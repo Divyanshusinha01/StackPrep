@@ -150,17 +150,12 @@ Each task reads its model from an environment variable, so models can change wit
 | Deep analysis                          | `gpt-5.6-terra`              | `OPENAI_PLANNING_MODEL`  |
 | Answer evaluation, report generation   | `gpt-5.6-terra`              | `OPENAI_EVALUATION_MODEL` |
 | Integrity monitoring                   | `gpt-5.6-luna`               | `OPENAI_VISION_MODEL`    |
-| Auxiliary extraction / classification (planned) | `gpt-5.6-luna`      | `OPENAI_EXTRACTION_MODEL` (future) |
 
 Planning and evaluation use the same model today but keep separate variables, so either can change on its own.
 
 The transcription model is set on the Realtime session when the backend mints the credential. It transcribes only the candidate's speech for the persisted transcript; the interviewer's own transcript comes from the voice model.
 
 Deep analysis is a single structured call per analyzed commit and reuses `OPENAI_PLANNING_MODEL` rather than adding its own variable. Its token usage is persisted to `ai_usage` with task `deep_analysis` and no interview, like every other AI call (see [Usage tracking](#usage-tracking)).
-
-One row is planned and not implemented yet:
-
-- **Auxiliary extraction / classification** has no AI calls yet, and `OPENAI_EXTRACTION_MODEL` is not part of `openAIEnvSchema` or `.env.example`. The variable will be added, with default `gpt-5.6-luna`, when that capability is built.
 
 #### Cost controls
 
@@ -176,7 +171,7 @@ The live voice session is the main AI cost, so most controls target it.
 
 #### Usage tracking
 
-Every AI call writes a row to `ai_usage` (migration `20261006100000_ai_usage.sql`): user, workspace, interview (null for repository analysis), task (`voice`, `auxiliary`, `deep_analysis`, `planning`, `evaluation`, `report`, `vision`), model, `source`, input / cached-input / output tokens split into text and audio, `audio_seconds` for duration estimates, the voice segment for voice rows, estimated cost in USD, an idempotency key, and a timestamp. The table is service-role only and append-only: updates are rejected, and the service role can only select and insert.
+Every AI call writes a row to `ai_usage` (migration `20261006100000_ai_usage.sql`): user, workspace, interview (null for repository analysis), task (`voice`, `auxiliary`, `deep_analysis`, `planning`, `evaluation`, `report`, `vision`), model, `source`, input / cached-input / output tokens split into text and audio, `audio_seconds` for duration estimates, the voice segment for voice rows, estimated cost in USD, an idempotency key, and a timestamp. `auxiliary` is a reserved task with no callers; it stays in the enum because Postgres enum values cannot be dropped cleanly. The table is service-role only and append-only: updates are rejected, and the service role can only select and insert.
 
 Cost is computed by `estimateCostUsd` from the price table in `@stackprep/shared` (`AI_PRICES`, USD per 1M tokens). Following OpenAI's `usage`, input counts include their cached portion, so each modality is billed as `(input − cached) × input rate + cached × cached rate + output × output rate`; a model without a cached rate bills cached tokens at the input rate. A model missing from the table gets a null cost, and the row is still written. Raw token counts are kept, so rows can be recalculated if prices change.
 
@@ -1017,7 +1012,7 @@ Each integration has its own Zod schema in `@stackprep/shared` (`packages/shared
 | `edgeEnvSchema` (required) | `WEB_ORIGIN`                                                                                  |
 | `edgeSupabaseEnvSchema`    | `SUPABASE_URL`, `SUPABASE_ANON_KEY`, `SUPABASE_SERVICE_ROLE_KEY` (injected by the runtime)     |
 | `inngestEnvSchema`         | `INNGEST_EVENT_KEY`, `INNGEST_SIGNING_KEY`                                                    |
-| `openAIEnvSchema`          | `OPENAI_API_KEY`, `OPENAI_REALTIME_MODEL`, `OPENAI_REALTIME_TRANSCRIPTION_MODEL`, `OPENAI_PLANNING_MODEL`, `OPENAI_EVALUATION_MODEL`, `OPENAI_VISION_MODEL`. `OPENAI_EXTRACTION_MODEL` (default `gpt-5.6-luna`) will be added when auxiliary extraction is implemented. |
+| `openAIEnvSchema`          | `OPENAI_API_KEY`, `OPENAI_REALTIME_MODEL`, `OPENAI_REALTIME_TRANSCRIPTION_MODEL`, `OPENAI_PLANNING_MODEL`, `OPENAI_EVALUATION_MODEL`, `OPENAI_VISION_MODEL`. |
 | `githubAppEnvSchema`       | `GITHUB_APP_ID`, `GITHUB_APP_CLIENT_ID`, `GITHUB_APP_CLIENT_SECRET`, `GITHUB_APP_PRIVATE_KEY`, `GITHUB_APP_WEBHOOK_SECRET` |
 | `edgeSentryEnvSchema`      | `SENTRY_DSN`, `SENTRY_ENVIRONMENT`                                                            |
 
