@@ -1,0 +1,107 @@
+name: Check
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: check-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    name: pnpm check
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      CI: true
+      NEXT_TELEMETRY_DISABLED: 1
+      # No repository secrets: next.config.ts validates the web env at load time, so `next typegen` and
+      # `next build` only need syntactically valid placeholders. Sentry stays a no-op without its vars.
+      NEXT_PUBLIC_SUPABASE_URL: http://127.0.0.1:54321
+      NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY: sb_publishable_ci_placeholder
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - uses: denoland/setup-deno@v2
+        with:
+          deno-version: v2.x
+          cache: true
+
+      - name: Cache Next.js build
+        uses: actions/cache@v4
+        with:
+          path: apps/web/.next/cache
+          key: nextjs-${{ runner.os }}-${{ hashFiles('pnpm-lock.yaml') }}-${{ hashFiles('apps/web/**/*.[jt]s', 'apps/web/**/*.[jt]sx', 'apps/web/**/*.css', 'packages/shared/src/**') }}
+          restore-keys: |
+            nextjs-${{ runner.os }}-${{ hashFiles('pnpm-lock.yaml') }}-
+
+      - name: Run checks
+        run: pnpm check
+
+  db:
+    name: Database tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      CI: true
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - uses: denoland/setup-deno@v2
+        with:
+          deno-version: v2.x
+          cache: true
+
+      - name: Start Supabase (Postgres only)
+        run: pnpm exec supabase start -x gotrue,realtime,storage-api,imgproxy,kong,mailpit,postgrest,postgres-meta,studio,edge-runtime,logflare,vector,supavisor
+
+      - name: Verify all migrations are applied
+        run: |
+          list="$(pnpm exec supabase migration list --local --agent no)"
+          echo "$list"
+          expected=$(ls supabase/migrations/*.sql | wc -l)
+          applied=$(echo "$list" | awk -F'|' '{ l = $1; r = $2; gsub(/[ `]/, "", l); gsub(/[ `]/, "", r); if (l ~ /^[0-9]+$/ && l == r) n++ } END { print n + 0 }')
+          if [ "$applied" -ne "$expected" ]; then
+            echo "Expected $expected applied migrations, found $applied" >&2
+            exit 1
+          fi
+
+      - name: Export database URL
+        run: pnpm exec supabase status -o env --agent no | grep '^DB_URL=' | sed 's/^DB_URL=/SUPABASE_DB_URL=/; s/"//g' >> "$GITHUB_ENV"
+
+      - name: Run pgTAP tests
+        run: pnpm test:db
+
+      - name: Run concurrency tests
+        run: pnpm test:db:concurrency
+
+      - name: Stop Supabase
+        if: always()
+        run: pnpm exec supabase stop --no-backup
