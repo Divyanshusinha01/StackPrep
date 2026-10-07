@@ -5,6 +5,8 @@ import { gitCommitShaSchema, interviewStatusSchema } from "./workspaces.ts";
 
 export const VOICE_WRAP_UP_SECONDS = 30 * 60;
 export const VOICE_LIMIT_SECONDS = 35 * 60;
+/** The browser closes the voice session after this long without candidate speech. */
+export const VOICE_IDLE_TIMEOUT_SECONDS = 3 * 60;
 
 export const interviewIdParamSchema = z.uuid();
 

@@ -7,6 +7,7 @@ import {
   type PauseReason,
   realtimeSessionResponseSchema,
   type TurnPersistedStreamData,
+  VOICE_IDLE_TIMEOUT_SECONDS,
   VOICE_LIMIT_SECONDS,
 } from "@stackprep/shared";
 import { FunctionsHttpError } from "@supabase/supabase-js";
@@ -49,7 +50,8 @@ export type RealtimeErrorCode =
   | "microphone_denied"
   | "microphone_unavailable"
   | "connection_failed"
-  | "connection_lost";
+  | "connection_lost"
+  | "idle_timeout";
 
 /** Failures a reconnect cannot fix; the coordinator stops retrying on these. */
 export const NOT_RETRYABLE: ReadonlySet<RealtimeErrorCode> = new Set([
@@ -237,6 +239,7 @@ export function useRealtimeInterview(interviewId: string, media: InterviewMedia)
     let audio: HTMLAudioElement | null = null;
     let hardStop = 0;
     let closingTimer = 0;
+    let idleTimer = 0;
     /** After the backend ends the interview: wait for the closing response, then for its audio to finish. */
     let closing: "none" | "awaiting_response" | "speaking" = "none";
     let connected = false;
@@ -244,6 +247,7 @@ export function useRealtimeInterview(interviewId: string, media: InterviewMedia)
     const cleanup = () => {
       window.clearTimeout(hardStop);
       window.clearTimeout(closingTimer);
+      window.clearTimeout(idleTimer);
       detach.splice(0).forEach((off) => off());
       if (connected) {
         connected = false;
@@ -262,6 +266,16 @@ export function useRealtimeInterview(interviewId: string, media: InterviewMedia)
 
     const signal = (cause: InterruptionCause, reason: PauseReason) =>
       dispatchMachine({ type: "signal", attempt, cause, reason });
+    const clearIdle = () => window.clearTimeout(idleTimer);
+    /** Closes the session after a stretch without candidate speech; re-arming replaces the previous timer. */
+    const armIdle = () => {
+      clearIdle();
+      idleTimer = window.setTimeout(() => {
+        if (current() && closing === "none") {
+          dispatchMachine({ type: "idle_timeout", attempt });
+        }
+      }, VOICE_IDLE_TIMEOUT_SECONDS * 1000);
+    };
 
     try {
       if (typeof RTCPeerConnection === "undefined") {
@@ -350,6 +364,11 @@ export function useRealtimeInterview(interviewId: string, media: InterviewMedia)
           return;
         }
         dispatch(event);
+        if (event.type === "input_audio_buffer.speech_started") {
+          clearIdle();
+        } else if (event.type === "input_audio_buffer.speech_stopped") {
+          armIdle();
+        }
         const usageOutbox = outboxRef.current;
         if (usageOutbox && event.type === "response.done") {
           try {
@@ -397,6 +416,7 @@ export function useRealtimeInterview(interviewId: string, media: InterviewMedia)
         const usedSeconds = VOICE_LIMIT_SECONDS - session.remaining_voice_seconds;
         setClock({ usedSeconds, connectedAt: Date.now() });
         dispatchMachine({ type: "connected", attempt });
+        armIdle();
         hardStop = window.setTimeout(() => {
           if (current()) {
             setTimeUp(true);
@@ -518,7 +538,15 @@ export function useRealtimeInterview(interviewId: string, media: InterviewMedia)
   }, []);
 
   const status = toStatus(machine.phase);
-  const error = (machine.phase === "exhausted" ? "connection_lost" : machine.phase === "failed" ? machine.error : null) as
+  const error = (
+    machine.phase === "exhausted"
+      ? machine.error === "idle_timeout"
+        ? "idle_timeout"
+        : "connection_lost"
+      : machine.phase === "failed"
+        ? machine.error
+        : null
+  ) as
     | RealtimeErrorCode
     | null;
 

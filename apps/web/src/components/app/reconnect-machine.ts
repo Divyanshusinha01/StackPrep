@@ -8,6 +8,7 @@ import type { PauseReason } from "@stackprep/shared";
  *
  *   idle -> connecting -> connected -> (suspect ->) interrupted -> reconnecting -> connected
  *   reconnecting -> interrupted (retries left) | exhausted (manual Reconnect) | failed (not retryable)
+ *   connected | suspect -> exhausted (idle timeout: no candidate speech; manual Reconnect, no auto retry)
  *   any live phase -> closed (ended, time up, integrity termination, unmount)
  */
 
@@ -51,6 +52,7 @@ export type ReconnectEvent =
   | { type: "track_muted"; attempt: number; reason: PauseReason }
   | { type: "track_unmuted"; attempt: number }
   | { type: "grace_expired"; attempt: number }
+  | { type: "idle_timeout"; attempt: number }
   | { type: "retry" }
   | { type: "online" }
   | { type: "manual_retry" }
@@ -164,6 +166,11 @@ export function reconnectReducer(state: ReconnectState, event: ReconnectEvent): 
     case "grace_expired":
       return event.attempt === state.attempt && state.phase === "suspect"
         ? interrupt(state, state.reason ?? "connection")
+        : state;
+
+    case "idle_timeout":
+      return event.attempt === state.attempt && (state.phase === "connected" || state.phase === "suspect")
+        ? { ...state, phase: "exhausted", error: "idle_timeout", retries: 0, reason: null, resumed: false }
         : state;
 
     case "retry":

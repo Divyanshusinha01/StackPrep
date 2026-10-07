@@ -85,6 +85,31 @@ describe("reconnectReducer", () => {
     expect(run([{ type: "manual_retry" }], state)).toMatchObject({ phase: "reconnecting", retries: 0, attempt: state.attempt + 1 });
   });
 
+  it("closes an idle session without an interruption and waits for a manual reconnect", () => {
+    const idle = run([{ type: "idle_timeout", attempt: 1 }], live);
+    expect(idle).toMatchObject({ phase: "exhausted", error: "idle_timeout", retries: 0, interruptions: 0, reason: null });
+    expect(run([{ type: "retry" }, { type: "online" }], idle)).toBe(idle);
+    expect(run([{ type: "manual_retry" }], idle)).toMatchObject({ phase: "reconnecting", attempt: 2, error: null });
+
+    const suspect = run([{ type: "track_muted", attempt: 1, reason: "microphone" }], live);
+    expect(run([{ type: "idle_timeout", attempt: 1 }], suspect)).toMatchObject({
+      phase: "exhausted",
+      error: "idle_timeout",
+      interruptions: 0,
+      reason: null,
+    });
+  });
+
+  it("ignores an idle timeout from a stale attempt or outside a live connection", () => {
+    expect(run([{ type: "idle_timeout", attempt: 0 }], live)).toBe(live);
+    const interrupted = run([{ type: "signal", attempt: 1, cause: "offline", reason: "network" }], live);
+    const reconnecting = run([{ type: "retry" }], interrupted);
+    const closed = run([{ type: "close", reason: "stopped" }], live);
+    for (const state of [INITIAL_RECONNECT_STATE, interrupted, reconnecting, closed]) {
+      expect(run([{ type: "idle_timeout", attempt: state.attempt }], state)).toBe(state);
+    }
+  });
+
   it("stops on a failure a reconnect cannot fix", () => {
     const state = run([
       { type: "signal", attempt: 1, cause: "offline", reason: "network" },

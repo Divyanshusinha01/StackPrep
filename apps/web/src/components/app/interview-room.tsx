@@ -23,6 +23,8 @@ const ROOM_ERRORS: Partial<Record<RealtimeErrorCode, string>> = {
   connection_failed: "Could not connect to the voice interviewer. Check your connection and try again.",
   connection_lost:
     "We could not reconnect automatically. Your voice time is paused and your answers are saved; reconnect to continue.",
+  idle_timeout:
+    "We didn't hear anything for 3 minutes, so the voice session was closed. Your voice time is paused and your answers are saved; reconnect when you're ready.",
   realtime_unavailable: "The voice interviewer is unavailable right now. Try again in a moment.",
   interview_preparing: "The interview is still being prepared. Retrying shortly…",
   interview_planning_failed: "This interview could not be prepared. Start a new interview from the workspace.",
