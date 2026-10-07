@@ -104,6 +104,73 @@ Deno.test({
 });
 
 Deno.test({
+  name: "concurrent start_interview calls at the usage limit: only one gets the fifth slot",
+  ignore: !dbUrl,
+  async fn() {
+    await withFixture(async ({ a, b, userId, workspaceId }) => {
+      for (let i = 0; i < 4; i++) {
+        await a`select interview_id from public.start_interview(${workspaceId}, ${userId}, ${sha})`;
+      }
+
+      const started = Promise.withResolvers<void>();
+      const release = Promise.withResolvers<void>();
+
+      const first = a.begin(async (tx) => {
+        const [row] = await tx`
+          select interview_number from public.start_interview(${workspaceId}, ${userId}, ${sha})`;
+        started.resolve();
+        await release.promise;
+        return row.interview_number as number;
+      });
+
+      await started.promise;
+      const second = b`select interview_number from public.start_interview(${workspaceId}, ${userId}, ${sha})`;
+      const secondState = settled(second);
+
+      await delay(300);
+      assertEquals(secondState.done, false, "second call should wait for the per-user lock");
+
+      release.resolve();
+      assertEquals(await first, 5);
+      const error = await assertRejects(() => second) as { code?: string; message?: string; detail?: string };
+      assertEquals([error.code, error.message], ["P0429", "interview_limit_reached"]);
+
+      const [{ count, next_at }] = await a`
+        select count(*)::int as count, min(created_at) + interval '24 hours' as next_at
+        from public.interviews where user_id = ${userId}`;
+      assertEquals(count, 5);
+      assertEquals(new Date(error.detail!).getTime(), (next_at as Date).getTime());
+    });
+  },
+});
+
+Deno.test({
+  name: "a burst of parallel start_interview calls creates at most five interviews",
+  ignore: !dbUrl,
+  async fn() {
+    await withFixture(async ({ userId, workspaceId }) => {
+      const clients = Array.from({ length: 8 }, () => postgres(dbUrl!, { max: 1, onnotice: () => {} }));
+      try {
+        const results = await Promise.allSettled(
+          clients.map((sql) => sql`select interview_id from public.start_interview(${workspaceId}, ${userId}, ${sha})`),
+        );
+        const rejected = results.flatMap((r) => (r.status === "rejected" ? [(r.reason as { code?: string }).code] : []));
+        assertEquals(results.length - rejected.length, 5);
+        assertEquals(rejected, ["P0429", "P0429", "P0429"]);
+
+        const [{ interviews, jobs }] = await clients[0]`
+          select
+            (select count(*)::int from public.interviews where user_id = ${userId}) as interviews,
+            (select count(*)::int from public.jobs where user_id = ${userId} and type = 'interview_planning') as jobs`;
+        assertEquals([interviews, jobs], [5, 5]);
+      } finally {
+        await Promise.all(clients.map((sql) => sql.end()));
+      }
+    });
+  },
+});
+
+Deno.test({
   name: "concurrent updates with the same expected version: one wins, the other gets P0409",
   ignore: !dbUrl,
   async fn() {
