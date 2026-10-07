@@ -1,0 +1,14 @@
+---
+description: Auto-start Docker Desktop when a task needs Docker
+alwaysApply: true
+---
+
+# Auto-start Docker When Needed
+
+Before running any command that needs Docker (`docker`, `docker compose`, `supabase start`, `supabase db ...` local commands, `supabase functions serve`, etc.):
+
+1. Check the engine with `docker info`.
+2. If it fails, start Docker Desktop without asking:
+   `Start-Process "C:\Program Files\Docker\Docker\Docker Desktop.exe"`
+3. Poll `docker info` every few seconds until it succeeds (up to ~2 minutes), then continue the task.
+4. If it still isn't ready after that, stop and tell the user instead of proceeding.
