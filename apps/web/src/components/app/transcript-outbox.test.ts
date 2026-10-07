@@ -1,4 +1,4 @@
-import type { InterviewEventRequest } from "@stackprep/shared";
+import { type InterviewEventRequest, interviewEventRequestSchema } from "@stackprep/shared";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { EMPTY_TRANSCRIPT, transcriptReducer } from "./realtime-transcript";
 import {
@@ -31,10 +31,25 @@ function ids() {
 }
 
 function ack(item: InterviewEventRequest, status: "created" | "duplicate" = "created", sequence = 1): SendResult {
+  if (item.type === "voice_usage") {
+    return { ok: true, ack: { type: item.type, status, client_event_id: item.client_event_id } };
+  }
   return item.type === "transcript_turn"
     ? { ok: true, ack: { type: item.type, status, client_event_id: item.client_event_id, turn_sequence: sequence } }
     : { ok: true, ack: { type: item.type, status, client_event_id: item.client_event_id, event_sequence: sequence } };
 }
+
+const usage = (responseId = "resp_1") =>
+  ({
+    type: "voice_usage",
+    response_id: responseId,
+    input_tokens: 120,
+    cached_input_tokens: 40,
+    output_tokens: 80,
+    audio_input_tokens: 100,
+    audio_cached_input_tokens: 30,
+    audio_output_tokens: 70,
+  }) as const;
 
 const turn = (content: string, itemId = content) =>
   ({ type: "transcript_turn", role: "user", content, item_id: itemId }) as const;
@@ -289,6 +304,53 @@ describe("transcript outbox", () => {
     await done;
     expect(sent).toHaveLength(4);
     expect(outbox.pending()).toEqual([]);
+  });
+
+  it("sends voice usage as a valid event and accepts its ack", async () => {
+    const onAck = vi.fn();
+    const onDrop = vi.fn();
+    const { send, sent } = scripted();
+    const outbox = make({ send, onAck, onDrop });
+    const item = outbox.enqueue(usage());
+    expect(interviewEventRequestSchema.parse(item)).toEqual({
+      ...usage(),
+      client_event_id: "00000000-0000-4000-8000-000000000001",
+      occurred_at: "2026-10-05T12:00:00.000Z",
+    });
+    await tick();
+    expect(sent).toEqual([item]);
+    expect(onDrop).not.toHaveBeenCalled();
+    expect(onAck).toHaveBeenCalledWith(item, { type: "voice_usage", status: "created", client_event_id: item.client_event_id });
+    expect(outbox.pending()).toEqual([]);
+  });
+
+  it("retries voice usage with the same event id and accepts a duplicate ack", async () => {
+    const onDrop = vi.fn();
+    const { send, sent } = scripted([
+      () => ({ ok: false, retryable: true, code: "internal_error" }),
+      (item) => ack(item, "duplicate"),
+    ]);
+    const outbox = make({ send, onDrop });
+    outbox.enqueue(usage());
+    await tick();
+    await vi.advanceTimersByTimeAsync(50);
+    expect(sent).toHaveLength(2);
+    expect(new Set(sent.map((i) => i.client_event_id)).size).toBe(1);
+    expect(onDrop).not.toHaveBeenCalled();
+    expect(outbox.pending()).toEqual([]);
+  });
+
+  it("resends persisted voice usage once, with its original event id, after a refresh", async () => {
+    const storage = memoryStorage();
+    const offline = make({ send: () => new Promise(() => {}), storage });
+    const original = offline.enqueue(usage());
+    offline.dispose();
+
+    const { send, sent } = scripted();
+    make({ send, storage, randomId: () => "00000000-0000-4000-8000-0000000000ff" });
+    await tick();
+    expect(sent).toEqual([original]);
+    expect(storage.data.has(KEY)).toBe(false);
   });
 
   it("caps turn content at the request limit", () => {
