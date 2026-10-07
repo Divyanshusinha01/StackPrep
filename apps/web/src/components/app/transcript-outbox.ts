@@ -7,6 +7,7 @@ import {
   TRANSCRIPT_TURN_MAX_CHARS,
 } from "@stackprep/shared";
 import type { TranscriptState } from "./realtime-transcript";
+import type { VoiceUsageInput } from "./realtime-usage";
 
 /**
  * Ordered, persistent send buffer for `POST /interviews/:id/events`. Every item gets its
@@ -19,7 +20,8 @@ import type { TranscriptState } from "./realtime-transcript";
 export type OutboxInput =
   | { type: "transcript_turn"; role: "ai" | "user"; content: string; item_id: string; interrupted?: boolean }
   | { type: "connected" | "disconnected" | "resume" }
-  | { type: "pause"; reason: PauseReason };
+  | { type: "pause"; reason: PauseReason }
+  | VoiceUsageInput;
 
 export type SendResult =
   | { ok: true; ack: unknown }
@@ -226,7 +228,19 @@ export function createTranscriptOutbox({
             }
           : input.type === "pause"
             ? { type: "pause", ...base, reason: input.reason }
-            : { type: input.type, ...base };
+            : input.type === "voice_usage"
+              ? {
+                  type: "voice_usage",
+                  ...base,
+                  response_id: input.response_id,
+                  input_tokens: input.input_tokens,
+                  cached_input_tokens: input.cached_input_tokens,
+                  output_tokens: input.output_tokens,
+                  audio_input_tokens: input.audio_input_tokens,
+                  audio_cached_input_tokens: input.audio_cached_input_tokens,
+                  audio_output_tokens: input.audio_output_tokens,
+                }
+              : { type: input.type, ...base };
       state.queue.push(item);
       persist();
       if (!disposed) {

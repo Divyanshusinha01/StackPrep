@@ -16,6 +16,7 @@ import { examiningReducer } from "./examining";
 import { toMediaError } from "./interview-media";
 import { relayToolCall } from "./realtime-tool-relay";
 import { EMPTY_TRANSCRIPT, type RealtimeServerEvent, transcriptReducer } from "./realtime-transcript";
+import { newVoiceUsage } from "./realtime-usage";
 import {
   backoffDelay,
   hasConnection,
@@ -156,6 +157,7 @@ export function useRealtimeInterview(interviewId: string, media: InterviewMedia)
   const highestAckedTurnRef = useRef(0);
   const outboxRef = useRef<TranscriptOutbox | null>(null);
   const seenTurnsRef = useRef(new Set<string>());
+  const seenUsageRef = useRef(new Set<string>());
   const { acquire } = media;
 
   const teardown = useCallback(() => {
@@ -348,6 +350,17 @@ export function useRealtimeInterview(interviewId: string, media: InterviewMedia)
           return;
         }
         dispatch(event);
+        const usageOutbox = outboxRef.current;
+        if (usageOutbox && event.type === "response.done") {
+          try {
+            const usage = newVoiceUsage(event, seenUsageRef.current);
+            if (usage) {
+              usageOutbox.enqueue(usage);
+            }
+          } catch (err) {
+            console.warn("Could not record voice usage", err);
+          }
+        }
         if (closing === "awaiting_response" && event.type === "response.created") {
           closing = "speaking";
         } else if (closing === "speaking" && event.type === "output_audio_buffer.stopped") {
