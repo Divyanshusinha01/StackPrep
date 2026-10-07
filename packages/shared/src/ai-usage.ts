@@ -3,6 +3,7 @@ import { z } from "zod";
 // AI usage tracking. Every AI call writes an `ai_usage` row; cost is derived from the price table
 // below so rows can be recalculated when prices change.
 
+/** `auxiliary` is reserved and has no callers; it mirrors a Postgres enum value that cannot be dropped. */
 export const aiTaskSchema = z.enum(["voice", "auxiliary", "deep_analysis", "planning", "evaluation", "report", "vision"]);
 export type AiTask = z.infer<typeof aiTaskSchema>;
 
