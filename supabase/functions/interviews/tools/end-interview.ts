@@ -8,12 +8,20 @@ export const CLOSING_GUIDANCE =
   "Give a brief closing statement now: thank the candidate, say the interview is complete and that their report will follow.";
 export const CONTINUE_GUIDANCE = "Not yet. Continue with the next planned topic and gather more evidence.";
 
-/** Every high-priority area at least partly explored, with enough evaluated answers. */
+/**
+ * Every high-priority area covered and every medium-priority area at least partly explored, with
+ * at least one evaluated answer per such area (never fewer than MIN_EVALUATIONS). Low-priority
+ * areas are optional, so a small repository can finish well before the time target.
+ */
 export function hasSufficientEvidence(coverage: CoverageMap | null, evaluations: number): boolean {
-  if (!coverage || evaluations < MIN_EVALUATIONS) {
+  if (!coverage) {
     return false;
   }
-  return coverage.areas.filter((a) => a.priority === "high").every((a) => a.status !== "not_started");
+  const required = coverage.areas.filter((a) => a.priority !== "low");
+  if (evaluations < Math.max(MIN_EVALUATIONS, required.length)) {
+    return false;
+  }
+  return required.every((a) => a.priority === "high" ? a.status === "covered" : a.status !== "not_started");
 }
 
 export async function endInterview(ctx: ToolContext, input: EndInterviewInput): Promise<ToolOutcome> {

@@ -74,8 +74,9 @@ Produce:
 1. coverage_map: 3 to 10 areas that matter for this repository (for example architecture, backend,
    data, security, testing, deployment), each grounded in repo_evidence taken from repository_memory.
    Use short snake_case ids. Set every status to "not_started".
-2. plan: a summary, 2 to 6 phases that reference coverage area ids and fit a 30 minute interview,
-   and an opening question about the repository.
+2. plan: a summary, 2 to 6 phases that reference coverage area ids, and an opening question about
+   the repository. Size the phase minutes to the repository: 30 minutes is a ceiling, not a target.
+   A small repository with little to discuss should total 10 to 20 minutes; do not pad phases.
 3. strategy: difficulty, focus areas, topics to avoid repeating, follow-up style, and notes.
 
 Prior interviews are guidance for question selection only. When there are any:

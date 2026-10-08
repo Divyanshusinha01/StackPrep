@@ -834,17 +834,38 @@ Deno.test("end_interview: a failed enqueue marks the report job failed but still
   assertEquals(reportJobs.failures, [{ jobId: "job-1", code: "enqueue_failed" }]);
 });
 
-Deno.test("end_interview: accepted with sufficient evidence before 30 minutes", async () => {
-  const covered = coverage.areas.map((a) => ({ ...a, status: a.priority === "high" ? "partial" as const : a.status }));
-  const store = createFakeToolStore({ memory, messages, state: stateSnapshot(covered) });
-  for (let i = 0; i < 4; i++) {
+function storeWithEvidence(areas: CoverageMap["areas"], evaluations = 4) {
+  const store = createFakeToolStore({ memory, messages, state: stateSnapshot(areas) });
+  for (let i = 0; i < evaluations; i++) {
     store.evaluations.push({ message_id: QUESTION_ID, category: "security", score: 3, rating: "proficient", strengths: [], gaps: [], repo_evidence: [], discrepancy: false, discrepancy_detail: "" });
   }
+  return store;
+}
+
+Deno.test("end_interview: accepted with sufficient evidence before 30 minutes", async () => {
+  const areas = coverage.areas.map((a) => ({ ...a, status: a.priority === "high" ? "covered" as const : "partial" as const }));
+  const store = storeWithEvidence(areas);
   const { handler, jobs } = setup({ store });
   const body = await result(await handler(toolCall("end_interview", { reason: "sufficient_evidence" })));
   assertEquals(body.accepted, true);
   assertEquals(store.status, "completed");
   assertEquals(jobs.sent.length, 1);
+});
+
+Deno.test("end_interview: declined early while a high-priority area is only partly explored", async () => {
+  const areas = coverage.areas.map((a) => ({ ...a, status: a.id === "security" ? "partial" as const : "covered" as const }));
+  const store = storeWithEvidence(areas);
+  const { handler } = setup({ store });
+  const body = await result(await handler(toolCall("end_interview", { reason: "sufficient_evidence" })));
+  assertEquals(body, { ok: true, accepted: false, guidance: CONTINUE_GUIDANCE });
+  assertEquals(store.status, "in_progress");
+});
+
+Deno.test("end_interview: declined early while a medium-priority area is untouched", async () => {
+  const areas = coverage.areas.map((a) => ({ ...a, status: a.priority === "high" ? "covered" as const : "not_started" as const }));
+  const { handler } = setup({ store: storeWithEvidence(areas) });
+  const body = await result(await handler(toolCall("end_interview", { reason: "sufficient_evidence" })));
+  assertEquals(body.accepted, false);
 });
 
 // Code index (symbol-aware lookups) -------------------------------------------------------------
