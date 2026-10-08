@@ -6,6 +6,7 @@ import {
   createInterviewResponseSchema,
   type CreateWorkspaceRequest,
   createWorkspaceResponseSchema,
+  deleteInterviewResponseSchema,
   gitCommitShaSchema,
   healthResponseSchema,
   interviewHistoryItemSchema,
@@ -48,7 +49,7 @@ async function functionGet<T>(name: string, schema: Schema<T>): Promise<T> {
 async function functionRequest<T>(
   name: string,
   schema: Schema<T>,
-  init: { method: "GET" | "POST"; body?: Record<string, unknown> },
+  init: { method: "GET" | "POST" | "DELETE"; body?: Record<string, unknown> },
 ): Promise<ApiResult<T>> {
   const supabase = await createSupabaseServerClient();
   const { data, error } = await supabase.functions.invoke(name, init);
@@ -174,6 +175,10 @@ export function retryInterviewReport(id: string) {
   return functionRequest(`interviews/${encodeURIComponent(id)}/report/retry`, interviewReportResponseSchema, {
     method: "POST",
   });
+}
+
+export function deleteInterview(id: string) {
+  return functionRequest(`interviews/${encodeURIComponent(id)}`, deleteInterviewResponseSchema, { method: "DELETE" });
 }
 
 const transcriptEntrySchema = z.object({

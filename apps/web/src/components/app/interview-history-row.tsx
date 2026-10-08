@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { FileText, Play, ShieldAlert } from "lucide-react";
+import { DeleteInterviewButton } from "@/components/app/delete-interview-button";
 import { InterviewStatusBadge } from "@/components/app/interview-status";
 import type { InterviewHistoryEntry, ReportAvailability } from "@/lib/api";
 
@@ -14,8 +15,25 @@ const REPORT_LABELS: Record<Exclude<ReportAvailability, "none">, string> = {
 
 const ENDED = new Set(["completed", "terminated", "failed"]);
 
-/** One interview in a history list: number, status, date/time, report or transcript link. */
-export function InterviewHistoryRow({ interview }: { interview: InterviewHistoryEntry }) {
+/** Message for the `delete_error` query param set by the delete action, or null when absent. */
+export function deleteInterviewErrorMessage(value: string | string[] | undefined): string | null {
+  if (typeof value !== "string") {
+    return null;
+  }
+  if (value === "interview_not_ended") {
+    return "Only ended interviews can be deleted.";
+  }
+  if (value === "interview_not_found") {
+    return "That interview no longer exists.";
+  }
+  return "Could not delete the interview. Try again.";
+}
+
+/**
+ * One interview in a history list: number, status, date/time, report or transcript link, and a
+ * delete button once it has ended. `returnTo` is the page to come back to after deleting.
+ */
+export function InterviewHistoryRow({ interview, returnTo }: { interview: InterviewHistoryEntry; returnTo: string }) {
   const reportHref = `/interviews/${interview.id}/report`;
   const integrityTerminated = interview.status === "terminated" && interview.termination_reason === "integrity_violation";
   return (
@@ -55,6 +73,13 @@ export function InterviewHistoryRow({ interview }: { interview: InterviewHistory
           </Link>
         ) : null}
         <InterviewStatusBadge status={interview.status} terminationReason={interview.termination_reason} />
+        {ENDED.has(interview.status) ? (
+          <DeleteInterviewButton
+            interviewId={interview.id}
+            interviewNumber={interview.interview_number}
+            returnTo={returnTo}
+          />
+        ) : null}
       </span>
     </li>
   );

@@ -25,6 +25,7 @@ export const apiErrorCodeSchema = z.enum([
   "realtime_unavailable",
   "event_conflict",
   "interview_not_completed",
+  "interview_not_ended",
   "report_not_retryable",
   "interview_interrupted",
   "interview_paused",

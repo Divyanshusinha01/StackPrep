@@ -5,7 +5,7 @@ import { ExternalLink, GitBranch, Lock } from "lucide-react";
 import { type ApiErrorCode, apiErrorCodeSchema } from "@stackprep/shared";
 import { AnalysisProgress } from "@/components/app/analysis-progress";
 import { AppShell } from "@/components/app/app-shell";
-import { InterviewHistoryRow } from "@/components/app/interview-history-row";
+import { deleteInterviewErrorMessage, InterviewHistoryRow } from "@/components/app/interview-history-row";
 import { Notice } from "@/components/app/notice";
 import { SubmitButton } from "@/components/app/submit-button";
 import { WorkspaceStatusBadge } from "@/components/app/workspace-status";
@@ -69,6 +69,7 @@ export default async function WorkspacePage({ params, searchParams }: PageProps<
   const query = await searchParams;
   const retryError = retryErrorMessage(query.retry_error);
   const interviewError = interviewErrorMessage(query.interview_error, query.next_available_at);
+  const deleteError = deleteInterviewErrorMessage(query.delete_error);
   const user = await requireUser(`/workspaces/${encodeURIComponent(id)}`);
   const result = await getWorkspace(id);
 
@@ -141,12 +142,13 @@ export default async function WorkspacePage({ params, searchParams }: PageProps<
         <h2 id="interview-history" className="font-display text-lg font-semibold">
           Interview history
         </h2>
+        {deleteError ? <Notice tone="error">{deleteError}</Notice> : null}
         {interviews.length === 0 ? (
           <p className="mt-2 text-sm text-muted-foreground">No interviews yet.</p>
         ) : (
           <ul className="mt-4 divide-y rounded-lg border bg-panel/60" data-testid="interview-history">
             {interviews.map((interview) => (
-              <InterviewHistoryRow key={interview.id} interview={interview} />
+              <InterviewHistoryRow key={interview.id} interview={interview} returnTo={`/workspaces/${workspace.id}`} />
             ))}
           </ul>
         )}

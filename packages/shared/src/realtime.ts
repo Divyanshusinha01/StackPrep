@@ -156,6 +156,14 @@ export const endInterviewResponseSchema = z.discriminatedUnion("status", [
   z.strictObject({ status: z.literal("terminated"), report: z.literal(false) }),
 ]);
 
+// DELETE /interviews/:id -----------------------------------------------------------------
+// Removes an ended interview from the candidate's history. It still counts toward the
+// 5-per-24h limit and its number is not reused.
+
+export const deleteInterviewResponseSchema = z.strictObject({
+  status: z.literal("deleted"),
+});
+
 // GET /interviews/:id/events (SSE) ------------------------------------------------
 // Server-to-client interview events, derived from rows that already exist: status transitions
 // from `interview_events` (start, completion, termination), persisted turns from
@@ -481,6 +489,7 @@ export type VoiceUsageAck = z.infer<typeof voiceUsageAckSchema>;
 export type PauseInterviewResponse = z.infer<typeof pauseInterviewResponseSchema>;
 export type ResumeInterviewResponse = z.infer<typeof resumeInterviewResponseSchema>;
 export type EndInterviewResponse = z.infer<typeof endInterviewResponseSchema>;
+export type DeleteInterviewResponse = z.infer<typeof deleteInterviewResponseSchema>;
 export type IntegrityFrameRequest = z.infer<typeof integrityFrameRequestSchema>;
 export type IntegritySignalKind = z.infer<typeof integritySignalKindSchema>;
 export type IntegrityFrameResponse = z.infer<typeof integrityFrameResponseSchema>;

@@ -122,6 +122,7 @@ function setup({
     pauseInterview: unused,
     resumeInterview: unused,
     endInterview: unused,
+    deleteInterview: unused,
   };
   const handler = createInterviewsHandler({
     webOrigin,

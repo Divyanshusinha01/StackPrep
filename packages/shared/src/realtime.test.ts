@@ -3,6 +3,7 @@ import { apiErrorCodeSchema } from "./github.ts";
 import {
   advanceInterviewInputSchema,
   endInterviewInputSchema,
+  deleteInterviewResponseSchema,
   endInterviewResponseSchema,
   evaluateAnswerOutputSchema,
   evidenceExaminedPayloadSchema,
@@ -68,6 +69,14 @@ describe("endInterviewResponseSchema", () => {
     expect(endInterviewResponseSchema.safeParse({ status: "completed", report: false }).success).toBe(false);
     expect(endInterviewResponseSchema.safeParse({ status: "terminated", report: true }).success).toBe(false);
     expect(endInterviewResponseSchema.safeParse({ status: "paused", report: false }).success).toBe(false);
+  });
+});
+
+describe("deleteInterviewResponseSchema", () => {
+  it("only accepts a deleted status", () => {
+    expect(deleteInterviewResponseSchema.parse({ status: "deleted" })).toEqual({ status: "deleted" });
+    expect(deleteInterviewResponseSchema.safeParse({ status: "deleted", extra: true }).success).toBe(false);
+    expect(deleteInterviewResponseSchema.safeParse({ status: "completed" }).success).toBe(false);
   });
 });
 

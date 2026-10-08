@@ -2,6 +2,7 @@ import { assert, assertAlmostEquals, assertEquals } from "@std/assert";
 import {
   AI_USAGE_MAX_TOKENS_PER_EVENT,
   apiErrorSchema,
+  deleteInterviewResponseSchema,
   endInterviewResponseSchema,
   integrityFrameResponseSchema,
   interviewEventAckSchema,
@@ -31,6 +32,7 @@ import {
 import type { InterviewStateSnapshot, TranscriptMessage } from "./tools/types.ts";
 import {
   createInterviewsHandler,
+  type DeleteResult,
   type EndResult,
   type InterviewReader,
   type InterviewRow,
@@ -88,6 +90,7 @@ interface Setup {
   pauseResult?: PauseResult;
   resumeResult?: ResumeResult;
   endResult?: EndResult;
+  deleteResult?: DeleteResult;
 }
 
 function at(offsetSeconds: number): string {
@@ -111,13 +114,14 @@ function setup({
   pauseResult = { status: "paused", pauseCount: 1, pausedAt: NOW.toISOString(), disconnectedSequence: null },
   resumeResult = "resumed",
   endResult = { status: "completed", disconnectedSequence: null },
+  deleteResult = "deleted",
 }: Setup = {}) {
   const clock = { now: NOW };
   const rlsClient = { rls: true } as unknown as SupabaseClient;
   const openaiRequests: { url: string; headers: Headers; body: Record<string, unknown> }[] = [];
   const turns: TranscriptTurnRecord[] = [];
   const voiceEvents: VoiceEventRecord[] = [];
-  const pauseCalls: { op: "pause" | "resume" | "end"; interviewId: string; userId: string }[] = [];
+  const pauseCalls: { op: "pause" | "resume" | "end" | "delete"; interviewId: string; userId: string }[] = [];
   const authenticate: Authenticate = (req) =>
     Promise.resolve(
       req.headers.get("Authorization") === "Bearer valid" ? { user: { id: userId } as User, supabase: rlsClient } : null,
@@ -172,6 +176,10 @@ function setup({
     endInterview: (interviewId, uid) => {
       pauseCalls.push({ op: "end", interviewId, userId: uid });
       return Promise.resolve(endResult);
+    },
+    deleteInterview: (interviewId, uid) => {
+      pauseCalls.push({ op: "delete", interviewId, userId: uid });
+      return Promise.resolve(deleteResult);
     },
   };
   const fakeFetch: typeof fetch = async (input, init) => {
@@ -237,7 +245,7 @@ Deno.test("only POST on the session route is allowed", async () => {
   const res = await handler(post(undefined, "Bearer valid", "GET"));
   await expectError(res, 405, "method_not_allowed");
   assertEquals(res.headers.get("allow"), "POST, OPTIONS");
-  await expectError(await handler(post(`/interviews/${INTERVIEW_ID}`)), 404, "not_found");
+  await expectError(await handler(post(`/interviews/${INTERVIEW_ID}/unknown`)), 404, "not_found");
 });
 
 Deno.test("rejects other origins", async () => {
@@ -1134,6 +1142,55 @@ Deno.test("end: closing an open voice segment writes its duration estimates", as
   });
   assertEquals((await handler(post(`/interviews/${INTERVIEW_ID}/end`))).status, 201);
   assertEquals(usage.map((u) => [u.voiceSegmentEventId, u.audioSeconds]), [[CONNECTED_ID, 90], [CONNECTED_ID, 90]]);
+});
+
+Deno.test("delete: an ended interview is deleted", async () => {
+  const { handler, pauseCalls } = setup({ interview: completed });
+  const res = await handler(post(`/interviews/${INTERVIEW_ID}`, "Bearer valid", "DELETE"));
+  assertEquals(res.status, 200);
+  assertEquals(res.headers.get("access-control-allow-origin"), webOrigin);
+  assertEquals(deleteInterviewResponseSchema.parse(await res.json()), { status: "deleted" });
+  assertEquals(pauseCalls, [{ op: "delete", interviewId: INTERVIEW_ID, userId }]);
+});
+
+Deno.test("delete: repeating it answers the same way", async () => {
+  const { handler } = setup({ interview: { ...interviewRow, status: "terminated" }, deleteResult: "already_deleted" });
+  const res = await handler(post(`/interviews/${INTERVIEW_ID}/`, "Bearer valid", "DELETE"));
+  assertEquals(res.status, 200);
+  assertEquals(deleteInterviewResponseSchema.parse(await res.json()), { status: "deleted" });
+});
+
+Deno.test("delete: an interview in progress or paused is refused", async () => {
+  for (const status of ["in_progress", "paused"] as const) {
+    const { handler } = setup({ interview: { ...interviewRow, status }, deleteResult: "not_ended" });
+    await expectError(await handler(post(`/interviews/${INTERVIEW_ID}`, "Bearer valid", "DELETE")), 409, "interview_not_ended");
+  }
+});
+
+Deno.test("delete: auth, ownership, and method are checked before deleting", async () => {
+  const { handler, pauseCalls } = setup({ interview: completed });
+  await expectError(await handler(post(`/interviews/${INTERVIEW_ID}`, "Bearer nope", "DELETE")), 401, "unauthorized");
+  await expectError(await handler(post("/interviews/not-a-uuid", "Bearer valid", "DELETE")), 404, "interview_not_found");
+  const wrongMethod = await handler(post(`/interviews/${INTERVIEW_ID}`, "Bearer valid", "POST"));
+  await expectError(wrongMethod, 405, "method_not_allowed");
+  assertEquals(wrongMethod.headers.get("allow"), "DELETE, OPTIONS");
+  // Deleted and other users' interviews are hidden by RLS.
+  await expectError(
+    await setup({ interview: null }).handler(post(`/interviews/${INTERVIEW_ID}`, "Bearer valid", "DELETE")),
+    404,
+    "interview_not_found",
+  );
+  assertEquals(pauseCalls, []);
+
+  const raced = setup({ interview: completed, deleteResult: "not_found" });
+  await expectError(await raced.handler(post(`/interviews/${INTERVIEW_ID}`, "Bearer valid", "DELETE")), 404, "interview_not_found");
+});
+
+Deno.test("delete: the CORS preflight allows DELETE", async () => {
+  const { handler } = setup();
+  const res = await handler(post(`/interviews/${INTERVIEW_ID}`, "Bearer valid", "OPTIONS"));
+  assertEquals(res.status, 204);
+  assert(res.headers.get("access-control-allow-methods")?.includes("DELETE"));
 });
 
 Deno.test("a paused interview cannot mint a voice session", async () => {

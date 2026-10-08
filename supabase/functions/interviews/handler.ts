@@ -1,4 +1,5 @@
 import {
+  deleteInterviewResponseSchema,
   endInterviewResponseSchema,
   INITIAL_INTERVIEW_STREAM_CURSOR,
   type IntegrityFrameResponse,
@@ -151,6 +152,8 @@ export interface PauseResult {
 
 export type ResumeResult = "resumed" | "already_active" | "expired" | "not_active";
 
+export type DeleteResult = "deleted" | "already_deleted" | "not_ended" | "not_found";
+
 export interface EndResult {
   status: "completed" | "no_report" | "already_completed" | "already_terminated" | "not_active";
   /** Sequence of the `disconnected` written to close an open voice segment. */
@@ -174,6 +177,8 @@ export interface InterviewStore extends ToolStore, IntegrityStore {
   pauseInterview(interviewId: string, userId: string): Promise<PauseResult>;
   resumeInterview(interviewId: string, userId: string): Promise<ResumeResult>;
   endInterview(interviewId: string, userId: string): Promise<EndResult>;
+  /** Soft delete: sets deleted_at, so RLS hides the interview from its owner. */
+  deleteInterview(interviewId: string, userId: string): Promise<DeleteResult>;
 }
 
 export interface InterviewsHandlerOptions {
@@ -367,6 +372,14 @@ export function createInterviewStore(serviceClient: SupabaseClient): InterviewSt
       const row = data as { status: EndResult["status"]; disconnected_sequence: number | null };
       return { status: row.status, disconnectedSequence: row.disconnected_sequence };
     },
+    async deleteInterview(interviewId, userId) {
+      const { data, error } = await serviceClient.rpc("delete_interview", {
+        p_interview_id: interviewId,
+        p_user_id: userId,
+      });
+      check("delete interview", error);
+      return data as DeleteResult;
+    },
     async reserveIntegrityCheck(interviewId, userId) {
       const { data, error } = await serviceClient.rpc("reserve_integrity_check", {
         p_interview_id: interviewId,
@@ -427,6 +440,7 @@ const FRAMES_ROUTE = /\/interviews\/([^/]+)\/integrity\/frames\/?$/;
 const PAUSE_ROUTE = /\/interviews\/([^/]+)\/pause\/?$/;
 const RESUME_ROUTE = /\/interviews\/([^/]+)\/resume\/?$/;
 const END_ROUTE = /\/interviews\/([^/]+)\/end\/?$/;
+const INTERVIEW_ROUTE = /\/interviews\/([^/]+)\/?$/;
 
 /** Body bytes allowed for one frame request: the data URL cap plus JSON framing. */
 const FRAME_BODY_MAX_BYTES = INTEGRITY_FRAME_MAX_CHARS + 1024;
@@ -452,7 +466,7 @@ export function createInterviewsHandler({
   trees = createTreeCache(),
   now = () => new Date(),
 }: InterviewsHandlerOptions) {
-  const cors = createCors(webOrigin, ["GET", "POST"]);
+  const cors = createCors(webOrigin, ["GET", "POST", "DELETE"]);
   const tools = buildRealtimeTools();
 
   function toolResponse(body: ToolCallResponse): Response {
@@ -970,6 +984,34 @@ export function createInterviewsHandler({
     return json(body, { status: created ? 201 : 200, headers: cors.headers });
   }
 
+  /**
+   * Removes an ended interview from the candidate's history. The row is kept, so it still counts
+   * toward the interview limit. A deleted interview is hidden by RLS and answers not found.
+   */
+  async function deleteInterview(req: Request, id: string): Promise<Response> {
+    const ctx = await authenticate(req);
+    if (!ctx) {
+      return apiError("unauthorized", cors);
+    }
+    if (!interviewIdParamSchema.safeParse(id).success) {
+      return apiError("interview_not_found", cors);
+    }
+    const interview = await reader(ctx.supabase).getInterview(id);
+    if (!interview) {
+      return apiError("interview_not_found", cors);
+    }
+
+    const result = await store.deleteInterview(interview.id, ctx.user.id);
+    if (result === "not_found") {
+      return apiError("interview_not_found", cors);
+    }
+    if (result === "not_ended") {
+      return apiError("interview_not_ended", cors);
+    }
+    const body = deleteInterviewResponseSchema.parse({ status: "deleted" });
+    return json(body, { status: 200, headers: cors.headers });
+  }
+
   /** Accepted after the interview ends too, so turns buffered during a drop are not lost. */
   async function recordEvent(req: Request, id: string): Promise<Response> {
     const ctx = await authenticate(req);
@@ -1080,6 +1122,7 @@ export function createInterviewsHandler({
       { pattern: PAUSE_ROUTE, method: "POST", run: pauseInterview },
       { pattern: RESUME_ROUTE, method: "POST", run: resumeInterview },
       { pattern: END_ROUTE, method: "POST", run: endInterview },
+      { pattern: INTERVIEW_ROUTE, method: "DELETE", run: deleteInterview },
     ] as const;
     let id: string | null = null;
     const candidates: (typeof routes)[number][] = [];

@@ -185,6 +185,7 @@ function setup({
     pauseInterview: () => Promise.reject(new Error("unused")),
     resumeInterview: () => Promise.reject(new Error("unused")),
     endInterview: () => Promise.reject(new Error("unused")),
+    deleteInterview: () => Promise.reject(new Error("unused")),
   };
   const fakeAI = createFakeAIProvider(ai);
   const jobs = createFakeJobQueue();

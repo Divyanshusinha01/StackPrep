@@ -602,6 +602,7 @@ export type Database = {
       interviews: {
         Row: {
           created_at: string
+          deleted_at: string | null
           ended_at: string | null
           id: string
           integrity_warning_count: number
@@ -622,6 +623,7 @@ export type Database = {
         }
         Insert: {
           created_at?: string
+          deleted_at?: string | null
           ended_at?: string | null
           id?: string
           integrity_warning_count?: number
@@ -642,6 +644,7 @@ export type Database = {
         }
         Update: {
           created_at?: string
+          deleted_at?: string | null
           ended_at?: string | null
           id?: string
           integrity_warning_count?: number
@@ -1074,6 +1077,7 @@ export type Database = {
         }
         Returns: {
           created_at: string
+          deleted_at: string | null
           ended_at: string | null
           id: string
           integrity_warning_count: number
@@ -1098,6 +1102,10 @@ export type Database = {
           isOneToOne: true
           isSetofReturn: false
         }
+      }
+      delete_interview: {
+        Args: { p_interview_id: string; p_user_id: string }
+        Returns: string
       }
       end_interview_by_user: {
         Args: { p_interview_id: string; p_user_id: string }
