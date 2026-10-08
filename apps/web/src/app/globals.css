@@ -84,6 +84,15 @@
   --grid: oklch(1 0 0 / 5%);
   --success: oklch(0.8 0.14 160);
   --background-elevated: oklch(0.19 0.026 260);
+
+  /* Sticky app header: top row plus the mobile nav row; elements that stick below it offset by this. */
+  --app-header-h: calc(6.5rem + 1px);
+}
+
+@media (min-width: 40rem) {
+  :root {
+    --app-header-h: calc(4rem + 1px);
+  }
 }
 
 @layer base {
@@ -111,6 +120,11 @@
     opacity: 0.035;
     background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
   }
+}
+
+/* Keyboard focus ring shared by every custom link and control in the app (buttons have their own). */
+@utility focus-ring {
+  @apply outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50;
 }
 
 @utility glow-brand {
@@ -198,6 +212,37 @@
   }
   50% {
     transform: scale(1.05);
+  }
+}
+
+/* Reports print on white paper: swap the dark tokens for a light palette and drop decoration. */
+@media print {
+  :root {
+    color-scheme: light;
+    --background: #fff;
+    --foreground: #111;
+    --card: #fff;
+    --muted: #f3f4f6;
+    --muted-foreground: #4b5563;
+    --border: #d1d5db;
+    --panel: #fff;
+    --panel-raised: #f9fafb;
+    --brand: #7a5c12;
+    --brand-muted: #fdf6e3;
+  }
+  body::after {
+    display: none;
+  }
+  main {
+    padding-block: 0 !important;
+    animation: none !important;
+  }
+  details::details-content {
+    content-visibility: visible;
+    display: contents;
+  }
+  [class*="shadow"] {
+    box-shadow: none !important;
   }
 }
 

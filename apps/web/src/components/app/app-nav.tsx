@@ -1,0 +1,38 @@
+"use client";
+
+import Link from "next/link";
+import { usePathname } from "next/navigation";
+import { cn } from "@/lib/utils";
+
+const LINKS = [
+  { href: "/workspaces", label: "Workspaces" },
+  { href: "/interviews", label: "Interviews" },
+] as const;
+
+function isActive(pathname: string, href: string): boolean {
+  return pathname === href || pathname.startsWith(`${href}/`);
+}
+
+export function AppNav({ className }: { className?: string }) {
+  const pathname = usePathname();
+  return (
+    <nav aria-label="App" className={cn("flex items-center gap-1 text-sm", className)}>
+      {LINKS.map(({ href, label }) => {
+        const active = isActive(pathname, href);
+        return (
+          <Link
+            key={href}
+            href={href}
+            aria-current={active ? "page" : undefined}
+            className={cn(
+              "focus-ring relative inline-flex h-9 items-center rounded-md px-3 transition-colors",
+              active ? "bg-brand-muted text-foreground" : "text-muted-foreground hover:bg-accent/50 hover:text-foreground",
+            )}
+          >
+            {label}
+          </Link>
+        );
+      })}
+    </nav>
+  );
+}

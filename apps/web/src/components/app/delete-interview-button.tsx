@@ -15,13 +15,13 @@ function DeleteSubmit({ interviewNumber }: { interviewNumber: number }) {
     <Button
       type="submit"
       variant="ghost"
-      size="icon-xs"
+      size="icon-sm"
       disabled={pending}
       aria-label={`Delete Interview ${interviewNumber}`}
       title="Delete interview"
-      className="text-muted-foreground hover:text-red-300"
+      className="text-muted-foreground hover:bg-red-500/10 hover:text-red-300"
     >
-      {pending ? <Loader2 className="animate-spin" aria-hidden /> : <Trash2 aria-hidden />}
+      {pending ? <Loader2 className="motion-safe:animate-spin" aria-hidden /> : <Trash2 aria-hidden />}
     </Button>
   );
 }

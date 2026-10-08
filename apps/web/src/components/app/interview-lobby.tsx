@@ -1,7 +1,8 @@
 "use client";
 
+import { useId } from "react";
 import Link from "next/link";
-import { Check, Circle, Loader2, Mic, Video } from "lucide-react";
+import { Check, CircleAlert, CircleCheck, Loader2, Mic, Video, X } from "lucide-react";
 import type { InterviewPlanning, PlanningErrorCode } from "@stackprep/shared";
 import { NO_REPORT_MESSAGE } from "@/components/app/end-interview";
 import { type EndControl, useEndInterviewConfirm } from "@/components/app/end-interview-control";
@@ -10,6 +11,7 @@ import { Notice } from "@/components/app/notice";
 import { type DeviceError, useDeviceCheck } from "@/components/app/use-device-check";
 import type { InterviewMedia } from "@/components/app/use-interview-media";
 import { usePollWhile } from "@/components/app/use-poll-while";
+import { CTA_GLOW } from "@/components/landing/constants";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 
@@ -29,14 +31,64 @@ const PLANNING_ERRORS: Record<PlanningErrorCode, string> = {
   internal_error: "Something went wrong while preparing the interview.",
 };
 
-function CheckItem({ ok, icon, label, hint }: { ok: boolean; icon: React.ReactNode; label: string; hint?: string }) {
+type StepState = "pending" | "active" | "done" | "failed";
+
+/** Numbered circle for one lobby step; turns into a check, spinner or cross as the step progresses. */
+function StepMarker({ step, state }: { step: number; state: StepState }) {
   return (
-    <li className={cn("flex items-center gap-2", ok ? "text-foreground" : "text-muted-foreground")}>
-      {ok ? <Check className="size-4 text-emerald-300" aria-hidden /> : <Circle className="size-4" aria-hidden />}
-      {icon}
-      <span>{label}</span>
-      {!ok && hint ? <span className="text-xs">{hint}</span> : null}
-      <span className="sr-only">{ok ? "(passed)" : "(not yet passed)"}</span>
+    <span
+      aria-hidden
+      className={cn(
+        "grid size-7 shrink-0 place-items-center rounded-full border text-xs font-semibold tabular-nums transition-colors",
+        state === "done" && "border-emerald-500/40 bg-emerald-500/15 text-emerald-300",
+        state === "active" && "border-brand/50 bg-brand-muted text-brand",
+        state === "failed" && "border-red-500/40 bg-red-500/15 text-red-300",
+        state === "pending" && "border-border text-muted-foreground",
+      )}
+    >
+      {state === "done" ? (
+        <Check className="size-3.5" />
+      ) : state === "active" ? (
+        <Loader2 className="size-3.5 motion-safe:animate-spin" />
+      ) : state === "failed" ? (
+        <X className="size-3.5" />
+      ) : (
+        step
+      )}
+    </span>
+  );
+}
+
+function CheckItem({
+  step,
+  ok,
+  waiting,
+  icon,
+  label,
+  hint,
+  children,
+}: {
+  step: number;
+  ok: boolean;
+  /** The check is running but has not passed yet. */
+  waiting: boolean;
+  icon: React.ReactNode;
+  label: string;
+  hint?: string;
+  children?: React.ReactNode;
+}) {
+  return (
+    <li className="flex gap-3">
+      <StepMarker step={step} state={ok ? "done" : waiting ? "active" : "pending"} />
+      <div className="min-w-0 flex-1 pt-0.5">
+        <p className={cn("flex items-center gap-2 text-sm font-medium", ok ? "text-foreground" : "text-muted-foreground")}>
+          {icon}
+          <span>{label}</span>
+          {!ok && hint ? <span className="text-xs font-normal">{hint}</span> : null}
+          <span className="sr-only">{ok ? "(passed)" : "(not yet passed)"}</span>
+        </p>
+        {children}
+      </div>
     </li>
   );
 }
@@ -69,19 +121,37 @@ export function InterviewLobby({
   const { videoRef, meterRef, phase, error, cameraOk, micOk, start, onVideoLoaded } = useDeviceCheck(media);
   const preparing = planning === null || planning.state === "queued" || planning.state === "running";
   const planReady = planning?.state === "succeeded";
+  const planFailed = planning?.state === "failed";
   usePollWhile(preparing);
+  const hintId = useId();
 
   const ending = useEndInterviewConfirm(resume?.end ?? null, resume?.busy);
   const devicesOk = cameraOk && micOk;
   const canEnter = devicesOk && planReady && !resume?.busy && !resume?.ended && !ending.confirming;
+  const checking = phase === "active";
+
+  const blocker = resume?.ended
+    ? "This interview can no longer be resumed."
+    : phase === "error"
+      ? "Fix the camera or microphone problem, then try the check again."
+      : !devicesOk
+        ? checking && cameraOk
+          ? "Say a few words so the microphone check can pass."
+          : "Complete the camera and microphone check to continue."
+        : preparing
+          ? "Preparing… you can enter once the plan is ready."
+          : !planReady
+            ? "This interview could not be prepared."
+            : null;
 
   return (
-    <div className="mt-6 grid gap-6 md:grid-cols-[minmax(0,1fr)_18rem]">
-      <section aria-labelledby="device-check" className="rounded-md border border-border bg-panel/60 p-4">
+    <div className="grid gap-6 md:grid-cols-[minmax(0,1fr)_20rem]">
+      <section aria-labelledby="device-check" className="rounded-xl border bg-panel/60 p-4 sm:p-5">
         <h2 id="device-check" className="text-sm font-medium">
           Camera and microphone check
         </h2>
-        <div className="relative mt-3 aspect-video overflow-hidden rounded-md bg-black/60">
+        <p className="mt-1 text-xs text-muted-foreground">Both are required for the interview.</p>
+        <div className="relative mt-4 aspect-video overflow-hidden rounded-lg border bg-black/60">
           <video
             ref={videoRef}
             autoPlay
@@ -92,55 +162,75 @@ export function InterviewLobby({
             aria-label="Camera preview"
           />
           {phase !== "active" ? (
-            <div className="absolute inset-0 flex items-center justify-center">
+            <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 p-4 text-center">
+              <span aria-hidden className="grid size-12 place-items-center rounded-full bg-brand-muted text-brand">
+                <Video className="size-5" />
+              </span>
               <Button onClick={() => void start()} disabled={phase === "requesting"} variant="outline">
                 {phase === "requesting" ? "Waiting for permission…" : phase === "error" ? "Try again" : "Start check"}
               </Button>
             </div>
           ) : null}
+          {checking && cameraOk ? (
+            <span className="absolute top-2.5 left-2.5 inline-flex items-center gap-1.5 rounded-full bg-black/60 px-2 py-0.5 text-xs text-emerald-300 backdrop-blur">
+              <span aria-hidden className="size-1.5 rounded-full bg-emerald-400" />
+              Preview on
+            </span>
+          ) : null}
         </div>
-        <div className="mt-3 h-1.5 overflow-hidden rounded-full bg-border" aria-hidden>
-          <div ref={meterRef} className="h-full origin-left scale-x-0 bg-emerald-400 transition-transform duration-75" />
-        </div>
-        <ul className="mt-3 space-y-2 text-sm">
-          <CheckItem ok={cameraOk} icon={<Video className="size-4" aria-hidden />} label="Camera" />
+        <ol className="mt-5 space-y-4">
           <CheckItem
+            step={1}
+            ok={cameraOk}
+            waiting={checking}
+            icon={<Video className="size-4" aria-hidden />}
+            label="Camera"
+          />
+          <CheckItem
+            step={2}
             ok={micOk}
+            waiting={checking}
             icon={<Mic className="size-4" aria-hidden />}
             label="Microphone"
-            hint={phase === "active" ? "Say a few words" : undefined}
-          />
-        </ul>
+            hint={checking ? "Say a few words" : undefined}
+          >
+            <div
+              aria-hidden
+              className="relative mt-2.5 h-3 overflow-hidden rounded-full border bg-muted/50"
+            >
+              <div
+                ref={meterRef}
+                className="h-full origin-left scale-x-0 bg-gradient-to-r from-emerald-500 via-emerald-400 to-brand transition-transform duration-75"
+              />
+              <div className="pointer-events-none absolute inset-0 bg-[repeating-linear-gradient(to_right,transparent_0,transparent_10px,var(--background)_10px,var(--background)_12px)] opacity-60" />
+            </div>
+          </CheckItem>
+        </ol>
         {error ? <Notice tone="error">{DEVICE_ERRORS[error]}</Notice> : null}
       </section>
 
       <aside className="flex flex-col gap-4">
-        <section aria-labelledby="planning-status" aria-live="polite" className="rounded-md border border-border bg-panel/60 p-4">
-          <h2 id="planning-status" className="text-sm font-medium">
-            Interview plan
-          </h2>
-          <p className="mt-2 flex items-center gap-2 text-sm text-muted-foreground">
-            {preparing ? (
-              <>
-                <Loader2 className="size-4 animate-spin" aria-hidden />
-                Preparing your interview…
-              </>
-            ) : planReady ? (
-              <>
-                <Check className="size-4 text-emerald-300" aria-hidden />
-                Ready
-              </>
-            ) : null}
-          </p>
-          {planning?.state === "failed" ? (
-            <Notice tone="error">
+        <section aria-labelledby="planning-status" aria-live="polite" className="rounded-xl border bg-panel/60 p-4 sm:p-5">
+          <div className="flex gap-3">
+            <StepMarker step={3} state={planReady ? "done" : planFailed ? "failed" : "active"} />
+            <div className="min-w-0 pt-0.5">
+              <h2 id="planning-status" className="text-sm font-medium">
+                Interview plan
+              </h2>
+              <p className="mt-1 text-sm text-muted-foreground">
+                {preparing ? "Preparing your interview…" : planReady ? "Ready" : null}
+              </p>
+            </div>
+          </div>
+          {planFailed ? (
+            <Notice tone="error" className="mt-4">
               {PLANNING_ERRORS[planning.error_code ?? "internal_error"]} Start a new interview from the workspace.
             </Notice>
           ) : null}
         </section>
 
         {resume ? (
-          <section aria-labelledby="pause-status" className="rounded-md border border-border bg-panel/60 p-4">
+          <section aria-labelledby="pause-status" className="rounded-xl border bg-panel/60 p-4 sm:p-5">
             <h2 id="pause-status" className="text-sm font-medium">
               Paused
             </h2>
@@ -163,21 +253,37 @@ export function InterviewLobby({
           </section>
         ) : null}
 
-        <Button disabled={!canEnter} onClick={onEnter} size="lg">
-          {resume?.busy && !resume.end?.busy ? <Loader2 className="size-4 animate-spin" aria-hidden /> : null}
-          {resume ? "Resume interview" : "Enter interview"}
-        </Button>
-        <p className="text-xs text-muted-foreground">
-          {!devicesOk
-            ? "Complete the camera and microphone check to continue."
-            : preparing
-              ? "Preparing… you can enter once the plan is ready."
-              : planReady
-                ? resume
+        <div className="rounded-xl border bg-panel/60 p-4 sm:p-5">
+          <Button
+            disabled={!canEnter}
+            onClick={onEnter}
+            size="lg"
+            aria-describedby={hintId}
+            className={cn("w-full", canEnter && CTA_GLOW)}
+          >
+            {resume?.busy && !resume.end?.busy ? <Loader2 className="size-4 motion-safe:animate-spin" aria-hidden /> : null}
+            {resume ? "Resume interview" : "Enter interview"}
+          </Button>
+          <p
+            id={hintId}
+            className={cn(
+              "mt-3 flex items-start gap-2 text-xs leading-relaxed",
+              blocker ? "text-muted-foreground" : "text-emerald-300",
+            )}
+          >
+            {blocker ? (
+              <CircleAlert className="mt-px size-3.5 shrink-0 text-amber-300" aria-hidden />
+            ) : (
+              <CircleCheck className="mt-px size-3.5 shrink-0" aria-hidden />
+            )}
+            <span>
+              {blocker ??
+                (resume
                   ? "Ready. The interviewer will pick up from your last answer."
-                  : "Ready. The interviewer will speak first; answer out loud."
-                : "This interview could not be prepared."}
-        </p>
+                  : "Ready. The interviewer will speak first; answer out loud.")}
+            </span>
+          </p>
+        </div>
       </aside>
     </div>
   );

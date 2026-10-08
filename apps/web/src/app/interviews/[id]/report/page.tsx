@@ -1,17 +1,20 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { ArrowLeft } from "lucide-react";
-import type { ReportErrorCode } from "@stackprep/shared";
+import type { InterviewReportResponse, ReportErrorCode } from "@stackprep/shared";
 import { AppShell } from "@/components/app/app-shell";
 import { InterviewStatusBadge } from "@/components/app/interview-status";
 import { InterviewTranscript } from "@/components/app/interview-transcript";
 import { Notice } from "@/components/app/notice";
+import { PageHeader } from "@/components/app/page-header";
+import { PrintButton } from "@/components/app/print-button";
 import { ReportPending } from "@/components/app/report-pending";
-import { ReportView } from "@/components/app/report-view";
+import { ReportToc } from "@/components/app/report-toc";
+import { REPORT_SECTIONS, ReportView } from "@/components/app/report-view";
 import { SubmitButton } from "@/components/app/submit-button";
+import { TranscriptDisclosure } from "@/components/app/transcript-disclosure";
 import { Button } from "@/components/ui/button";
-import { getInterview, getInterviewReport, getInterviewTranscript } from "@/lib/api";
+import { type ApiResult, getInterview, getInterviewReport, getInterviewTranscript } from "@/lib/api";
 import { requireUser } from "@/lib/auth";
 import { retryReport } from "./actions";
 
@@ -29,6 +32,8 @@ const FAILURE_MESSAGES: Record<ReportErrorCode, string> = {
   internal_error: "Something went wrong while generating the report.",
 };
 
+const TOC_ITEMS = [...REPORT_SECTIONS, { id: "transcript", label: "Full interview transcript" }];
+
 const dateTimeFormat = new Intl.DateTimeFormat("en", { dateStyle: "medium", timeStyle: "short", timeZone: "UTC" });
 
 function RetryForm({ interviewId }: { interviewId: string }) {
@@ -42,12 +47,19 @@ function RetryForm({ interviewId }: { interviewId: string }) {
   );
 }
 
-async function ReportBody({ interviewId, retryFailed }: { interviewId: string; retryFailed: boolean }) {
-  const result = await getInterviewReport(interviewId);
+function ReportBody({
+  interviewId,
+  result,
+  retryFailed,
+}: {
+  interviewId: string;
+  result: ApiResult<InterviewReportResponse>;
+  retryFailed: boolean;
+}) {
   if (!result.ok) {
     return (
-      <Notice tone="error">
-        <span>Could not load the report.</span>
+      <Notice tone="error" className="mt-0">
+        <span className="min-w-0 flex-1">Could not load the report.</span>
         <Button asChild variant="outline" size="sm">
           <Link href={`/interviews/${interviewId}/report`}>Reload</Link>
         </Button>
@@ -60,8 +72,8 @@ async function ReportBody({ interviewId, retryFailed }: { interviewId: string; r
   }
   if (state.status === "failed") {
     return (
-      <Notice tone="error">
-        <span>
+      <Notice tone="error" className="mt-0">
+        <span className="min-w-0 flex-1">
           {retryFailed ? "The retry could not be started. " : ""}
           {FAILURE_MESSAGES[state.error_code]}
         </span>
@@ -69,14 +81,7 @@ async function ReportBody({ interviewId, retryFailed }: { interviewId: string; r
       </Notice>
     );
   }
-  return (
-    <>
-      <p className="mt-2 text-xs text-muted-foreground">
-        Generated {dateTimeFormat.format(new Date(state.generated_at))} UTC
-      </p>
-      <ReportView report={state.report} />
-    </>
-  );
+  return <ReportView report={state.report} />;
 }
 
 export default async function InterviewReportPage({ params, searchParams }: PageProps<"/interviews/[id]/report">) {
@@ -87,28 +92,44 @@ export default async function InterviewReportPage({ params, searchParams }: Page
   if (!interview) {
     notFound();
   }
-  const transcript = await getInterviewTranscript(interview.id);
   const completed = interview.status === "completed";
+  const [transcript, report] = await Promise.all([
+    getInterviewTranscript(interview.id),
+    completed ? getInterviewReport(interview.id) : Promise.resolve(null),
+  ]);
+  const ready = report?.ok && report.data.status === "ready" ? report.data : null;
+
+  const transcriptSection = (
+    <section
+      id="transcript"
+      className="mt-10 scroll-mt-[calc(var(--app-header-h)+1.5rem)] border-t pt-8 print:break-before-page"
+      aria-labelledby="report-transcript"
+    >
+      <h2 id="report-transcript" className="font-display text-lg font-semibold">
+        Full interview transcript
+      </h2>
+      <TranscriptDisclosure defaultOpen={!ready} count={transcript.length}>
+        <InterviewTranscript entries={transcript} />
+      </TranscriptDisclosure>
+    </section>
+  );
 
   return (
     <AppShell user={user}>
-      <Link
-        href={`/workspaces/${interview.workspace_id}`}
-        className="inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground"
-      >
-        <ArrowLeft className="size-3.5" aria-hidden />
-        <span className="font-mono">{interview.repository_full_name}</span>
-      </Link>
-      <div className="mt-3 flex flex-wrap items-center gap-3">
-        <h1 className="font-display text-2xl font-semibold tracking-tight">Interview {interview.interview_number} report</h1>
-        <InterviewStatusBadge status={interview.status} terminationReason={interview.termination_reason} />
-      </div>
+      <PageHeader
+        back={{
+          href: `/workspaces/${interview.workspace_id}`,
+          label: <span className="font-mono">{interview.repository_full_name}</span>,
+        }}
+        title={`Interview ${interview.interview_number} report`}
+        badge={<InterviewStatusBadge status={interview.status} terminationReason={interview.termination_reason} />}
+        description={ready ? `Generated ${dateTimeFormat.format(new Date(ready.generated_at))} UTC` : undefined}
+        actions={ready ? <PrintButton label="Print report" /> : null}
+      />
 
-      {completed ? (
-        <ReportBody interviewId={interview.id} retryFailed={typeof query.retry_error === "string"} />
-      ) : (
-        <Notice tone="info">
-          <span>
+      {!completed ? (
+        <Notice tone="info" className="mt-0">
+          <span className="min-w-0 flex-1">
             {interview.status === "terminated" || interview.status === "failed"
               ? "This interview ended before completion, so no report was generated."
               : "This interview has not been completed yet, so there is no report."}
@@ -119,14 +140,25 @@ export default async function InterviewReportPage({ params, searchParams }: Page
             </Button>
           ) : null}
         </Notice>
-      )}
+      ) : ready ? null : report ? (
+        <ReportBody interviewId={interview.id} result={report} retryFailed={typeof query.retry_error === "string"} />
+      ) : null}
 
-      <section id="transcript" className="mt-10 scroll-mt-20" aria-labelledby="report-transcript">
-        <h2 id="report-transcript" className="font-display text-lg font-semibold">
-          Full interview transcript
-        </h2>
-        <InterviewTranscript entries={transcript} />
-      </section>
+      {ready ? (
+        <div className="lg:grid lg:grid-cols-[13rem_minmax(0,1fr)] lg:gap-12">
+          <aside className="mb-8 lg:mb-0">
+            <div className="lg:sticky lg:top-[calc(var(--app-header-h)+2rem)]">
+              <ReportToc items={TOC_ITEMS} />
+            </div>
+          </aside>
+          <div className="min-w-0">
+            <ReportView report={ready.report} />
+            {transcriptSection}
+          </div>
+        </div>
+      ) : (
+        transcriptSection
+      )}
     </AppShell>
   );
 }

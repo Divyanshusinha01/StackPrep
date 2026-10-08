@@ -1,10 +1,12 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { type ApiErrorCode, apiErrorCodeSchema, type ConnectionStatus, type RepositoryListResponse } from "@stackprep/shared";
-import { ExternalLink, GitBranch, Lock } from "lucide-react";
+import { ChevronLeft, ChevronRight, FolderGit2 } from "lucide-react";
 import { AppShell } from "@/components/app/app-shell";
+import { EmptyState } from "@/components/app/empty-state";
 import { Notice } from "@/components/app/notice";
-import { SubmitButton } from "@/components/app/submit-button";
+import { PageHeader } from "@/components/app/page-header";
+import { RepositoryPicker } from "@/components/app/repository-picker";
 import { CTA_GLOW } from "@/components/landing/constants";
 import { GitHubMark } from "@/components/landing/github-mark";
 import { Button } from "@/components/ui/button";
@@ -59,32 +61,6 @@ const CONNECTION_NOTES: Record<Exclude<ConnectionStatus["status"], "ok">, (login
   error: (login) => `Could not load repositories from ${login} right now.`,
 };
 
-function RepositoryAction({ connectionId, githubRepoId, fullName, workspaceId }: {
-  connectionId: string;
-  githubRepoId: number;
-  fullName: string;
-  workspaceId: string | undefined;
-}) {
-  if (workspaceId) {
-    return (
-      <Button asChild variant="outline" size="sm">
-        <Link href={`/workspaces/${workspaceId}`} aria-label={`Open workspace for ${fullName}`}>
-          Open
-        </Link>
-      </Button>
-    );
-  }
-  return (
-    <form action={selectWorkspace}>
-      <input type="hidden" name="connection_id" value={connectionId} />
-      <input type="hidden" name="github_repo_id" value={githubRepoId} />
-      <SubmitButton size="sm" pendingLabel="Selecting…" aria-label={`Select ${fullName}`}>
-        Select
-      </SubmitButton>
-    </form>
-  );
-}
-
 function RepositoryList({ data, installUrl, workspaceIds }: {
   data: RepositoryListResponse;
   installUrl: string | null;
@@ -107,61 +83,58 @@ function RepositoryList({ data, installUrl, workspaceIds }: {
       ) : null}
 
       {data.repositories.length === 0 ? (
-        <p className="mt-8 text-sm text-muted-foreground">
-          No repositories are shared with StackPrep yet. Grant access to at least one repository on GitHub.
-        </p>
+        <EmptyState
+          className="mt-6"
+          icon={<FolderGit2 />}
+          title="No repositories shared yet"
+          description="No repositories are shared with StackPrep yet. Grant access to at least one repository on GitHub."
+          action={installUrl ? <ConnectButton installUrl={installUrl} label="Manage GitHub access" /> : null}
+        />
       ) : (
-        <ul className="mt-6 divide-y rounded-lg border bg-panel/60" data-testid="repository-list">
-          {data.repositories.map((repo) => (
-            <li key={repo.id} className="flex items-center gap-3 px-4 py-3 text-sm">
-              <span className="truncate font-mono text-[13px]">{repo.full_name}</span>
-              {repo.is_private ? (
-                <span className="inline-flex items-center gap-1 text-xs text-muted-foreground">
-                  <Lock className="size-3" aria-hidden />
-                  Private
-                </span>
-              ) : null}
-              <span className="ml-auto inline-flex shrink-0 items-center gap-1 text-xs text-muted-foreground">
-                <GitBranch className="size-3" aria-hidden />
-                {repo.default_branch}
-              </span>
-              <a
-                href={repo.html_url}
-                target="_blank"
-                rel="noreferrer"
-                className="rounded-md p-1 text-muted-foreground hover:text-foreground"
-              >
-                <ExternalLink className="size-3.5" aria-hidden />
-                <span className="sr-only">Open {repo.full_name} on GitHub</span>
-              </a>
-              <RepositoryAction
-                connectionId={repo.connection_id}
-                githubRepoId={repo.id}
-                fullName={repo.full_name}
-                workspaceId={workspaceIds.get(repo.id)}
-              />
-            </li>
-          ))}
-        </ul>
+        <RepositoryPicker
+          repositories={data.repositories.map((repo) => ({
+            id: repo.id,
+            connection_id: repo.connection_id,
+            full_name: repo.full_name,
+            is_private: repo.is_private,
+            default_branch: repo.default_branch,
+            html_url: repo.html_url,
+            workspace_id: workspaceIds.get(repo.id),
+          }))}
+          selectAction={selectWorkspace}
+          partial={data.page > 1 || data.has_more}
+        />
       )}
 
-      <div className="mt-6 flex flex-wrap items-center gap-3">
+      <nav aria-label="Repository pages" className="mt-6 flex flex-wrap items-center gap-3">
         {data.page > 1 ? (
           <Button asChild variant="outline" size="sm">
-            <Link href={`/workspaces/new?page=${data.page - 1}`}>Previous</Link>
+            <Link href={`/workspaces/new?page=${data.page - 1}`}>
+              <ChevronLeft aria-hidden />
+              Previous
+            </Link>
           </Button>
+        ) : null}
+        {data.page > 1 || data.has_more ? (
+          <span className="text-xs text-muted-foreground">Page {data.page}</span>
         ) : null}
         {data.has_more ? (
           <Button asChild variant="outline" size="sm">
-            <Link href={`/workspaces/new?page=${data.page + 1}`}>Next</Link>
+            <Link href={`/workspaces/new?page=${data.page + 1}`}>
+              Next
+              <ChevronRight aria-hidden />
+            </Link>
           </Button>
         ) : null}
-        {installUrl ? (
-          <a href={installUrl} className="ml-auto text-sm text-muted-foreground hover:text-foreground">
+        {installUrl && data.repositories.length > 0 ? (
+          <a
+            href={installUrl}
+            className="focus-ring rounded-md text-sm text-muted-foreground hover:text-foreground sm:ml-auto"
+          >
             Missing a repository? Manage GitHub access
           </a>
         ) : null}
-      </div>
+      </nav>
     </>
   );
 }
@@ -188,14 +161,15 @@ export default async function NewWorkspacePage({ searchParams }: PageProps<"/wor
 
   return (
     <AppShell user={user}>
-      <h1 className="font-display text-2xl font-semibold tracking-tight">Choose a repository</h1>
-      <p className="mt-2 text-sm text-muted-foreground">
-        StackPrep reads repositories through its GitHub App. You choose which repositories it can access.
-      </p>
+      <PageHeader
+        back={{ href: "/workspaces", label: "Workspaces" }}
+        title="Choose a repository"
+        description="StackPrep reads repositories through its GitHub App. You choose which repositories it can access."
+      />
 
       {connectError ? (
         <Notice tone={connectError === "install_requested" ? "info" : "error"}>
-          <span>{connectErrorMessage(connectError)}</span>
+          <span className="min-w-0 flex-1">{connectErrorMessage(connectError)}</span>
           {installUrl && connectError !== "install_requested" ? (
             <ConnectButton installUrl={installUrl} label="Try connecting again" variant="outline" />
           ) : null}
@@ -210,7 +184,7 @@ export default async function NewWorkspacePage({ searchParams }: PageProps<"/wor
 
       {!result.ok ? (
         <Notice tone="error">
-          <span>
+          <span className="min-w-0 flex-1">
             {result.code === "github_rate_limited"
               ? "GitHub is rate limiting requests right now. Wait a minute, then reload."
               : "Could not load your repositories."}
@@ -222,19 +196,21 @@ export default async function NewWorkspacePage({ searchParams }: PageProps<"/wor
       ) : result.data.connected ? (
         <RepositoryList data={result.data} installUrl={installUrl} workspaceIds={workspaceIds} />
       ) : (
-        <div className="mt-8 rounded-lg border bg-panel/60 p-8 text-center">
-          <h2 className="font-display text-lg font-semibold">Connect GitHub</h2>
-          <p className="mx-auto mt-2 max-w-md text-sm text-muted-foreground">
-            Install the StackPrep GitHub App on your account or organization and pick the repositories it can read.
-          </p>
-          <div className="mt-6">
-            {installUrl ? (
+        <EmptyState
+          className="mt-6"
+          icon={<GitHubMark />}
+          title="Connect GitHub"
+          description="Install the StackPrep GitHub App on your account or organization and pick the repositories it can read."
+          action={
+            installUrl ? (
               <ConnectButton installUrl={installUrl} label="Connect GitHub" />
             ) : (
-              <p className="text-sm text-red-300">The GitHub App is not configured for this deployment.</p>
-            )}
-          </div>
-        </div>
+              <Notice tone="error" className="mt-0">
+                The GitHub App is not configured for this deployment.
+              </Notice>
+            )
+          }
+        />
       )}
     </AppShell>
   );

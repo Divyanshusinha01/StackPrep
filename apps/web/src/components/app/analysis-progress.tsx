@@ -1,6 +1,6 @@
 "use client";
 
-import { Check, Circle, Loader2 } from "lucide-react";
+import { Check, Loader2 } from "lucide-react";
 import type { AnalysisErrorCode, AnalysisStage, WorkspaceAnalysis, WorkspaceStatus } from "@stackprep/shared";
 import { Notice } from "@/components/app/notice";
 import { SubmitButton } from "@/components/app/submit-button";
@@ -44,7 +44,7 @@ export function AnalysisProgress({
     const code = analysis?.error_code ?? "internal_error";
     return (
       <Notice tone="error">
-        <span>Repository analysis failed. {FAILURE_MESSAGES[code]}</span>
+        <span className="min-w-0 flex-1">Repository analysis failed. {FAILURE_MESSAGES[code]}</span>
         {analysis === null || analysis.retryable ? (
           <form action={retryAction}>
             <input type="hidden" name="workspace_id" value={workspaceId} />
@@ -61,15 +61,11 @@ export function AnalysisProgress({
   const currentIndex = analysis?.stage ? STAGES.findIndex((s) => s.stage === analysis.stage) : -1;
 
   return (
-    <section
-      aria-labelledby="analysis-progress"
-      aria-live="polite"
-      className="mt-6 rounded-md border border-border bg-panel/60 px-4 py-4"
-    >
+    <section aria-labelledby="analysis-progress" aria-live="polite" className="mt-6">
       <h2 id="analysis-progress" className="text-sm font-medium">
         {queued ? "Analysis queued" : "Analyzing repository"}
       </h2>
-      <ol className="mt-3 space-y-2 text-sm">
+      <ol className="mt-4 grid gap-3 text-sm sm:grid-cols-3 sm:gap-2">
         {STAGES.map(({ stage, label }, index) => {
           const done = currentIndex > index;
           const current = currentIndex === index;
@@ -77,17 +73,40 @@ export function AnalysisProgress({
             <li
               key={stage}
               aria-current={current ? "step" : undefined}
-              className={cn("flex items-center gap-2", done || current ? "text-foreground" : "text-muted-foreground")}
-            >
-              {done ? (
-                <Check className="size-4 text-emerald-300" aria-hidden />
-              ) : current ? (
-                <Loader2 className="size-4 animate-spin" aria-hidden />
-              ) : (
-                <Circle className="size-4" aria-hidden />
+              className={cn(
+                "relative flex items-center gap-3 sm:flex-col sm:items-start sm:gap-2",
+                done || current ? "text-foreground" : "text-muted-foreground",
               )}
-              {label}
-              <span className="sr-only">{done ? "(done)" : current ? "(in progress)" : "(pending)"}</span>
+            >
+              <div className="flex items-center gap-2 sm:w-full">
+                <span
+                  aria-hidden
+                  className={cn(
+                    "grid size-7 shrink-0 place-items-center rounded-full border text-xs font-semibold tabular-nums transition-colors",
+                    done && "border-emerald-500/40 bg-emerald-500/15 text-emerald-300",
+                    current && "border-brand/50 bg-brand-muted text-brand",
+                    !done && !current && "border-border text-muted-foreground",
+                  )}
+                >
+                  {done ? (
+                    <Check className="size-3.5" />
+                  ) : current ? (
+                    <Loader2 className="size-3.5 motion-safe:animate-spin" />
+                  ) : (
+                    index + 1
+                  )}
+                </span>
+                {index < STAGES.length - 1 ? (
+                  <span
+                    aria-hidden
+                    className={cn("hidden h-px flex-1 sm:block", done ? "bg-emerald-500/40" : "bg-border")}
+                  />
+                ) : null}
+              </div>
+              <span>
+                {label}
+                <span className="sr-only">{done ? " (done)" : current ? " (in progress)" : " (pending)"}</span>
+              </span>
             </li>
           );
         })}

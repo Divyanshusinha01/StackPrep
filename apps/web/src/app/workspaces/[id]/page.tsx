@@ -1,17 +1,21 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { ExternalLink, GitBranch, Lock } from "lucide-react";
+import { Clock, ExternalLink, GitBranch, History, Lock, Mic } from "lucide-react";
 import { type ApiErrorCode, apiErrorCodeSchema } from "@stackprep/shared";
 import { AnalysisProgress } from "@/components/app/analysis-progress";
 import { AppShell } from "@/components/app/app-shell";
+import { EmptyState } from "@/components/app/empty-state";
 import { deleteInterviewErrorMessage, InterviewHistoryRow } from "@/components/app/interview-history-row";
 import { Notice } from "@/components/app/notice";
+import { PageHeader } from "@/components/app/page-header";
 import { SubmitButton } from "@/components/app/submit-button";
 import { WorkspaceStatusBadge } from "@/components/app/workspace-status";
+import { CTA_GLOW } from "@/components/landing/constants";
 import { Button } from "@/components/ui/button";
 import { getInterviewHistory, getWorkspace } from "@/lib/api";
 import { requireUser } from "@/lib/auth";
+import { cn } from "@/lib/utils";
 import { retryAnalysis, startInterview } from "./actions";
 
 export const metadata: Metadata = {
@@ -79,9 +83,9 @@ export default async function WorkspacePage({ params, searchParams }: PageProps<
     }
     return (
       <AppShell user={user}>
-        <h1 className="font-display text-2xl font-semibold tracking-tight">Workspace</h1>
+        <PageHeader back={{ href: "/workspaces", label: "Workspaces" }} title="Workspace" />
         <Notice tone="error">
-          <span>Could not load this workspace.</span>
+          <span className="min-w-0 flex-1">Could not load this workspace.</span>
           <Button asChild variant="outline" size="sm">
             <Link href={`/workspaces/${encodeURIComponent(id)}`}>Reload</Link>
           </Button>
@@ -96,57 +100,107 @@ export default async function WorkspacePage({ params, searchParams }: PageProps<
 
   return (
     <AppShell user={user}>
-      <div className="flex flex-wrap items-center gap-3">
-        <h1 className="truncate font-mono text-xl font-semibold tracking-tight">{repository.full_name}</h1>
-        <WorkspaceStatusBadge status={workspace.status} />
-      </div>
-      <div className="mt-3 flex flex-wrap items-center gap-4 text-sm text-muted-foreground">
-        {repository.is_private ? (
+      <PageHeader
+        back={{ href: "/workspaces", label: "Workspaces" }}
+        title={repository.full_name}
+        titleClassName="font-mono text-xl sm:text-2xl"
+        badge={<WorkspaceStatusBadge status={workspace.status} />}
+      >
+        <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-1.5 text-sm text-muted-foreground">
+          {repository.is_private ? (
+            <span className="inline-flex items-center gap-1">
+              <Lock className="size-3.5" aria-hidden />
+              Private
+            </span>
+          ) : null}
           <span className="inline-flex items-center gap-1">
-            <Lock className="size-3.5" aria-hidden />
-            Private
+            <GitBranch className="size-3.5" aria-hidden />
+            {repository.default_branch}
           </span>
+          <a
+            href={repository.html_url}
+            target="_blank"
+            rel="noreferrer"
+            className="focus-ring inline-flex items-center gap-1 rounded-sm hover:text-foreground"
+          >
+            <ExternalLink className="size-3.5" aria-hidden />
+            View on GitHub
+          </a>
+        </div>
+      </PageHeader>
+
+      <section
+        aria-labelledby="start-interview"
+        className={cn(
+          "relative overflow-hidden rounded-xl border p-5 sm:p-6",
+          ready ? "border-brand/25 bg-panel-raised/70" : "bg-panel/60",
+        )}
+      >
+        {ready ? (
+          <div aria-hidden className="glow-brand pointer-events-none absolute -top-24 -right-24 size-72 opacity-40" />
         ) : null}
-        <span className="inline-flex items-center gap-1">
-          <GitBranch className="size-3.5" aria-hidden />
-          {repository.default_branch}
-        </span>
-        <a
-          href={repository.html_url}
-          target="_blank"
-          rel="noreferrer"
-          className="inline-flex items-center gap-1 hover:text-foreground"
-        >
-          <ExternalLink className="size-3.5" aria-hidden />
-          View on GitHub
-        </a>
-      </div>
-
-      {retryError ? <Notice tone="error">{retryError}</Notice> : null}
-      <AnalysisProgress
-        workspaceId={workspace.id}
-        status={workspace.status}
-        analysis={workspace.analysis}
-        retryAction={retryAnalysis}
-      />
-
-      {interviewError ? <Notice tone="error">{interviewError}</Notice> : null}
-      <form action={startInterview} className="mt-8">
-        <input type="hidden" name="workspace_id" value={workspace.id} />
-        <SubmitButton disabled={!ready} pendingLabel="Starting…">
-          Start Interview
-        </SubmitButton>
-      </form>
+        <div className="relative flex flex-col gap-5 sm:flex-row sm:items-center sm:justify-between">
+          <div className="min-w-0">
+            <h2 id="start-interview" className="flex items-center gap-2 font-display text-lg font-semibold">
+              <Mic className="size-4.5 text-brand" aria-hidden />
+              {interviews.length === 0 ? "Start your first interview" : "Start a new interview"}
+            </h2>
+            <p className="mt-1.5 max-w-xl text-sm text-muted-foreground">
+              {ready
+                ? "The interviewer has read this repository and will ask about its architecture and your decisions. Plan for about 30 minutes; camera and microphone are required."
+                : workspace.status === "failed"
+                  ? "Interviews are available once the repository analysis succeeds. Retry it below."
+                  : "Interviews are available as soon as the repository analysis below finishes."}
+            </p>
+            <p className="mt-3 inline-flex items-center gap-1.5 text-xs text-muted-foreground">
+              <Clock className="size-3.5" aria-hidden />
+              You can start up to 5 interviews in any 24 hours, across all workspaces.
+            </p>
+          </div>
+          <form action={startInterview} className="shrink-0">
+            <input type="hidden" name="workspace_id" value={workspace.id} />
+            <SubmitButton
+              disabled={!ready}
+              pendingLabel="Starting…"
+              size="lg"
+              className={cn("w-full sm:w-auto", ready && CTA_GLOW)}
+            >
+              Start Interview
+            </SubmitButton>
+          </form>
+        </div>
+        {interviewError ? <Notice tone="error">{interviewError}</Notice> : null}
+        {retryError ? <Notice tone="error">{retryError}</Notice> : null}
+        <AnalysisProgress
+          workspaceId={workspace.id}
+          status={workspace.status}
+          analysis={workspace.analysis}
+          retryAction={retryAnalysis}
+        />
+      </section>
 
       <section className="mt-10" aria-labelledby="interview-history">
-        <h2 id="interview-history" className="font-display text-lg font-semibold">
-          Interview history
-        </h2>
+        <div className="flex items-baseline justify-between gap-3">
+          <h2 id="interview-history" className="font-display text-lg font-semibold">
+            Interview history
+          </h2>
+          {interviews.length > 0 ? (
+            <span className="text-xs text-muted-foreground">
+              {interviews.length} {interviews.length === 1 ? "interview" : "interviews"}
+            </span>
+          ) : null}
+        </div>
         {deleteError ? <Notice tone="error">{deleteError}</Notice> : null}
         {interviews.length === 0 ? (
-          <p className="mt-2 text-sm text-muted-foreground">No interviews yet.</p>
+          <EmptyState
+            className="mt-4 py-10"
+            headingLevel={3}
+            icon={<History />}
+            title="No interviews yet."
+            description="Each interview and its report will be listed here."
+          />
         ) : (
-          <ul className="mt-4 divide-y rounded-lg border bg-panel/60" data-testid="interview-history">
+          <ul className="mt-4 divide-y overflow-hidden rounded-xl border bg-panel/60" data-testid="interview-history">
             {interviews.map((interview) => (
               <InterviewHistoryRow key={interview.id} interview={interview} returnTo={`/workspaces/${workspace.id}`} />
             ))}

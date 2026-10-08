@@ -1,5 +1,6 @@
+import { BookOpen, FileCode2, MessageSquareQuote, Target } from "lucide-react";
 import type { InterviewReport, ReportRating } from "@stackprep/shared";
-import { cn } from "@/lib/utils";
+import { type ChipTone, StatusChip } from "@/components/app/status-chip";
 
 const RATING_LABELS: Record<ReportRating, string> = {
   strong: "Strong",
@@ -9,27 +10,36 @@ const RATING_LABELS: Record<ReportRating, string> = {
   insufficient_evidence: "Not enough evidence",
 };
 
-function RatingBadge({ rating }: { rating: ReportRating }) {
-  return (
-    <span
-      className={cn(
-        "inline-flex shrink-0 items-center rounded-full border px-2 py-0.5 text-xs",
-        rating === "strong" && "border-emerald-500/30 text-emerald-300",
-        rating === "proficient" && "border-sky-500/30 text-sky-300",
-        rating === "developing" && "border-amber-500/30 text-amber-300",
-        rating === "weak" && "border-red-500/30 text-red-300",
-        rating === "insufficient_evidence" && "border-border text-muted-foreground",
-      )}
-    >
-      {RATING_LABELS[rating]}
-    </span>
-  );
-}
+const RATING_TONES: Record<ReportRating, ChipTone> = {
+  strong: "success",
+  proficient: "info",
+  developing: "warning",
+  weak: "danger",
+  insufficient_evidence: "neutral",
+};
 
-function Section({ id, title, children }: { id: string; title: string; children: React.ReactNode }) {
+/** Report sections in PRD order, for the table of contents; the page adds the transcript last. */
+export const REPORT_SECTIONS = [
+  { id: "report-summary", label: "Executive summary" },
+  { id: "report-categories", label: "Category evaluation" },
+  { id: "report-strengths", label: "Strengths" },
+  { id: "report-gaps", label: "Weaknesses and knowledge gaps" },
+  { id: "report-interview-evidence", label: "Evidence from the interview" },
+  { id: "report-repository-evidence", label: "Evidence from the repository" },
+  { id: "report-improve", label: "Areas to improve" },
+] as const;
+
+type SectionId = (typeof REPORT_SECTIONS)[number]["id"];
+
+function Section({ id, children }: { id: SectionId; children: React.ReactNode }) {
+  const title = REPORT_SECTIONS.find((s) => s.id === id)?.label;
   return (
-    <section className="mt-10" aria-labelledby={id}>
-      <h2 id={id} className="font-display text-lg font-semibold">
+    <section
+      id={id}
+      className="scroll-mt-[calc(var(--app-header-h)+1.5rem)] border-t pt-8 first:border-t-0 first:pt-0 print:break-inside-avoid-page"
+      aria-labelledby={`${id}-title`}
+    >
+      <h2 id={`${id}-title`} className="font-display text-lg font-semibold">
         {title}
       </h2>
       {children}
@@ -42,11 +52,23 @@ function Bullets({ items, empty }: { items: string[]; empty: string }) {
     return <p className="mt-2 text-sm text-muted-foreground">{empty}</p>;
   }
   return (
-    <ul className="mt-3 list-disc space-y-1.5 pl-5 text-sm leading-relaxed">
+    <ul className="mt-3 list-disc space-y-1.5 pl-5 text-sm leading-relaxed marker:text-brand">
       {items.map((item, i) => (
         <li key={i}>{item}</li>
       ))}
     </ul>
+  );
+}
+
+function RevisitField({ icon, label, children }: { icon: React.ReactNode; label: string; children: React.ReactNode }) {
+  return (
+    <div>
+      <dt className="flex items-center gap-1.5 text-xs font-medium tracking-wide text-muted-foreground uppercase">
+        {icon}
+        {label}
+      </dt>
+      <dd className="mt-1 leading-relaxed">{children}</dd>
+    </div>
   );
 }
 
@@ -56,47 +78,55 @@ function Bullets({ items, empty }: { items: string[]; empty: string }) {
  */
 export function ReportView({ report }: { report: InterviewReport }) {
   return (
-    <div data-testid="interview-report">
-      <Section id="report-summary" title="Executive summary">
-        <p className="mt-3 whitespace-pre-wrap text-sm leading-relaxed">{report.executive_summary}</p>
+    <div data-testid="interview-report" className="space-y-10">
+      <Section id="report-summary">
+        <p className="mt-3 text-[15px] leading-relaxed whitespace-pre-wrap">{report.executive_summary}</p>
       </Section>
 
-      <Section id="report-categories" title="Category evaluation">
-        <ul className="mt-4 divide-y rounded-lg border bg-panel/60">
+      <Section id="report-categories">
+        <ul className="mt-4 grid gap-3 sm:grid-cols-2">
           {report.categories.map((category, i) => (
-            <li key={i} className="px-4 py-3">
-              <div className="flex flex-wrap items-center gap-2">
+            <li key={i} className="flex flex-col rounded-xl border bg-panel/60 p-4 print:break-inside-avoid">
+              <div className="flex items-start justify-between gap-3">
                 <h3 className="text-sm font-medium">{category.name}</h3>
-                <RatingBadge rating={category.rating} />
+                <StatusChip tone={RATING_TONES[category.rating]}>{RATING_LABELS[category.rating]}</StatusChip>
               </div>
-              <p className="mt-1.5 text-sm leading-relaxed text-muted-foreground">{category.narrative}</p>
+              <p className="mt-2 text-sm leading-relaxed text-muted-foreground">{category.narrative}</p>
             </li>
           ))}
         </ul>
       </Section>
 
-      <Section id="report-strengths" title="Strengths">
+      <Section id="report-strengths">
         <Bullets items={report.strengths} empty="No clear strengths were identified in this interview." />
       </Section>
 
-      <Section id="report-gaps" title="Weaknesses and knowledge gaps">
+      <Section id="report-gaps">
         <Bullets items={report.gaps} empty="No significant gaps were identified." />
         {report.struggled_questions.length > 0 ? (
-          <div className="mt-6">
+          <div className="mt-8">
             <h3 className="text-sm font-medium">Questions to revisit</h3>
             <ul className="mt-3 space-y-3">
               {report.struggled_questions.map((q, i) => (
-                <li key={i} className="rounded-lg border bg-panel/60 px-4 py-3 text-sm">
-                  <p className="font-medium">{q.question}</p>
-                  <dl className="mt-2 grid gap-x-4 gap-y-1.5 text-muted-foreground sm:grid-cols-[10rem_1fr]">
-                    <dt className="text-xs uppercase tracking-wide">Your answer</dt>
-                    <dd>{q.performance}</dd>
-                    <dt className="text-xs uppercase tracking-wide">Weakness</dt>
-                    <dd>{q.weakness}</dd>
-                    <dt className="text-xs uppercase tracking-wide">Repository area</dt>
-                    <dd className="font-mono text-xs leading-5">{q.repository_area}</dd>
-                    <dt className="text-xs uppercase tracking-wide">What to study</dt>
-                    <dd>{q.learning_direction}</dd>
+                <li key={i} className="rounded-xl border bg-panel/60 p-4 text-sm print:break-inside-avoid">
+                  <code className="inline-flex max-w-full items-center gap-1.5 rounded-md border border-brand/20 bg-brand-muted px-2 py-0.5 font-mono text-xs break-all text-brand">
+                    <FileCode2 className="size-3.5 shrink-0" aria-hidden />
+                    <span className="sr-only">Repository area: </span>
+                    {q.repository_area}
+                  </code>
+                  <p className="mt-3 font-medium leading-relaxed">{q.question}</p>
+                  <dl className="mt-4 grid gap-4 sm:grid-cols-2">
+                    <RevisitField icon={<MessageSquareQuote className="size-3.5" aria-hidden />} label="Your answer">
+                      {q.performance}
+                    </RevisitField>
+                    <RevisitField icon={<Target className="size-3.5" aria-hidden />} label="Weakness">
+                      {q.weakness}
+                    </RevisitField>
+                    <div className="sm:col-span-2">
+                      <RevisitField icon={<BookOpen className="size-3.5" aria-hidden />} label="What to study">
+                        {q.learning_direction}
+                      </RevisitField>
+                    </div>
                   </dl>
                 </li>
               ))}
@@ -105,28 +135,29 @@ export function ReportView({ report }: { report: InterviewReport }) {
         ) : null}
       </Section>
 
-      <Section id="report-interview-evidence" title="Evidence from the interview">
+      <Section id="report-interview-evidence">
         {report.interview_evidence.length === 0 ? (
           <p className="mt-2 text-sm text-muted-foreground">No interview evidence was recorded.</p>
         ) : (
-          <ul className="mt-3 space-y-2 text-sm">
+          <ul className="mt-3 space-y-2.5 text-sm leading-relaxed">
             {report.interview_evidence.map((item, i) => (
-              <li key={i}>
-                <span className="text-muted-foreground">{item.category}:</span> {item.observation}
+              <li key={i} className="flex flex-col gap-1 sm:flex-row sm:gap-3">
+                <span className="shrink-0 text-xs font-medium text-muted-foreground sm:w-40 sm:pt-0.5">{item.category}</span>
+                <span>{item.observation}</span>
               </li>
             ))}
           </ul>
         )}
       </Section>
 
-      <Section id="report-repository-evidence" title="Evidence from the repository">
+      <Section id="report-repository-evidence">
         {report.repository_evidence.length === 0 ? (
           <p className="mt-2 text-sm text-muted-foreground">No repository files were referenced.</p>
         ) : (
-          <ul className="mt-3 space-y-2 text-sm">
+          <ul className="mt-3 space-y-2.5 text-sm leading-relaxed">
             {report.repository_evidence.map((item, i) => (
               <li key={i}>
-                <span className="font-mono text-xs">{item.path}</span>
+                <code className="rounded bg-muted/60 px-1.5 py-0.5 font-mono text-xs break-all">{item.path}</code>
                 <span className="text-muted-foreground"> — {item.note}</span>
               </li>
             ))}
@@ -134,7 +165,7 @@ export function ReportView({ report }: { report: InterviewReport }) {
         )}
       </Section>
 
-      <Section id="report-improve" title="Areas to improve">
+      <Section id="report-improve">
         <Bullets items={report.areas_to_improve} empty="No specific areas to improve were identified." />
       </Section>
     </div>

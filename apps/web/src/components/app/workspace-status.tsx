@@ -1,5 +1,5 @@
 import type { WorkspaceStatus } from "@stackprep/shared";
-import { cn } from "@/lib/utils";
+import { type ChipTone, StatusChip } from "@/components/app/status-chip";
 
 const LABELS: Record<WorkspaceStatus, string> = {
   analyzing: "Analyzing",
@@ -7,17 +7,16 @@ const LABELS: Record<WorkspaceStatus, string> = {
   failed: "Analysis failed",
 };
 
+const TONES: Record<WorkspaceStatus, ChipTone> = {
+  analyzing: "neutral",
+  ready: "success",
+  failed: "danger",
+};
+
 export function WorkspaceStatusBadge({ status }: { status: WorkspaceStatus }) {
   return (
-    <span
-      className={cn(
-        "inline-flex shrink-0 items-center rounded-full border px-2 py-0.5 text-xs",
-        status === "analyzing" && "border-border text-muted-foreground",
-        status === "ready" && "border-emerald-500/30 text-emerald-300",
-        status === "failed" && "border-red-500/30 text-red-300",
-      )}
-    >
+    <StatusChip tone={TONES[status]} pulse={status === "analyzing"}>
       {LABELS[status]}
-    </span>
+    </StatusChip>
   );
 }

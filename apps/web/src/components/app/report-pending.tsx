@@ -10,9 +10,9 @@ export function ReportPending() {
     <div
       role="status"
       aria-live="polite"
-      className="mt-6 flex items-center gap-2 rounded-md border border-border bg-panel/60 px-4 py-3 text-sm"
+      className="flex items-center gap-3 rounded-lg border bg-panel-raised/70 px-4 py-3 text-sm"
     >
-      <Loader2 className="size-4 animate-spin" aria-hidden />
+      <Loader2 className="size-4 shrink-0 motion-safe:animate-spin text-brand" aria-hidden />
       Generating your report. This usually takes under a minute.
     </div>
   );

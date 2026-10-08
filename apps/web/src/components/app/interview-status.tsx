@@ -1,5 +1,5 @@
 import type { InterviewStatus } from "@stackprep/shared";
-import { cn } from "@/lib/utils";
+import { type ChipTone, StatusChip } from "@/components/app/status-chip";
 
 const LABELS: Record<InterviewStatus, string> = {
   created: "Not started",
@@ -8,6 +8,15 @@ const LABELS: Record<InterviewStatus, string> = {
   completed: "Completed",
   terminated: "Ended",
   failed: "Failed",
+};
+
+const TONES: Record<InterviewStatus, ChipTone> = {
+  created: "neutral",
+  in_progress: "info",
+  paused: "warning",
+  completed: "success",
+  terminated: "danger",
+  failed: "danger",
 };
 
 function label(status: InterviewStatus, terminationReason: string | null | undefined): string {
@@ -27,17 +36,10 @@ export function InterviewStatusBadge({
   status: InterviewStatus;
   terminationReason?: string | null;
 }) {
+  const tone = status === "terminated" && terminationReason === "user_abandoned" ? "neutral" : TONES[status];
   return (
-    <span
-      className={cn(
-        "inline-flex shrink-0 items-center rounded-full border px-2 py-0.5 text-xs",
-        (status === "created" || status === "paused") && "border-border text-muted-foreground",
-        status === "in_progress" && "border-sky-500/30 text-sky-300",
-        status === "completed" && "border-emerald-500/30 text-emerald-300",
-        (status === "terminated" || status === "failed") && "border-red-500/30 text-red-300",
-      )}
-    >
+    <StatusChip tone={tone} pulse={status === "in_progress"}>
       {label(status, terminationReason)}
-    </span>
+    </StatusChip>
   );
 }

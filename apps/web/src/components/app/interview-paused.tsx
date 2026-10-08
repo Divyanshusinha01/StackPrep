@@ -40,9 +40,11 @@ export function InterviewPaused({
 }) {
   const ending = useEndInterviewConfirm(endControl, busy);
   return (
-    <section aria-labelledby="interview-paused" className="mt-6 rounded-md border border-border bg-panel/60 p-6">
-      <h2 id="interview-paused" className="flex items-center gap-2 text-base font-medium">
-        <Pause className="size-4" aria-hidden />
+    <section aria-labelledby="interview-paused" className="mx-auto max-w-2xl rounded-xl border bg-panel/60 p-6 sm:p-8">
+      <span aria-hidden className="grid size-11 place-items-center rounded-full bg-amber-500/15 text-amber-300">
+        <Pause className="size-5" />
+      </span>
+      <h2 id="interview-paused" className="mt-4 font-display text-lg font-semibold">
         Interview paused
       </h2>
       <p className="mt-2 text-sm text-muted-foreground">
@@ -59,10 +61,10 @@ export function InterviewPaused({
       {error ? <Notice tone="error">{error}</Notice> : null}
       {endedWithoutReport ? <Notice tone="info">{NO_REPORT_MESSAGE}</Notice> : null}
       {ending.panel}
-      <div className="mt-4 flex flex-wrap gap-3">
+      <div className="mt-6 flex flex-wrap gap-3">
         {ended ? null : (
           <Button onClick={onResume} disabled={busy || ending.confirming}>
-            {busy && !endControl?.busy ? <Loader2 className="size-4 animate-spin" aria-hidden /> : null}
+            {busy && !endControl?.busy ? <Loader2 className="size-4 motion-safe:animate-spin" aria-hidden /> : null}
             Resume interview
           </Button>
         )}

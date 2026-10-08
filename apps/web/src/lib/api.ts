@@ -25,6 +25,7 @@ import {
   workspaceSchema,
 } from "@stackprep/shared";
 import { FunctionsHttpError } from "@supabase/supabase-js";
+import { cache } from "react";
 import { z } from "zod";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 
@@ -87,9 +88,10 @@ export function listWorkspaces() {
   return functionRequest("workspaces", workspaceListResponseSchema, { method: "GET" });
 }
 
-export function getWorkspace(id: string) {
-  return functionRequest(`workspaces/${encodeURIComponent(id)}`, workspaceDetailResponseSchema, { method: "GET" });
-}
+/** Cached per request so a segment layout and its page share one call. */
+export const getWorkspace = cache((id: string) =>
+  functionRequest(`workspaces/${encodeURIComponent(id)}`, workspaceDetailResponseSchema, { method: "GET" }),
+);
 
 export function retryWorkspaceAnalysis(id: string) {
   return functionRequest(`workspaces/${encodeURIComponent(id)}/analysis/retry`, retryAnalysisResponseSchema, {
@@ -115,8 +117,9 @@ export type InterviewDetail = Omit<ReturnType<typeof interviewRowSchema.parse>, 
 /**
  * Reads the interview and its latest planning job with the user's own session, so RLS limits it
  * to their rows. There is no documented `GET /interviews/:id`; hidden state is never selectable.
+ * Cached per request so a segment layout and its page share one read.
  */
-export async function getInterview(id: string): Promise<InterviewDetail | null> {
+export const getInterview = cache(async (id: string): Promise<InterviewDetail | null> => {
   if (!workspaceIdParamSchema.safeParse(id).success) {
     return null;
   }
@@ -159,7 +162,7 @@ export async function getInterview(id: string): Promise<InterviewDetail | null> 
     planning = { state, error_code: state === "failed" ? (code.success ? code.data : "internal_error") : null };
   }
   return { ...row, repository_full_name: workspace.repository.full_name, planning };
-}
+});
 
 export function createInterview(workspaceId: string) {
   return functionRequest(`workspaces/${encodeURIComponent(workspaceId)}/interviews`, createInterviewResponseSchema, {
