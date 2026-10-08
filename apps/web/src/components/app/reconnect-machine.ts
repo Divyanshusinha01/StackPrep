@@ -9,7 +9,8 @@ import type { PauseReason } from "@stackprep/shared";
  *   idle -> connecting -> connected -> (suspect ->) interrupted -> reconnecting -> connected
  *   reconnecting -> interrupted (retries left) | exhausted (manual Reconnect) | failed (not retryable)
  *   connected | suspect -> exhausted (idle timeout: no candidate speech; manual Reconnect, no auto retry)
- *   any live phase -> closed (ended, time up, integrity termination, unmount)
+ *   any live phase -> closed (ended, time up, integrity termination, candidate pause, unmount)
+ *   closed (candidate pause) -> reconnecting (resume)
  */
 
 export type ReconnectPhase =
@@ -25,7 +26,7 @@ export type ReconnectPhase =
 
 export type InterruptionCause = "track_ended" | "offline" | "connection_failed" | "channel_closed";
 
-export type CloseReason = "ended" | "time_up" | "terminated" | "stopped";
+export type CloseReason = "ended" | "time_up" | "terminated" | "stopped" | "paused";
 
 export interface ReconnectState {
   phase: ReconnectPhase;
@@ -56,6 +57,7 @@ export type ReconnectEvent =
   | { type: "retry" }
   | { type: "online" }
   | { type: "manual_retry" }
+  | { type: "resume" }
   | { type: "close"; reason: CloseReason };
 
 /** Waits before reconnect attempts 1-4; after the 4th failure the user reconnects manually. */
@@ -185,6 +187,12 @@ export function reconnectReducer(state: ReconnectState, event: ReconnectEvent): 
         return newAttempt(state, state.everConnected ? "reconnecting" : "connecting", 0);
       }
       return state;
+
+    case "resume":
+      if (state.phase !== "closed" || state.closeReason !== "paused") {
+        return state;
+      }
+      return newAttempt(state, state.everConnected ? "reconnecting" : "connecting", 0);
 
     case "close":
       return LIVE.has(state.phase) || state.phase === "exhausted" || state.phase === "failed"

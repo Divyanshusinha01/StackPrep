@@ -12,6 +12,7 @@ import {
   type InterviewPlanning,
   interviewReportResponseSchema,
   interviewStatusSchema,
+  PAUSE_RESUME_WINDOW_SECONDS,
   planningErrorCodeSchema,
   planningStateSchema,
   repositoryListResponseSchema,
@@ -98,6 +99,8 @@ export function retryWorkspaceAnalysis(id: string) {
 const interviewRowSchema = interviewHistoryItemSchema.extend({
   workspace_id: workspaceIdParamSchema,
   repository_commit_sha: gitCommitShaSchema,
+  paused_at: z.string().nullable(),
+  pause_count: z.int().min(0),
   workspace: workspaceSchema.pick({}).extend({ repository: workspaceRepositorySchema.pick({ full_name: true }) }),
 });
 
@@ -121,6 +124,7 @@ export async function getInterview(id: string): Promise<InterviewDetail | null> 
       .from("interviews")
       .select(
         "id, workspace_id, interview_number, status, started_at, ended_at, created_at, repository_commit_sha, " +
+          "paused_at, pause_count, " +
           "workspace:workspaces!interviews_workspace_id_user_id_fkey" +
           "(repository:repositories!workspaces_repository_id_user_id_fkey(full_name))",
       )
@@ -211,14 +215,25 @@ const historyRowSchema = z.object({
   created_at: z.string(),
   started_at: z.string().nullable(),
   ended_at: z.string().nullable(),
+  paused_at: z.string().nullable(),
   workspace: z.object({ repository: z.object({ full_name: z.string() }) }),
   report: z.union([z.object({ generated_at: z.string() }), z.array(z.object({ generated_at: z.string() }))]).nullable(),
   report_jobs: z.array(z.object({ status: planningStateSchema })),
 });
 
-export type InterviewHistoryEntry = Omit<z.infer<typeof historyRowSchema>, "workspace" | "report" | "report_jobs"> & {
+export type InterviewHistoryEntry = Omit<z.infer<typeof historyRowSchema>, "workspace" | "report" | "report_jobs" | "paused_at"> & {
   report: ReportAvailability;
+  /** Only for a paused interview: when it must be resumed by, or `expired` once that has passed. */
+  pause: { resumeBy: string } | "expired" | null;
 };
+
+function pauseState(row: z.infer<typeof historyRowSchema>, now: number): InterviewHistoryEntry["pause"] {
+  if (row.status !== "paused" || !row.paused_at) {
+    return null;
+  }
+  const resumeBy = Date.parse(row.paused_at) + PAUSE_RESUME_WINDOW_SECONDS * 1000;
+  return resumeBy > now ? { resumeBy: new Date(resumeBy).toISOString() } : "expired";
+}
 
 export interface InterviewHistoryGroup {
   workspace_id: string;
@@ -247,7 +262,7 @@ export async function getInterviewHistory(workspaceId?: string): Promise<Intervi
   let query = supabase
     .from("interviews")
     .select(
-      "id, workspace_id, interview_number, status, termination_reason, created_at, started_at, ended_at, " +
+      "id, workspace_id, interview_number, status, termination_reason, created_at, started_at, ended_at, paused_at, " +
         "workspace:workspaces!interviews_workspace_id_user_id_fkey" +
         "(repository:repositories!workspaces_repository_id_user_id_fkey(full_name)), " +
         "report:reports!reports_interview_id_workspace_id_user_id_fkey(generated_at), " +
@@ -265,6 +280,7 @@ export async function getInterviewHistory(workspaceId?: string): Promise<Intervi
     throw new Error(`Failed to load interview history: ${error.message}`);
   }
 
+  const now = Date.now();
   const groups = new Map<string, InterviewHistoryGroup>();
   for (const row of z.array(historyRowSchema).parse(data ?? [])) {
     const group = groups.get(row.workspace_id) ?? {
@@ -281,6 +297,7 @@ export async function getInterviewHistory(workspaceId?: string): Promise<Intervi
       created_at: row.created_at,
       started_at: row.started_at,
       ended_at: row.ended_at,
+      pause: pauseState(row, now),
       report: reportAvailability(row),
     });
     groups.set(row.workspace_id, group);

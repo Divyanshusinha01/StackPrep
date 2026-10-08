@@ -607,6 +607,8 @@ export type Database = {
           integrity_warning_count: number
           interview_number: number
           last_active_at: string | null
+          pause_count: number
+          paused_at: string | null
           repository_commit_sha: string
           started_at: string | null
           status: Database["public"]["Enums"]["interview_status"]
@@ -625,6 +627,8 @@ export type Database = {
           integrity_warning_count?: number
           interview_number: number
           last_active_at?: string | null
+          pause_count?: number
+          paused_at?: string | null
           repository_commit_sha: string
           started_at?: string | null
           status?: Database["public"]["Enums"]["interview_status"]
@@ -643,6 +647,8 @@ export type Database = {
           integrity_warning_count?: number
           interview_number?: number
           last_active_at?: string | null
+          pause_count?: number
+          paused_at?: string | null
           repository_commit_sha?: string
           started_at?: string | null
           status?: Database["public"]["Enums"]["interview_status"]
@@ -1073,6 +1079,8 @@ export type Database = {
           integrity_warning_count: number
           interview_number: number
           last_active_at: string | null
+          pause_count: number
+          paused_at: string | null
           repository_commit_sha: string
           started_at: string | null
           status: Database["public"]["Enums"]["interview_status"]
@@ -1243,6 +1251,15 @@ export type Database = {
           status: string
         }[]
       }
+      pause_interview: {
+        Args: { p_interview_id: string; p_user_id: string }
+        Returns: {
+          disconnected_sequence: number
+          pause_count: number
+          paused_at: string
+          status: string
+        }[]
+      }
       record_transcript_turn: {
         Args: {
           p_client_event_id: string
@@ -1299,6 +1316,12 @@ export type Database = {
         Args: { p_interview_id: string; p_user_id: string }
         Returns: {
           check_id: string
+          status: string
+        }[]
+      }
+      resume_interview: {
+        Args: { p_interview_id: string; p_user_id: string }
+        Returns: {
           status: string
         }[]
       }

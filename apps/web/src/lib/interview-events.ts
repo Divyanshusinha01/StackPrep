@@ -3,9 +3,13 @@ import {
   type IntegrityFrameResponse,
   integrityFrameResponseSchema,
   type InterviewEventRequest,
+  type PauseInterviewResponse,
+  pauseInterviewResponseSchema,
+  resumeInterviewResponseSchema,
   type ToolCallRequest,
 } from "@stackprep/shared";
 import { FunctionsHttpError } from "@supabase/supabase-js";
+import type { z } from "zod";
 import { createSupabaseBrowserClient } from "@/lib/supabase/client";
 
 export type SendEventResult =
@@ -59,6 +63,39 @@ export async function submitIntegrityFrame(
     return { ok: false, code: parsed.success ? parsed.data.code : `http_${res.status}` };
   }
   return { ok: false, code: "network_error" };
+}
+
+export type PauseControlResult<T> = { ok: true; body: T } | { ok: false; code: string };
+
+async function postPauseControl<T>(
+  interviewId: string,
+  action: "pause" | "resume",
+  schema: z.ZodType<T>,
+): Promise<PauseControlResult<T>> {
+  const supabase = createSupabaseBrowserClient();
+  const { data, error } = await supabase.functions.invoke(`interviews/${encodeURIComponent(interviewId)}/${action}`, {
+    method: "POST",
+  });
+  if (!error) {
+    const parsed = schema.safeParse(data);
+    return parsed.success ? { ok: true, body: parsed.data } : { ok: false, code: "contract_error" };
+  }
+  if (error instanceof FunctionsHttpError) {
+    const res = error.context as Response;
+    const parsed = apiErrorSchema.safeParse(await res.json().catch(() => null));
+    return { ok: false, code: parsed.success ? parsed.data.code : `http_${res.status}` };
+  }
+  return { ok: false, code: "network_error" };
+}
+
+/** Browser-side `POST /interviews/:id/pause`: a candidate-initiated pause. */
+export function pauseInterview(interviewId: string): Promise<PauseControlResult<PauseInterviewResponse>> {
+  return postPauseControl(interviewId, "pause", pauseInterviewResponseSchema);
+}
+
+/** Browser-side `POST /interviews/:id/resume`: back to in progress, before a new voice session. */
+export function resumeInterview(interviewId: string): Promise<PauseControlResult<unknown>> {
+  return postPauseControl(interviewId, "resume", resumeInterviewResponseSchema);
 }
 
 /**

@@ -524,6 +524,13 @@ export function useRealtimeInterview(interviewId: string, media: InterviewMedia)
   }, []);
   const reconnect = useCallback(() => dispatchMachine({ type: "manual_retry" }), []);
   const stop = useCallback(() => dispatchMachine({ type: "close", reason: "stopped" }), []);
+  /** The backend accepted a candidate pause; the session closes without reporting an interruption. */
+  const pause = useCallback(() => dispatchMachine({ type: "close", reason: "paused" }), []);
+  /** The backend resumed the paused interview; opens a new session from the persisted state. */
+  const resume = useCallback(() => {
+    setTimeUp(false);
+    dispatchMachine({ type: "resume" });
+  }, []);
   /** The backend terminated the interview (third integrity warning). */
   const terminate = useCallback(() => dispatchMachine({ type: "close", reason: "terminated" }), []);
   /** The backend completed the interview without this session's relay seeing it (event stream). */
@@ -557,6 +564,8 @@ export function useRealtimeInterview(interviewId: string, media: InterviewMedia)
     timeUp,
     ended,
     terminated: machine.closeReason === "terminated",
+    /** The session was closed by a candidate pause and can be resumed. */
+    paused: machine.phase === "closed" && machine.closeReason === "paused",
     /** Why the voice session is paused while reconnecting. */
     pauseReason: status === "reconnecting" ? machine.reason : null,
     /** True once a reconnect succeeded, until the next interruption. */
@@ -570,6 +579,8 @@ export function useRealtimeInterview(interviewId: string, media: InterviewMedia)
     start,
     reconnect,
     stop,
+    pause,
+    resume,
     terminate,
     end,
     confirmTurn,

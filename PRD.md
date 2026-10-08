@@ -525,11 +525,22 @@ If the third warning occurs:
 
 ---
 
-## 21. Technical Interruptions
+## 21. Pausing and Technical Interruptions
 
-The interview cannot be voluntarily paused.
+### Voluntary pause
 
-Pause/resume is only for technical interruptions such as:
+The user can stop the interview with a **Stop interview** button and continue it later.
+
+- Stopping requires an explicit confirmation in the UI. Spoken intent never pauses the interview.
+- At most **3 pauses** per interview. After the third, the button is no longer offered.
+- A paused interview must be resumed within **1 hour**. After that it ends as abandoned, with no report, and the next interview is a fresh evaluation.
+- Voice time stops while paused, so pausing does not use up the 35-minute limit.
+- The user can resume from the interview page or from a **Resume** link in interview history. Resuming goes through the camera and microphone check again, then the interviewer picks up from the last answer.
+- Integrity monitoring is suspended while paused and starts again once the voice session reconnects.
+
+### Technical interruptions
+
+Technical interruptions such as these pause the interview automatically:
 
 - Camera failure
 - Microphone failure

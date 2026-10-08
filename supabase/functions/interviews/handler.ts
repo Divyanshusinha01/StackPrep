@@ -13,10 +13,14 @@ import {
   interviewReportResponseSchema,
   interviewReportSchema,
   type InterviewStatus,
+  MAX_INTERVIEW_PAUSES,
   parseInterviewStreamCursor,
+  PAUSE_RESUME_WINDOW_SECONDS,
+  pauseInterviewResponseSchema,
   type PlanningState,
   realtimeSessionResponseSchema,
   reportErrorCodeSchema,
+  resumeInterviewResponseSchema,
   toolCallRequestSchema,
   type ToolCallResponse,
   toolCallResponseSchema,
@@ -136,6 +140,16 @@ export interface RecordResult {
   sequence: number;
 }
 
+export interface PauseResult {
+  status: "paused" | "already_paused" | "limit_reached" | "not_active";
+  pauseCount: number;
+  pausedAt: string | null;
+  /** Sequence of the `disconnected` written to close an open voice segment. */
+  disconnectedSequence: number | null;
+}
+
+export type ResumeResult = "resumed" | "already_active" | "expired" | "not_active";
+
 /**
  * Service-role reads of hidden state. Every call is keyed by ids taken from an interview the
  * caller has already been shown to own.
@@ -150,6 +164,8 @@ export interface InterviewStore extends ToolStore, IntegrityStore {
   getRepositoryContext(workspaceId: string, commitSha: string): Promise<RepositoryContext | null>;
   recordTranscriptTurn(turn: TranscriptTurnRecord): Promise<RecordResult>;
   recordVoiceEvent(event: VoiceEventRecord): Promise<RecordResult>;
+  pauseInterview(interviewId: string, userId: string): Promise<PauseResult>;
+  resumeInterview(interviewId: string, userId: string): Promise<ResumeResult>;
 }
 
 export interface InterviewsHandlerOptions {
@@ -307,6 +323,33 @@ export function createInterviewStore(serviceClient: SupabaseClient): InterviewSt
       check("record voice event", error);
       return data as RecordResult;
     },
+    async pauseInterview(interviewId, userId) {
+      const { data, error } = await serviceClient.rpc("pause_interview", {
+        p_interview_id: interviewId,
+        p_user_id: userId,
+      }).single();
+      check("pause interview", error);
+      const row = data as {
+        status: PauseResult["status"];
+        pause_count: number;
+        paused_at: string | null;
+        disconnected_sequence: number | null;
+      };
+      return {
+        status: row.status,
+        pauseCount: row.pause_count,
+        pausedAt: row.paused_at,
+        disconnectedSequence: row.disconnected_sequence,
+      };
+    },
+    async resumeInterview(interviewId, userId) {
+      const { data, error } = await serviceClient.rpc("resume_interview", {
+        p_interview_id: interviewId,
+        p_user_id: userId,
+      }).single();
+      check("resume interview", error);
+      return (data as { status: ResumeResult }).status;
+    },
     async reserveIntegrityCheck(interviewId, userId) {
       const { data, error } = await serviceClient.rpc("reserve_integrity_check", {
         p_interview_id: interviewId,
@@ -364,6 +407,8 @@ const TOOL_CALLS_ROUTE = /\/interviews\/([^/]+)\/tool-calls\/?$/;
 const REPORT_ROUTE = /\/interviews\/([^/]+)\/report\/?$/;
 const REPORT_RETRY_ROUTE = /\/interviews\/([^/]+)\/report\/retry\/?$/;
 const FRAMES_ROUTE = /\/interviews\/([^/]+)\/integrity\/frames\/?$/;
+const PAUSE_ROUTE = /\/interviews\/([^/]+)\/pause\/?$/;
+const RESUME_ROUTE = /\/interviews\/([^/]+)\/resume\/?$/;
 
 /** Body bytes allowed for one frame request: the data URL cap plus JSON framing. */
 const FRAME_BODY_MAX_BYTES = INTEGRITY_FRAME_MAX_CHARS + 1024;
@@ -714,6 +759,9 @@ export function createInterviewsHandler({
     if (ENDED_STATUSES.has(interview.status)) {
       return apiError("interview_not_active", cors);
     }
+    if (interview.status === "paused") {
+      return apiError("interview_paused", cors);
+    }
 
     const planning = await userReader.getPlanningState(interview.id);
     if (planning === "failed") {
@@ -805,6 +853,67 @@ export function createInterviewsHandler({
       status: 200,
       headers: { ...cors.headers, "Content-Type": "text/event-stream", "Cache-Control": "no-store" },
     });
+  }
+
+  /**
+   * Candidate-initiated pause. The database closes any open voice segment, so voice time stops
+   * even if the browser never reports its disconnect. Repeating it while paused is not an error.
+   */
+  async function pauseInterview(req: Request, id: string): Promise<Response> {
+    const ctx = await authenticate(req);
+    if (!ctx) {
+      return apiError("unauthorized", cors);
+    }
+    if (!interviewIdParamSchema.safeParse(id).success) {
+      return apiError("interview_not_found", cors);
+    }
+    const interview = await reader(ctx.supabase).getInterview(id);
+    if (!interview) {
+      return apiError("interview_not_found", cors);
+    }
+
+    const result = await store.pauseInterview(interview.id, ctx.user.id);
+    if (result.status === "limit_reached") {
+      return apiError("pause_limit_reached", cors);
+    }
+    if (result.status === "not_active" || !result.pausedAt) {
+      return apiError("interview_not_active", cors);
+    }
+    if (result.disconnectedSequence !== null) {
+      await recordVoiceEstimates(interview, ctx.user.id, { bySequence: result.disconnectedSequence });
+    }
+    const resumeBy = new Date(Date.parse(result.pausedAt) + PAUSE_RESUME_WINDOW_SECONDS * 1000);
+    const body = pauseInterviewResponseSchema.parse({
+      status: "paused",
+      pauses_left: Math.max(0, MAX_INTERVIEW_PAUSES - result.pauseCount),
+      resume_by: resumeBy.toISOString(),
+    });
+    return json(body, { status: result.status === "paused" ? 201 : 200, headers: cors.headers });
+  }
+
+  /** Returns a paused interview to in progress; the browser then opens a new voice session. */
+  async function resumeInterview(req: Request, id: string): Promise<Response> {
+    const ctx = await authenticate(req);
+    if (!ctx) {
+      return apiError("unauthorized", cors);
+    }
+    if (!interviewIdParamSchema.safeParse(id).success) {
+      return apiError("interview_not_found", cors);
+    }
+    const interview = await reader(ctx.supabase).getInterview(id);
+    if (!interview) {
+      return apiError("interview_not_found", cors);
+    }
+
+    const result = await store.resumeInterview(interview.id, ctx.user.id);
+    if (result === "expired") {
+      return apiError("pause_expired", cors);
+    }
+    if (result === "not_active") {
+      return apiError("interview_not_active", cors);
+    }
+    const body = resumeInterviewResponseSchema.parse({ status: "in_progress" });
+    return json(body, { status: 200, headers: cors.headers });
   }
 
   /** Accepted after the interview ends too, so turns buffered during a drop are not lost. */
@@ -914,6 +1023,8 @@ export function createInterviewsHandler({
       { pattern: REPORT_ROUTE, method: "GET", run: getReport },
       { pattern: REPORT_RETRY_ROUTE, method: "POST", run: retryReport },
       { pattern: FRAMES_ROUTE, method: "POST", run: submitFrame },
+      { pattern: PAUSE_ROUTE, method: "POST", run: pauseInterview },
+      { pattern: RESUME_ROUTE, method: "POST", run: resumeInterview },
     ] as const;
     let id: string | null = null;
     const candidates: (typeof routes)[number][] = [];

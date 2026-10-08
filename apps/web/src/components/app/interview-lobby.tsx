@@ -1,7 +1,9 @@
 "use client";
 
+import Link from "next/link";
 import { Check, Circle, Loader2, Mic, Video } from "lucide-react";
 import type { InterviewPlanning, PlanningErrorCode } from "@stackprep/shared";
+import { formatResumeBy } from "@/components/app/interview-paused";
 import { Notice } from "@/components/app/notice";
 import { type DeviceError, useDeviceCheck } from "@/components/app/use-device-check";
 import type { InterviewMedia } from "@/components/app/use-interview-media";
@@ -37,13 +39,25 @@ function CheckItem({ ok, icon, label, hint }: { ok: boolean; icon: React.ReactNo
   );
 }
 
+export interface LobbyResume {
+  resumeBy: string;
+  busy: boolean;
+  error: string | null;
+  /** The pause can no longer be resumed. */
+  ended: boolean;
+  workspaceId: string;
+}
+
 export function InterviewLobby({
   planning,
   media,
+  resume,
   onEnter,
 }: {
   planning: InterviewPlanning | null;
   media: InterviewMedia;
+  /** Set when the candidate is coming back to a paused interview. */
+  resume?: LobbyResume;
   onEnter: () => void;
 }) {
   const { videoRef, meterRef, phase, error, cameraOk, micOk, start, onVideoLoaded } = useDeviceCheck(media);
@@ -52,7 +66,7 @@ export function InterviewLobby({
   usePollWhile(preparing);
 
   const devicesOk = cameraOk && micOk;
-  const canEnter = devicesOk && planReady;
+  const canEnter = devicesOk && planReady && !resume?.busy && !resume?.ended;
 
   return (
     <div className="mt-6 grid gap-6 md:grid-cols-[minmax(0,1fr)_18rem]">
@@ -118,8 +132,30 @@ export function InterviewLobby({
           ) : null}
         </section>
 
+        {resume ? (
+          <section aria-labelledby="pause-status" className="rounded-md border border-border bg-panel/60 p-4">
+            <h2 id="pause-status" className="text-sm font-medium">
+              Paused
+            </h2>
+            <p className="mt-2 text-sm text-muted-foreground">
+              Your answers are saved. Resume by{" "}
+              <span className="text-foreground" suppressHydrationWarning>
+                {formatResumeBy(resume.resumeBy)}
+              </span>{" "}
+              to continue where you left off.
+            </p>
+            {resume.error ? <Notice tone="error">{resume.error}</Notice> : null}
+            {resume.ended ? (
+              <Button asChild variant="outline" size="sm" className="mt-3">
+                <Link href={`/workspaces/${resume.workspaceId}`}>Back to workspace</Link>
+              </Button>
+            ) : null}
+          </section>
+        ) : null}
+
         <Button disabled={!canEnter} onClick={onEnter} size="lg">
-          Enter interview
+          {resume?.busy ? <Loader2 className="size-4 animate-spin" aria-hidden /> : null}
+          {resume ? "Resume interview" : "Enter interview"}
         </Button>
         <p className="text-xs text-muted-foreground">
           {!devicesOk
@@ -127,7 +163,9 @@ export function InterviewLobby({
             : preparing
               ? "Preparing… you can enter once the plan is ready."
               : planReady
-                ? "Ready. The interviewer will speak first; answer out loud."
+                ? resume
+                  ? "Ready. The interviewer will pick up from your last answer."
+                  : "Ready. The interviewer will speak first; answer out loud."
                 : "This interview could not be prepared."}
         </p>
       </aside>
