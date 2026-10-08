@@ -56,7 +56,7 @@ export const voiceEventSchema = z.strictObject({
   occurred_at: z.iso.datetime({ offset: true }),
 });
 
-/** Technical interruptions only; the candidate cannot pause voluntarily (PRD section 21). */
+/** Technical interruptions only; a voluntary pause goes through POST /interviews/:id/pause. */
 export const pauseReasonSchema = z.enum(["camera", "microphone", "network", "connection"]);
 
 export const pauseEventSchema = z.strictObject({
@@ -129,6 +129,23 @@ export const interviewEventAckSchema = z.discriminatedUnion("type", [
   voiceEventAckSchema,
   voiceUsageAckSchema,
 ]);
+
+// POST /interviews/:id/pause, POST /interviews/:id/resume -----------------------------
+// Candidate-initiated pause (PRD section 21). Voice time stops while paused.
+
+export const MAX_INTERVIEW_PAUSES = 3;
+export const PAUSE_RESUME_WINDOW_SECONDS = 60 * 60;
+
+export const pauseInterviewResponseSchema = z.strictObject({
+  status: z.literal("paused"),
+  pauses_left: z.int().min(0).max(MAX_INTERVIEW_PAUSES - 1),
+  /** After this the interview can no longer be resumed. */
+  resume_by: z.iso.datetime({ offset: true }),
+});
+
+export const resumeInterviewResponseSchema = z.strictObject({
+  status: z.literal("in_progress"),
+});
 
 // GET /interviews/:id/events (SSE) ------------------------------------------------
 // Server-to-client interview events, derived from rows that already exist: status transitions
@@ -452,6 +469,8 @@ export type PauseEventRequest = z.infer<typeof pauseEventSchema>;
 export type ResumeEventRequest = z.infer<typeof resumeEventSchema>;
 export type VoiceUsageEventRequest = z.infer<typeof voiceUsageEventSchema>;
 export type VoiceUsageAck = z.infer<typeof voiceUsageAckSchema>;
+export type PauseInterviewResponse = z.infer<typeof pauseInterviewResponseSchema>;
+export type ResumeInterviewResponse = z.infer<typeof resumeInterviewResponseSchema>;
 export type IntegrityFrameRequest = z.infer<typeof integrityFrameRequestSchema>;
 export type IntegritySignalKind = z.infer<typeof integritySignalKindSchema>;
 export type IntegrityFrameResponse = z.infer<typeof integrityFrameResponseSchema>;

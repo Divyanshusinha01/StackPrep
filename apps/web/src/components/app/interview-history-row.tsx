@@ -1,9 +1,10 @@
 import Link from "next/link";
-import { FileText, ShieldAlert } from "lucide-react";
+import { FileText, Play, ShieldAlert } from "lucide-react";
 import { InterviewStatusBadge } from "@/components/app/interview-status";
 import type { InterviewHistoryEntry, ReportAvailability } from "@/lib/api";
 
 const dateTimeFormat = new Intl.DateTimeFormat("en", { dateStyle: "medium", timeStyle: "short", timeZone: "UTC" });
+const timeFormat = new Intl.DateTimeFormat("en", { timeStyle: "short", timeZone: "UTC" });
 
 const REPORT_LABELS: Record<Exclude<ReportAvailability, "none">, string> = {
   ready: "Report",
@@ -32,6 +33,17 @@ export function InterviewHistoryRow({ interview }: { interview: InterviewHistory
         </span>
       ) : null}
       <span className="ml-auto flex items-center gap-3">
+        {interview.pause === "expired" ? (
+          <span className="text-xs text-muted-foreground">Pause expired</span>
+        ) : interview.pause ? (
+          <Link
+            href={`/interviews/${interview.id}`}
+            className="inline-flex items-center gap-1 text-xs text-foreground hover:underline"
+          >
+            <Play className="size-3.5" aria-hidden />
+            Resume by {timeFormat.format(new Date(interview.pause.resumeBy))} UTC
+          </Link>
+        ) : null}
         {interview.report !== "none" ? (
           <Link href={reportHref} className="inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground">
             <FileText className="size-3.5" aria-hidden />

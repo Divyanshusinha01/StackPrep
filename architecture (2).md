@@ -539,10 +539,16 @@ POST   /interviews/:id/events
 GET    /interviews/:id/events          (SSE)
 POST   /interviews/:id/tool-calls
 POST   /interviews/:id/integrity/frames
+POST   /interviews/:id/pause
+POST   /interviews/:id/resume
 GET    /interviews/:id/report
 ```
 
 `GET /interviews/:id/events` is the server-to-client event stream (see [Transport](#transport)).
+
+`POST /interviews/:id/pause` is the candidate's **Stop interview** (PRD §21), sent only after a UI confirmation. The service-role function `pause_interview` (migration `20261008120000_voluntary_pause.sql`) moves an `in_progress` interview to `paused`, sets `paused_at`, increments `pause_count` (at most 3, otherwise `409 pause_limit_reached`), writes a `pause` event with `{ "reason": "user" }`, and, if a voice segment is open, closes it with a server-side `disconnected` so voice time stops even if the browser never reports its own. It returns `{ status: "paused", pauses_left, resume_by }`; repeating it while paused returns the same deadline. While paused, `POST /realtime/session` returns `409 interview_paused`, and tool calls and integrity frames are refused because they require `in_progress`.
+
+`POST /interviews/:id/resume` (function `resume_interview`) moves a paused interview back to `in_progress` and writes a `resume` event, after which the browser opens a new voice session that resumes from the persisted state like any reconnect. If more than 1 hour has passed since `paused_at`, it instead terminates the interview with `termination_reason = 'user_abandoned'` and a `termination` event, and returns `409 pause_expired`. Expiry is checked lazily on resume. Until then, an expired pause stays `paused` in the database, and the history UI shows it as expired.
 
 `POST /interviews/:id/integrity/frames` accepts one low-detail camera frame (about every 10 seconds), sends it to the vision model, stores only the detected signal, and returns any warning to show. Frames are never persisted.
 
@@ -870,7 +876,7 @@ Evaluations, coverage updates (via the `update_interview_state` database functio
 
 `end_interview` is a request, not a command: the backend checks completion criteria (sufficient evidence or the ~30-minute target) before marking the interview `completed`. If accepted, it returns guidance for the interviewer to deliver a closing statement, then emits a `completion` event and triggers report generation. If rejected, it returns guidance to continue.
 
-The candidate cannot voluntarily end or pause the interview (PRD §21). If a user-initiated early exit is added later, it must go through an explicit, authenticated UI confirmation — never spoken intent alone.
+The candidate cannot voluntarily end the interview. They can pause it, but only through the authenticated, UI-confirmed `POST /interviews/:id/pause` (PRD §21), never through spoken intent; no Realtime tool can pause. If a user-initiated early exit is added later, it must follow the same rule.
 
 ### Transcript persistence
 

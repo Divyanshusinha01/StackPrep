@@ -110,6 +110,25 @@ describe("reconnectReducer", () => {
     }
   });
 
+  it("a candidate pause closes the session without an interruption and resumes as a reconnect", () => {
+    const paused = run([{ type: "close", reason: "paused" }], live);
+    expect(paused).toMatchObject({ phase: "closed", closeReason: "paused", interruptions: 0 });
+    expect(hasConnection(paused.phase)).toBe(false);
+    expect(run([{ type: "retry" }, { type: "online" }, { type: "manual_retry" }], paused)).toBe(paused);
+
+    const resuming = run([{ type: "resume" }], paused);
+    expect(resuming).toMatchObject({ phase: "reconnecting", attempt: 2, closeReason: null });
+    expect(run([{ type: "connected", attempt: 2 }], resuming)).toMatchObject({ phase: "connected", resumed: true });
+  });
+
+  it("only a paused session can be resumed", () => {
+    for (const reason of ["ended", "time_up", "terminated", "stopped"] as const) {
+      const closed = run([{ type: "close", reason }], live);
+      expect(run([{ type: "resume" }], closed)).toBe(closed);
+    }
+    expect(run([{ type: "resume" }], live)).toBe(live);
+  });
+
   it("stops on a failure a reconnect cannot fix", () => {
     const state = run([
       { type: "signal", attempt: 1, cause: "offline", reason: "network" },

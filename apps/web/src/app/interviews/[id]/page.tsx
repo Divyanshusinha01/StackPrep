@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 import { ArrowLeft } from "lucide-react";
+import { MAX_INTERVIEW_PAUSES } from "@stackprep/shared";
 import { AppShell } from "@/components/app/app-shell";
 import { InterviewSession } from "@/components/app/interview-session";
 import { InterviewStatusBadge } from "@/components/app/interview-status";
@@ -40,7 +41,13 @@ export default async function InterviewPage({ params }: PageProps<"/interviews/[
       <p className="mt-2 text-sm text-muted-foreground">
         The interview uses your camera and microphone. Both are required to continue.
       </p>
-      <InterviewSession interviewId={interview.id} workspaceId={interview.workspace_id} planning={interview.planning} />
+      <InterviewSession
+        interviewId={interview.id}
+        workspaceId={interview.workspace_id}
+        planning={interview.planning}
+        pausedAt={interview.status === "paused" ? interview.paused_at : null}
+        pausesLeft={Math.max(0, MAX_INTERVIEW_PAUSES - interview.pause_count)}
+      />
     </AppShell>
   );
 }

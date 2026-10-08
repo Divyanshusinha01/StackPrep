@@ -2,8 +2,14 @@
 
 import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
-import { Bot, FileSearch, Loader2, Mic } from "lucide-react";
-import { INTEGRITY_WARNING_LIMIT, type PauseReason, VOICE_WRAP_UP_SECONDS } from "@stackprep/shared";
+import { Bot, FileSearch, Loader2, Mic, Pause } from "lucide-react";
+import {
+  INTEGRITY_WARNING_LIMIT,
+  MAX_INTERVIEW_PAUSES,
+  PAUSE_RESUME_WINDOW_SECONDS,
+  type PauseReason,
+  VOICE_WRAP_UP_SECONDS,
+} from "@stackprep/shared";
 import { type ExaminedItem, examiningLabel } from "@/components/app/examining";
 import { Notice } from "@/components/app/notice";
 import type { TranscriptTurn } from "@/components/app/realtime-transcript";
@@ -39,6 +45,13 @@ const PAUSE_REASONS: Record<PauseReason, string> = {
   network: "Your network connection dropped",
   connection: "The connection to the interviewer dropped",
 };
+
+export interface StopControl {
+  pausesLeft: number;
+  busy: boolean;
+  error: string | null;
+  onStop: () => void;
+}
 
 /** How long "Resumed" stays on screen after a reconnect. */
 const RESUMED_NOTICE_MS = 6000;
@@ -165,6 +178,7 @@ export function InterviewRoom({
   examining,
   clock,
   transcript,
+  stop,
   onReconnect,
   onDismissWarning,
 }: {
@@ -181,9 +195,12 @@ export function InterviewRoom({
   examining: ExaminedItem[] | null;
   clock: VoiceClock | null;
   transcript: { ai: TranscriptTurn[]; user: TranscriptTurn[] };
+  /** Candidate pause; null while the interview cannot be paused. */
+  stop: StopControl | null;
   onReconnect: () => void;
   onDismissWarning: () => void;
 }) {
+  const [confirmingStop, setConfirmingStop] = useState(false);
   const live = status === "live";
   const elapsed = useElapsed(clock, live);
   const wrappingUp = live && elapsed >= VOICE_WRAP_UP_SECONDS;
@@ -217,7 +234,53 @@ export function InterviewRoom({
         <span className="ml-auto font-mono tabular-nums text-muted-foreground" aria-label="Elapsed time">
           {formatClock(elapsed)}
         </span>
+        {stop ? (
+          stop.pausesLeft > 0 ? (
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setConfirmingStop(true)}
+              disabled={stop.busy || confirmingStop}
+            >
+              <Pause className="size-3.5" aria-hidden />
+              Stop interview
+            </Button>
+          ) : (
+            <span className="text-xs text-muted-foreground">No pauses left</span>
+          )
+        ) : null}
       </div>
+      {stop && confirmingStop ? (
+        <Notice tone="info">
+          <span className="min-w-0 flex-1">
+            Stop for now? Your answers are saved and your voice time stops. Resume within{" "}
+            {PAUSE_RESUME_WINDOW_SECONDS / 60} minutes or the interview ends.{" "}
+            <span className="text-xs">
+              ({stop.pausesLeft} of {MAX_INTERVIEW_PAUSES} {stop.pausesLeft === 1 ? "pause" : "pauses"} left.)
+            </span>
+          </span>
+          <Button
+            size="sm"
+            disabled={stop.busy}
+            onClick={() => {
+              setConfirmingStop(false);
+              stop.onStop();
+            }}
+          >
+            Stop interview
+          </Button>
+          <Button variant="ghost" size="sm" onClick={() => setConfirmingStop(false)}>
+            Keep going
+          </Button>
+        </Notice>
+      ) : null}
+      {stop?.busy ? (
+        <Notice tone="info">
+          <Loader2 className="size-4 animate-spin" aria-hidden />
+          Pausing…
+        </Notice>
+      ) : null}
+      {stop?.error ? <Notice tone="error">{stop.error}</Notice> : null}
       <ExaminingIndicator items={live ? examining : null} />
 
       {termination ? (
