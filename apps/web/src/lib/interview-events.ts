@@ -1,5 +1,7 @@
 import {
   apiErrorSchema,
+  type EndInterviewResponse,
+  endInterviewResponseSchema,
   type IntegrityFrameResponse,
   integrityFrameResponseSchema,
   type InterviewEventRequest,
@@ -69,7 +71,7 @@ export type PauseControlResult<T> = { ok: true; body: T } | { ok: false; code: s
 
 async function postPauseControl<T>(
   interviewId: string,
-  action: "pause" | "resume",
+  action: "pause" | "resume" | "end",
   schema: z.ZodType<T>,
 ): Promise<PauseControlResult<T>> {
   const supabase = createSupabaseBrowserClient();
@@ -96,6 +98,11 @@ export function pauseInterview(interviewId: string): Promise<PauseControlResult<
 /** Browser-side `POST /interviews/:id/resume`: back to in progress, before a new voice session. */
 export function resumeInterview(interviewId: string): Promise<PauseControlResult<unknown>> {
   return postPauseControl(interviewId, "resume", resumeInterviewResponseSchema);
+}
+
+/** Browser-side `POST /interviews/:id/end`: the candidate ends the interview early. */
+export function endInterview(interviewId: string): Promise<PauseControlResult<EndInterviewResponse>> {
+  return postPauseControl(interviewId, "end", endInterviewResponseSchema);
 }
 
 /**

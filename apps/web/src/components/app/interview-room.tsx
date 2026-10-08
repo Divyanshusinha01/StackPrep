@@ -10,6 +10,7 @@ import {
   type PauseReason,
   VOICE_WRAP_UP_SECONDS,
 } from "@stackprep/shared";
+import { type EndControl, useEndInterviewConfirm } from "@/components/app/end-interview-control";
 import { type ExaminedItem, examiningLabel } from "@/components/app/examining";
 import { Notice } from "@/components/app/notice";
 import type { TranscriptTurn } from "@/components/app/realtime-transcript";
@@ -179,6 +180,7 @@ export function InterviewRoom({
   clock,
   transcript,
   stop,
+  endControl,
   onReconnect,
   onDismissWarning,
 }: {
@@ -197,10 +199,13 @@ export function InterviewRoom({
   transcript: { ai: TranscriptTurn[]; user: TranscriptTurn[] };
   /** Candidate pause; null while the interview cannot be paused. */
   stop: StopControl | null;
+  /** Candidate ends the interview with a report; null while it cannot be ended. */
+  endControl: EndControl | null;
   onReconnect: () => void;
   onDismissWarning: () => void;
 }) {
   const [confirmingStop, setConfirmingStop] = useState(false);
+  const ending = useEndInterviewConfirm(endControl, confirmingStop || Boolean(stop?.busy));
   const live = status === "live";
   const elapsed = useElapsed(clock, live);
   const wrappingUp = live && elapsed >= VOICE_WRAP_UP_SECONDS;
@@ -240,7 +245,7 @@ export function InterviewRoom({
               variant="outline"
               size="sm"
               onClick={() => setConfirmingStop(true)}
-              disabled={stop.busy || confirmingStop}
+              disabled={stop.busy || confirmingStop || ending.confirming || Boolean(endControl?.busy)}
             >
               <Pause className="size-3.5" aria-hidden />
               Stop interview
@@ -249,7 +254,9 @@ export function InterviewRoom({
             <span className="text-xs text-muted-foreground">No pauses left</span>
           )
         ) : null}
+        {ending.button}
       </div>
+      {ending.panel}
       {stop && confirmingStop ? (
         <Notice tone="info">
           <span className="min-w-0 flex-1">

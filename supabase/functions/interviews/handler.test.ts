@@ -2,6 +2,7 @@ import { assert, assertAlmostEquals, assertEquals } from "@std/assert";
 import {
   AI_USAGE_MAX_TOKENS_PER_EVENT,
   apiErrorSchema,
+  endInterviewResponseSchema,
   integrityFrameResponseSchema,
   interviewEventAckSchema,
   type InterviewPlan,
@@ -30,6 +31,7 @@ import {
 import type { InterviewStateSnapshot, TranscriptMessage } from "./tools/types.ts";
 import {
   createInterviewsHandler,
+  type EndResult,
   type InterviewReader,
   type InterviewRow,
   type InterviewStore,
@@ -85,6 +87,7 @@ interface Setup {
   segmentEvents?: VoiceSegmentEvent[];
   pauseResult?: PauseResult;
   resumeResult?: ResumeResult;
+  endResult?: EndResult;
 }
 
 function at(offsetSeconds: number): string {
@@ -107,13 +110,14 @@ function setup({
   segmentEvents = [],
   pauseResult = { status: "paused", pauseCount: 1, pausedAt: NOW.toISOString(), disconnectedSequence: null },
   resumeResult = "resumed",
+  endResult = { status: "completed", disconnectedSequence: null },
 }: Setup = {}) {
   const clock = { now: NOW };
   const rlsClient = { rls: true } as unknown as SupabaseClient;
   const openaiRequests: { url: string; headers: Headers; body: Record<string, unknown> }[] = [];
   const turns: TranscriptTurnRecord[] = [];
   const voiceEvents: VoiceEventRecord[] = [];
-  const pauseCalls: { op: "pause" | "resume"; interviewId: string; userId: string }[] = [];
+  const pauseCalls: { op: "pause" | "resume" | "end"; interviewId: string; userId: string }[] = [];
   const authenticate: Authenticate = (req) =>
     Promise.resolve(
       req.headers.get("Authorization") === "Bearer valid" ? { user: { id: userId } as User, supabase: rlsClient } : null,
@@ -164,6 +168,10 @@ function setup({
     resumeInterview: (interviewId, uid) => {
       pauseCalls.push({ op: "resume", interviewId, userId: uid });
       return Promise.resolve(resumeResult);
+    },
+    endInterview: (interviewId, uid) => {
+      pauseCalls.push({ op: "end", interviewId, userId: uid });
+      return Promise.resolve(endResult);
     },
   };
   const fakeFetch: typeof fetch = async (input, init) => {
@@ -1060,6 +1068,72 @@ Deno.test("resume: an expired pause and an ended interview are refused", async (
     409,
     "interview_not_active",
   );
+});
+
+Deno.test("end: auth, ownership, and method are checked before ending", async () => {
+  const { handler, pauseCalls } = setup({ interview: inProgress });
+  await expectError(await handler(post(`/interviews/${INTERVIEW_ID}/end`, "Bearer nope")), 401, "unauthorized");
+  await expectError(await handler(post("/interviews/not-a-uuid/end")), 404, "interview_not_found");
+  await expectError(await handler(post(`/interviews/${INTERVIEW_ID}/end`, "Bearer valid", "GET")), 405, "method_not_allowed");
+  await expectError(await setup({ interview: null }).handler(post(`/interviews/${INTERVIEW_ID}/end`)), 404, "interview_not_found");
+  assertEquals(pauseCalls, []);
+});
+
+Deno.test("end: with an evaluated answer the interview completes and a report is queued", async () => {
+  const { handler, pauseCalls, jobs, reportJobs } = setup({ interview: inProgress });
+  const res = await handler(post(`/interviews/${INTERVIEW_ID}/end`));
+  assertEquals(res.status, 201);
+  assertEquals(endInterviewResponseSchema.parse(await res.json()), { status: "completed", report: true });
+  assertEquals(pauseCalls, [{ op: "end", interviewId: INTERVIEW_ID, userId }]);
+  assertEquals(reportJobs.requests, [INTERVIEW_ID]);
+  assertEquals(jobs.sent.map((s) => s.name), ["interview.report.requested"]);
+});
+
+Deno.test("end: with no evaluated answer it terminates without a report", async () => {
+  const { handler, reportJobs } = setup({
+    interview: { ...interviewRow, status: "paused" },
+    endResult: { status: "no_report", disconnectedSequence: null },
+  });
+  const res = await handler(post(`/interviews/${INTERVIEW_ID}/end`));
+  assertEquals(res.status, 201);
+  assertEquals(endInterviewResponseSchema.parse(await res.json()), { status: "terminated", report: false });
+  assertEquals(reportJobs.requests, []);
+});
+
+Deno.test("end: repeating it after the interview ended answers 200 and queues nothing", async () => {
+  const done = setup({ interview: completed, endResult: { status: "already_completed", disconnectedSequence: null } });
+  const res = await done.handler(post(`/interviews/${INTERVIEW_ID}/end`));
+  assertEquals(res.status, 200);
+  assertEquals(endInterviewResponseSchema.parse(await res.json()), { status: "completed", report: true });
+  assertEquals(done.reportJobs.requests, []);
+
+  const ended = setup({
+    interview: { ...interviewRow, status: "terminated" },
+    endResult: { status: "already_terminated", disconnectedSequence: null },
+  });
+  const again = await ended.handler(post(`/interviews/${INTERVIEW_ID}/end`));
+  assertEquals(again.status, 200);
+  assertEquals(endInterviewResponseSchema.parse(await again.json()), { status: "terminated", report: false });
+});
+
+Deno.test("end: an interview that is not active is refused", async () => {
+  const { handler, reportJobs } = setup({ endResult: { status: "not_active", disconnectedSequence: null } });
+  await expectError(await handler(post(`/interviews/${INTERVIEW_ID}/end`)), 409, "interview_not_active");
+  assertEquals(reportJobs.requests, []);
+});
+
+Deno.test("end: closing an open voice segment writes its duration estimates", async () => {
+  const segmentEvents: VoiceSegmentEvent[] = [
+    { id: CONNECTED_ID, sequence: 6, event_type: "connected", occurred_at: at(-90) },
+    { id: "eeeeeeee-0000-4000-8000-000000000004", sequence: 7, event_type: "disconnected", occurred_at: at(0) },
+  ];
+  const { handler, usage } = setup({
+    interview: inProgress,
+    segmentEvents,
+    endResult: { status: "completed", disconnectedSequence: 7 },
+  });
+  assertEquals((await handler(post(`/interviews/${INTERVIEW_ID}/end`))).status, 201);
+  assertEquals(usage.map((u) => [u.voiceSegmentEventId, u.audioSeconds]), [[CONNECTED_ID, 90], [CONNECTED_ID, 90]]);
 });
 
 Deno.test("a paused interview cannot mint a voice session", async () => {

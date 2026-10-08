@@ -1099,6 +1099,13 @@ export type Database = {
           isSetofReturn: false
         }
       }
+      end_interview_by_user: {
+        Args: { p_interview_id: string; p_user_id: string }
+        Returns: {
+          disconnected_sequence: number
+          status: string
+        }[]
+      }
       fail_code_index: {
         Args: {
           p_error_code: string
@@ -1440,6 +1447,7 @@ export type Database = {
         | "time_limit"
         | "technical_failure"
         | "user_abandoned"
+        | "user_ended"
       workspace_status: "analyzing" | "ready" | "failed"
     }
     CompositeTypes: {
@@ -1615,6 +1623,7 @@ export const Constants = {
         "time_limit",
         "technical_failure",
         "user_abandoned",
+        "user_ended",
       ],
       workspace_status: ["analyzing", "ready", "failed"],
     },

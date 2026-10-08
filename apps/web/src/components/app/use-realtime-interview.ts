@@ -531,6 +531,22 @@ export function useRealtimeInterview(interviewId: string, media: InterviewMedia)
     setTimeUp(false);
     dispatchMachine({ type: "resume" });
   }, []);
+  /**
+   * The candidate is ending the interview. Tears down now rather than on the next render, so the
+   * final `disconnected` is in the outbox before it is flushed.
+   */
+  const closeForEnd = useCallback(() => {
+    dispatchMachine({ type: "close", reason: "stopped" });
+    teardown();
+  }, [teardown]);
+  /** Sends buffered turns and voice events, so the report is built from every saved answer. */
+  const flushOutbox = useCallback(async () => {
+    const outbox = outboxRef.current;
+    if (outbox) {
+      await drainTurns(outbox);
+      await outbox.flush();
+    }
+  }, []);
   /** The backend terminated the interview (third integrity warning). */
   const terminate = useCallback(() => dispatchMachine({ type: "close", reason: "terminated" }), []);
   /** The backend completed the interview without this session's relay seeing it (event stream). */
@@ -581,6 +597,8 @@ export function useRealtimeInterview(interviewId: string, media: InterviewMedia)
     stop,
     pause,
     resume,
+    closeForEnd,
+    flushOutbox,
     terminate,
     end,
     confirmTurn,

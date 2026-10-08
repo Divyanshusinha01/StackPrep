@@ -54,7 +54,7 @@ export function InterviewHistoryRow({ interview }: { interview: InterviewHistory
             Transcript
           </Link>
         ) : null}
-        <InterviewStatusBadge status={interview.status} />
+        <InterviewStatusBadge status={interview.status} terminationReason={interview.termination_reason} />
       </span>
     </li>
   );

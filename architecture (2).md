@@ -541,6 +541,7 @@ POST   /interviews/:id/tool-calls
 POST   /interviews/:id/integrity/frames
 POST   /interviews/:id/pause
 POST   /interviews/:id/resume
+POST   /interviews/:id/end
 GET    /interviews/:id/report
 ```
 
@@ -549,6 +550,13 @@ GET    /interviews/:id/report
 `POST /interviews/:id/pause` is the candidate's **Stop interview** (PRD §21), sent only after a UI confirmation. The service-role function `pause_interview` (migration `20261008120000_voluntary_pause.sql`) moves an `in_progress` interview to `paused`, sets `paused_at`, increments `pause_count` (at most 3, otherwise `409 pause_limit_reached`), writes a `pause` event with `{ "reason": "user" }`, and, if a voice segment is open, closes it with a server-side `disconnected` so voice time stops even if the browser never reports its own. It returns `{ status: "paused", pauses_left, resume_by }`; repeating it while paused returns the same deadline. While paused, `POST /realtime/session` returns `409 interview_paused`, and tool calls and integrity frames are refused because they require `in_progress`.
 
 `POST /interviews/:id/resume` (function `resume_interview`) moves a paused interview back to `in_progress` and writes a `resume` event, after which the browser opens a new voice session that resumes from the persisted state like any reconnect. If more than 1 hour has passed since `paused_at`, it instead terminates the interview with `termination_reason = 'user_abandoned'` and a `termination` event, and returns `409 pause_expired`. Expiry is checked lazily on resume. Until then, an expired pause stays `paused` in the database, and the history UI shows it as expired.
+
+`POST /interviews/:id/end` is the candidate's **End interview** (PRD §21), sent only after a UI confirmation, from the live room or the paused screen. Before calling it, the browser closes the voice session and flushes its transcript outbox, so buffered turns are stored before the report job reads them (`/events` also accepts turns after the interview ends). The service-role function `end_interview_by_user` (migrations `20261008140000_user_ended_reason.sql` and `20261008140100_user_end_interview.sql`) takes the per-interview advisory lock and accepts `in_progress` or `paused` interviews. It closes any open voice segment with a server-side `disconnected` (`{ "source": "user_end" }`), then:
+
+- with at least one row in `evaluations`, sets `completed` with `termination_reason = 'user_ended'`, clears `paused_at`, and writes a `completion` event `{ "reason": "user_ended" }`. The handler records voice duration estimates for the closed segment and queues report generation through the same `requestReport` path as the voice cap. It returns `201 { status: "completed", report: true }`.
+- with no evaluation, sets `terminated` with `termination_reason = 'user_abandoned'` and writes a `termination` event `{ "reason": "user_abandoned", "source": "user_end" }`. No report is queued. It returns `201 { status: "terminated", report: false }`.
+
+Repeating the call on a completed interview, or one already terminated as `user_abandoned`, writes nothing and answers `200` with the same shape. Any other state (not started, or ended some other way) returns `409 interview_not_active`. Tool calls, integrity frames, and voice sessions need no extra guard, because they all require `in_progress`.
 
 `POST /interviews/:id/integrity/frames` accepts one low-detail camera frame (about every 10 seconds), sends it to the vision model, stores only the detected signal, and returns any warning to show. Frames are never persisted.
 
@@ -876,7 +884,7 @@ Evaluations, coverage updates (via the `update_interview_state` database functio
 
 `end_interview` is a request, not a command: the backend checks completion criteria (sufficient evidence or the ~30-minute target) before marking the interview `completed`. If accepted, it returns guidance for the interviewer to deliver a closing statement, then emits a `completion` event and triggers report generation. If rejected, it returns guidance to continue.
 
-The candidate cannot voluntarily end the interview. They can pause it, but only through the authenticated, UI-confirmed `POST /interviews/:id/pause` (PRD §21), never through spoken intent; no Realtime tool can pause. If a user-initiated early exit is added later, it must follow the same rule.
+The candidate can pause or end the interview only through the authenticated, UI-confirmed `POST /interviews/:id/pause` and `POST /interviews/:id/end` (PRD §21), never through spoken intent. No Realtime tool can pause, and `end_interview` stays the interviewer's request, checked against completion criteria.
 
 ### Transcript persistence
 

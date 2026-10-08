@@ -1,4 +1,5 @@
 import {
+  endInterviewResponseSchema,
   INITIAL_INTERVIEW_STREAM_CURSOR,
   type IntegrityFrameResponse,
   integrityFrameRequestSchema,
@@ -150,6 +151,12 @@ export interface PauseResult {
 
 export type ResumeResult = "resumed" | "already_active" | "expired" | "not_active";
 
+export interface EndResult {
+  status: "completed" | "no_report" | "already_completed" | "already_terminated" | "not_active";
+  /** Sequence of the `disconnected` written to close an open voice segment. */
+  disconnectedSequence: number | null;
+}
+
 /**
  * Service-role reads of hidden state. Every call is keyed by ids taken from an interview the
  * caller has already been shown to own.
@@ -166,6 +173,7 @@ export interface InterviewStore extends ToolStore, IntegrityStore {
   recordVoiceEvent(event: VoiceEventRecord): Promise<RecordResult>;
   pauseInterview(interviewId: string, userId: string): Promise<PauseResult>;
   resumeInterview(interviewId: string, userId: string): Promise<ResumeResult>;
+  endInterview(interviewId: string, userId: string): Promise<EndResult>;
 }
 
 export interface InterviewsHandlerOptions {
@@ -350,6 +358,15 @@ export function createInterviewStore(serviceClient: SupabaseClient): InterviewSt
       check("resume interview", error);
       return (data as { status: ResumeResult }).status;
     },
+    async endInterview(interviewId, userId) {
+      const { data, error } = await serviceClient.rpc("end_interview_by_user", {
+        p_interview_id: interviewId,
+        p_user_id: userId,
+      }).single();
+      check("end interview", error);
+      const row = data as { status: EndResult["status"]; disconnected_sequence: number | null };
+      return { status: row.status, disconnectedSequence: row.disconnected_sequence };
+    },
     async reserveIntegrityCheck(interviewId, userId) {
       const { data, error } = await serviceClient.rpc("reserve_integrity_check", {
         p_interview_id: interviewId,
@@ -409,6 +426,7 @@ const REPORT_RETRY_ROUTE = /\/interviews\/([^/]+)\/report\/retry\/?$/;
 const FRAMES_ROUTE = /\/interviews\/([^/]+)\/integrity\/frames\/?$/;
 const PAUSE_ROUTE = /\/interviews\/([^/]+)\/pause\/?$/;
 const RESUME_ROUTE = /\/interviews\/([^/]+)\/resume\/?$/;
+const END_ROUTE = /\/interviews\/([^/]+)\/end\/?$/;
 
 /** Body bytes allowed for one frame request: the data URL cap plus JSON framing. */
 const FRAME_BODY_MAX_BYTES = INTEGRITY_FRAME_MAX_CHARS + 1024;
@@ -916,6 +934,42 @@ export function createInterviewsHandler({
     return json(body, { status: 200, headers: cors.headers });
   }
 
+  /**
+   * Candidate ends the interview from the room or the paused screen. With an evaluated answer it
+   * is completed and a report is queued; otherwise it is terminated with no report. Repeating it
+   * after the interview ended answers with the same outcome and writes nothing.
+   */
+  async function endInterview(req: Request, id: string): Promise<Response> {
+    const ctx = await authenticate(req);
+    if (!ctx) {
+      return apiError("unauthorized", cors);
+    }
+    if (!interviewIdParamSchema.safeParse(id).success) {
+      return apiError("interview_not_found", cors);
+    }
+    const interview = await reader(ctx.supabase).getInterview(id);
+    if (!interview) {
+      return apiError("interview_not_found", cors);
+    }
+
+    const result = await store.endInterview(interview.id, ctx.user.id);
+    if (result.status === "not_active") {
+      return apiError("interview_not_active", cors);
+    }
+    if (result.disconnectedSequence !== null) {
+      await recordVoiceEstimates(interview, ctx.user.id, { bySequence: result.disconnectedSequence });
+    }
+    if (result.status === "completed") {
+      await queueReport(interview, ctx.user.id);
+    }
+    const completed = result.status === "completed" || result.status === "already_completed";
+    const body = endInterviewResponseSchema.parse(
+      completed ? { status: "completed", report: true } : { status: "terminated", report: false },
+    );
+    const created = result.status === "completed" || result.status === "no_report";
+    return json(body, { status: created ? 201 : 200, headers: cors.headers });
+  }
+
   /** Accepted after the interview ends too, so turns buffered during a drop are not lost. */
   async function recordEvent(req: Request, id: string): Promise<Response> {
     const ctx = await authenticate(req);
@@ -1025,6 +1079,7 @@ export function createInterviewsHandler({
       { pattern: FRAMES_ROUTE, method: "POST", run: submitFrame },
       { pattern: PAUSE_ROUTE, method: "POST", run: pauseInterview },
       { pattern: RESUME_ROUTE, method: "POST", run: resumeInterview },
+      { pattern: END_ROUTE, method: "POST", run: endInterview },
     ] as const;
     let id: string | null = null;
     const candidates: (typeof routes)[number][] = [];

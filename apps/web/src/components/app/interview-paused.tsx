@@ -2,6 +2,8 @@
 
 import Link from "next/link";
 import { Loader2, Pause } from "lucide-react";
+import { NO_REPORT_MESSAGE } from "@/components/app/end-interview";
+import { type EndControl, useEndInterviewConfirm } from "@/components/app/end-interview-control";
 import { Notice } from "@/components/app/notice";
 import { Button } from "@/components/ui/button";
 
@@ -11,13 +13,15 @@ export function formatResumeBy(resumeBy: string): string {
   return timeFormat.format(new Date(resumeBy));
 }
 
-/** Shown after the candidate pauses: when to come back, and the way back in. */
+/** Shown after the candidate pauses: when to come back, and the way back in or out. */
 export function InterviewPaused({
   resumeBy,
   pausesLeft,
   busy,
   error,
   ended,
+  endedWithoutReport,
+  endControl,
   workspaceId,
   onResume,
 }: {
@@ -27,9 +31,14 @@ export function InterviewPaused({
   error: string | null;
   /** The interview can no longer be resumed. */
   ended: boolean;
+  /** The candidate ended it before any answer was evaluated. */
+  endedWithoutReport: boolean;
+  /** Candidate ends the interview with a report; null once it has ended. */
+  endControl: EndControl | null;
   workspaceId: string;
   onResume: () => void;
 }) {
+  const ending = useEndInterviewConfirm(endControl, busy);
   return (
     <section aria-labelledby="interview-paused" className="mt-6 rounded-md border border-border bg-panel/60 p-6">
       <h2 id="interview-paused" className="flex items-center gap-2 text-base font-medium">
@@ -48,13 +57,16 @@ export function InterviewPaused({
         {pausesLeft === 0 ? "This was your last pause." : `${pausesLeft} more ${pausesLeft === 1 ? "pause" : "pauses"} left.`}
       </p>
       {error ? <Notice tone="error">{error}</Notice> : null}
+      {endedWithoutReport ? <Notice tone="info">{NO_REPORT_MESSAGE}</Notice> : null}
+      {ending.panel}
       <div className="mt-4 flex flex-wrap gap-3">
         {ended ? null : (
-          <Button onClick={onResume} disabled={busy}>
-            {busy ? <Loader2 className="size-4 animate-spin" aria-hidden /> : null}
+          <Button onClick={onResume} disabled={busy || ending.confirming}>
+            {busy && !endControl?.busy ? <Loader2 className="size-4 animate-spin" aria-hidden /> : null}
             Resume interview
           </Button>
         )}
+        {ending.button}
         <Button asChild variant="outline">
           <Link href={`/workspaces/${workspaceId}`}>Back to workspace</Link>
         </Button>

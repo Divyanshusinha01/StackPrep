@@ -3,6 +3,7 @@ import { apiErrorCodeSchema } from "./github.ts";
 import {
   advanceInterviewInputSchema,
   endInterviewInputSchema,
+  endInterviewResponseSchema,
   evaluateAnswerOutputSchema,
   evidenceExaminedPayloadSchema,
   formatInterviewStreamCursor,
@@ -57,6 +58,16 @@ describe("realtimeSessionResponseSchema", () => {
     ["a negative resume sequence", { ...session, resume: { last_turn_sequence: -1, current_question: null } }],
   ])("rejects %s", (_label, body) => {
     expect(realtimeSessionResponseSchema.safeParse(body).success).toBe(false);
+  });
+});
+
+describe("endInterviewResponseSchema", () => {
+  it("pairs a completed interview with a report and a terminated one without", () => {
+    expect(endInterviewResponseSchema.parse({ status: "completed", report: true })).toEqual({ status: "completed", report: true });
+    expect(endInterviewResponseSchema.parse({ status: "terminated", report: false }).report).toBe(false);
+    expect(endInterviewResponseSchema.safeParse({ status: "completed", report: false }).success).toBe(false);
+    expect(endInterviewResponseSchema.safeParse({ status: "terminated", report: true }).success).toBe(false);
+    expect(endInterviewResponseSchema.safeParse({ status: "paused", report: false }).success).toBe(false);
   });
 });
 

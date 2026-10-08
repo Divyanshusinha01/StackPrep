@@ -184,6 +184,7 @@ function setup({
     recordIntegritySignal: () => Promise.reject(new Error("unused")),
     pauseInterview: () => Promise.reject(new Error("unused")),
     resumeInterview: () => Promise.reject(new Error("unused")),
+    endInterview: () => Promise.reject(new Error("unused")),
   };
   const fakeAI = createFakeAIProvider(ai);
   const jobs = createFakeJobQueue();

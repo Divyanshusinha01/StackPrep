@@ -101,6 +101,7 @@ const interviewRowSchema = interviewHistoryItemSchema.extend({
   repository_commit_sha: gitCommitShaSchema,
   paused_at: z.string().nullable(),
   pause_count: z.int().min(0),
+  termination_reason: z.string().nullable(),
   workspace: workspaceSchema.pick({}).extend({ repository: workspaceRepositorySchema.pick({ full_name: true }) }),
 });
 
@@ -124,7 +125,7 @@ export async function getInterview(id: string): Promise<InterviewDetail | null> 
       .from("interviews")
       .select(
         "id, workspace_id, interview_number, status, started_at, ended_at, created_at, repository_commit_sha, " +
-          "paused_at, pause_count, " +
+          "paused_at, pause_count, termination_reason, " +
           "workspace:workspaces!interviews_workspace_id_user_id_fkey" +
           "(repository:repositories!workspaces_repository_id_user_id_fkey(full_name))",
       )

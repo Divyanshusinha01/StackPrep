@@ -121,6 +121,7 @@ function setup({
     recordIntegritySignal: unused,
     pauseInterview: unused,
     resumeInterview: unused,
+    endInterview: unused,
   };
   const handler = createInterviewsHandler({
     webOrigin,

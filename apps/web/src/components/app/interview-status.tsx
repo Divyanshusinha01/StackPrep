@@ -10,7 +10,23 @@ const LABELS: Record<InterviewStatus, string> = {
   failed: "Failed",
 };
 
-export function InterviewStatusBadge({ status }: { status: InterviewStatus }) {
+function label(status: InterviewStatus, terminationReason: string | null | undefined): string {
+  if (status === "completed" && terminationReason === "user_ended") {
+    return "Ended by you";
+  }
+  if (status === "terminated" && terminationReason === "user_abandoned") {
+    return "Ended, no report";
+  }
+  return LABELS[status];
+}
+
+export function InterviewStatusBadge({
+  status,
+  terminationReason,
+}: {
+  status: InterviewStatus;
+  terminationReason?: string | null;
+}) {
   return (
     <span
       className={cn(
@@ -21,7 +37,7 @@ export function InterviewStatusBadge({ status }: { status: InterviewStatus }) {
         (status === "terminated" || status === "failed") && "border-red-500/30 text-red-300",
       )}
     >
-      {LABELS[status]}
+      {label(status, terminationReason)}
     </span>
   );
 }

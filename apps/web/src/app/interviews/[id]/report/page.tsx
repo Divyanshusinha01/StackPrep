@@ -101,7 +101,7 @@ export default async function InterviewReportPage({ params, searchParams }: Page
       </Link>
       <div className="mt-3 flex flex-wrap items-center gap-3">
         <h1 className="font-display text-2xl font-semibold tracking-tight">Interview {interview.interview_number} report</h1>
-        <InterviewStatusBadge status={interview.status} />
+        <InterviewStatusBadge status={interview.status} terminationReason={interview.termination_reason} />
       </div>
 
       {completed ? (

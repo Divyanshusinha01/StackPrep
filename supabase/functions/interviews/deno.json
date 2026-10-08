@@ -1,10 +1,12 @@
 {
   "imports": {
     "@sentry/deno": "npm:@sentry/deno@^11.4.0",
+    "@stackprep/code-parser": "../../../packages/code-parser/src/index.ts",
     "@stackprep/shared": "../../../packages/shared/src/index.ts",
     "@std/assert": "jsr:@std/assert@^1",
     "@supabase/supabase-js": "npm:@supabase/supabase-js@^2.117.2",
     "inngest": "npm:inngest@^4.21.1",
+    "web-tree-sitter": "npm:web-tree-sitter@0.27.0",
     "zod": "npm:zod@^4.6.5"
   }
 }

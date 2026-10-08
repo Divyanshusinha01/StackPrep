@@ -249,6 +249,32 @@ export async function recordTranscript(
   }
 }
 
+/** An evaluation of the newest stored candidate turn, as `evaluate_answer` writes it. */
+export async function recordEvaluation(admin: AdminClient, user: TestUser, interviewId: string): Promise<void> {
+  const message = must(
+    "load candidate turn",
+    await admin
+      .from("interview_messages")
+      .select("id")
+      .eq("interview_id", interviewId)
+      .eq("role", "user")
+      .order("sequence", { ascending: false })
+      .limit(1)
+      .single(),
+  );
+  check(
+    "insert evaluation",
+    await admin.from("evaluations").insert({
+      interview_id: interviewId,
+      user_id: user.id,
+      message_id: message.id,
+      category: "architecture",
+      score: 4,
+      rating: "proficient",
+    }),
+  );
+}
+
 /** A first `connected` voice event moves the interview to in_progress (`record_voice_event`). */
 export async function markConnected(admin: AdminClient, user: TestUser, interviewId: string): Promise<void> {
   check(

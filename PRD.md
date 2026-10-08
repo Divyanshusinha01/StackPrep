@@ -538,6 +538,16 @@ The user can stop the interview with a **Stop interview** button and continue it
 - The user can resume from the interview page or from a **Resume** link in interview history. Resuming goes through the camera and microphone check again, then the interviewer picks up from the last answer.
 - Integrity monitoring is suspended while paused and starts again once the voice session reconnects.
 
+### Ending the interview
+
+The user can end the interview early with an **End interview** button, next to **Stop interview** in the live room and on the paused screen.
+
+- Ending requires an explicit confirmation in the UI ("Your report will be generated from the answers so far. This can't be undone."). Spoken intent never ends the interview.
+- It cannot be undone; the interview cannot be resumed afterwards.
+- If at least one answer has been evaluated, the interview is completed and the report is generated from the answers so far, the same way as when the AI finishes.
+- If no answer has been evaluated yet, there is nothing to report on: the interview ends as abandoned, with no report.
+- Ending does not count as a pause and does not use one up.
+
 ### Technical interruptions
 
 Technical interruptions such as these pause the interview automatically:
@@ -737,6 +747,8 @@ The AI may finish:
 The AI gives a clear closing statement before ending.
 
 The final report is then generated immediately.
+
+The user can also end the interview early with **End interview** (see [Ending the interview](#ending-the-interview)). The report is then generated from the answers so far, or not at all if no answer was evaluated.
 
 ---
 

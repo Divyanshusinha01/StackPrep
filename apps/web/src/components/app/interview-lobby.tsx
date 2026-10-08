@@ -3,6 +3,8 @@
 import Link from "next/link";
 import { Check, Circle, Loader2, Mic, Video } from "lucide-react";
 import type { InterviewPlanning, PlanningErrorCode } from "@stackprep/shared";
+import { NO_REPORT_MESSAGE } from "@/components/app/end-interview";
+import { type EndControl, useEndInterviewConfirm } from "@/components/app/end-interview-control";
 import { formatResumeBy } from "@/components/app/interview-paused";
 import { Notice } from "@/components/app/notice";
 import { type DeviceError, useDeviceCheck } from "@/components/app/use-device-check";
@@ -45,6 +47,10 @@ export interface LobbyResume {
   error: string | null;
   /** The pause can no longer be resumed. */
   ended: boolean;
+  /** The candidate ended it before any answer was evaluated. */
+  endedWithoutReport: boolean;
+  /** Candidate ends the interview with a report; null once it has ended. */
+  end: EndControl | null;
   workspaceId: string;
 }
 
@@ -65,8 +71,9 @@ export function InterviewLobby({
   const planReady = planning?.state === "succeeded";
   usePollWhile(preparing);
 
+  const ending = useEndInterviewConfirm(resume?.end ?? null, resume?.busy);
   const devicesOk = cameraOk && micOk;
-  const canEnter = devicesOk && planReady && !resume?.busy && !resume?.ended;
+  const canEnter = devicesOk && planReady && !resume?.busy && !resume?.ended && !ending.confirming;
 
   return (
     <div className="mt-6 grid gap-6 md:grid-cols-[minmax(0,1fr)_18rem]">
@@ -145,6 +152,9 @@ export function InterviewLobby({
               to continue where you left off.
             </p>
             {resume.error ? <Notice tone="error">{resume.error}</Notice> : null}
+            {resume.endedWithoutReport ? <Notice tone="info">{NO_REPORT_MESSAGE}</Notice> : null}
+            {ending.panel}
+            {ending.button ? <div className="mt-3">{ending.button}</div> : null}
             {resume.ended ? (
               <Button asChild variant="outline" size="sm" className="mt-3">
                 <Link href={`/workspaces/${resume.workspaceId}`}>Back to workspace</Link>
@@ -154,7 +164,7 @@ export function InterviewLobby({
         ) : null}
 
         <Button disabled={!canEnter} onClick={onEnter} size="lg">
-          {resume?.busy ? <Loader2 className="size-4 animate-spin" aria-hidden /> : null}
+          {resume?.busy && !resume.end?.busy ? <Loader2 className="size-4 animate-spin" aria-hidden /> : null}
           {resume ? "Resume interview" : "Enter interview"}
         </Button>
         <p className="text-xs text-muted-foreground">

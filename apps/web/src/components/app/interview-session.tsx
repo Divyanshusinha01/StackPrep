@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { type InterviewPlanning, type InterviewStreamEvent, PAUSE_RESUME_WINDOW_SECONDS } from "@stackprep/shared";
+import { endErrorMessage, endInterviewInOrder, NO_REPORT_MESSAGE } from "@/components/app/end-interview";
 import { InterviewLobby } from "@/components/app/interview-lobby";
 import { InterviewPaused } from "@/components/app/interview-paused";
 import { InterviewRoom } from "@/components/app/interview-room";
@@ -10,7 +11,7 @@ import { useIntegrityMonitor } from "@/components/app/use-integrity-monitor";
 import { useInterviewEvents } from "@/components/app/use-interview-events";
 import { useInterviewMedia } from "@/components/app/use-interview-media";
 import { useRealtimeInterview } from "@/components/app/use-realtime-interview";
-import { pauseInterview, resumeInterview } from "@/lib/interview-events";
+import { endInterview, pauseInterview, resumeInterview } from "@/lib/interview-events";
 
 const PREPARING_RETRY_MS = 4000;
 /** Leaves the closing notice on screen briefly before moving to the report. */
@@ -68,9 +69,13 @@ export function InterviewSession({
   const [pauseBusy, setPauseBusy] = useState(false);
   const [pauseError, setPauseError] = useState<string | null>(null);
   const [pauseEnded, setPauseEnded] = useState(false);
+  const [endBusy, setEndBusy] = useState(false);
+  const [endError, setEndError] = useState<string | null>(null);
+  /** The candidate ended the interview before any answer was evaluated. */
+  const [endedWithoutReport, setEndedWithoutReport] = useState(false);
 
   const { release } = media;
-  const over = ended || timeUp || terminated;
+  const over = ended || timeUp || terminated || endedWithoutReport;
   useEffect(() => {
     if (over) {
       release();
@@ -173,13 +178,49 @@ export function InterviewSession({
     }
   }, [interviewId, sessionPaused, reopenAfterPause, start]);
 
-  if (resumeBy && (sessionPaused || !entered)) {
+  const { closeForEnd, flushOutbox } = voice;
+  const onPausedScreen = Boolean(resumeBy) && (sessionPaused || !entered);
+  /** Candidate ends the interview: from the room it shows the closing notice, otherwise goes straight to the report. */
+  const endByCandidate = useCallback(async () => {
+    setEndBusy(true);
+    setEndError(null);
+    const result = await endInterviewInOrder({
+      closeVoice: closeForEnd,
+      flushOutbox,
+      requestEnd: () => endInterview(interviewId),
+    });
+    setEndBusy(false);
+    if (!result.ok) {
+      setEndError(endErrorMessage(result.code));
+      return;
+    }
+    release();
+    if (!result.body.report) {
+      setEndedWithoutReport(true);
+    } else if (onPausedScreen) {
+      router.push(`/interviews/${interviewId}/report`);
+    } else {
+      end();
+    }
+  }, [closeForEnd, flushOutbox, interviewId, release, onPausedScreen, router, end]);
+  const pausedEnd =
+    pauseEnded || endedWithoutReport ? null : { busy: endBusy, error: endError, onEnd: () => void endByCandidate() };
+
+  if (onPausedScreen && resumeBy) {
     if (!entered) {
       return (
         <InterviewLobby
           planning={planning}
           media={media}
-          resume={{ resumeBy, busy: pauseBusy, error: pauseError, ended: pauseEnded, workspaceId }}
+          resume={{
+            resumeBy,
+            busy: pauseBusy || endBusy,
+            error: pauseError,
+            ended: pauseEnded || endedWithoutReport,
+            endedWithoutReport,
+            end: pausedEnd,
+            workspaceId,
+          }}
           onEnter={() => void resume()}
         />
       );
@@ -188,9 +229,11 @@ export function InterviewSession({
       <InterviewPaused
         resumeBy={resumeBy}
         pausesLeft={pausesLeft}
-        busy={pauseBusy}
+        busy={pauseBusy || endBusy}
         error={pauseError}
-        ended={pauseEnded}
+        ended={pauseEnded || endedWithoutReport}
+        endedWithoutReport={endedWithoutReport}
+        endControl={pausedEnd}
         workspaceId={workspaceId}
         onResume={() => void resume()}
       />
@@ -210,7 +253,13 @@ export function InterviewSession({
     );
   }
   const canStop =
-    !over && !terminated && voice.clock !== null && (status === "live" || status === "reconnecting" || status === "error");
+    !over && !endBusy && voice.clock !== null && (status === "live" || status === "reconnecting" || status === "error");
+  const canEnd = !over && voice.clock !== null;
+  const termination = endedWithoutReport
+    ? NO_REPORT_MESSAGE
+    : terminated
+      ? (integrity.termination ?? "The interview was ended after a third integrity warning.")
+      : null;
   return (
     <InterviewRoom
       status={status}
@@ -220,12 +269,13 @@ export function InterviewSession({
       pauseReason={voice.pauseReason}
       resumed={voice.resumed}
       warning={integrity.warning}
-      termination={terminated ? (integrity.termination ?? "The interview was ended after a third integrity warning.") : null}
+      termination={termination}
       workspaceId={workspaceId}
       examining={voice.examining}
       clock={voice.clock}
       transcript={voice.transcript}
       stop={canStop ? { pausesLeft, busy: pauseBusy, error: pauseError, onStop: () => void stopInterview() } : null}
+      endControl={canEnd ? { busy: endBusy, error: endError, onEnd: () => void endByCandidate() } : null}
       onReconnect={voice.reconnect}
       onDismissWarning={integrity.dismissWarning}
     />
