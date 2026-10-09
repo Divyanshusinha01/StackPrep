@@ -40,19 +40,15 @@ export const inngestEnvSchema = z.object({
 
 export const openAIEnvSchema = z.object({
   OPENAI_API_KEY: secret,
-  OPENAI_PLANNING_MODEL: secret.default("gpt-5.6-terra"),
-  /** Scores answers during the live interview (evaluate_answer); latency matters. */
-  OPENAI_EVALUATION_MODEL: secret.default("gpt-5.6-terra"),
+  OPENAI_PLANNING_MODEL: secret.default("gpt-6.1-sol"),
+  
+  OPENAI_EVALUATION_MODEL: secret.default("gpt-6-luna"),
   OPENAI_REALTIME_MODEL: secret.default("gpt-realtime-2.1-mini"),
-  /** Transcribes the candidate's speech for the live transcript; the interviewer's own transcript is free. */
-  OPENAI_REALTIME_TRANSCRIPTION_MODEL: secret.default("gpt-4o-mini-transcribe"),
-  /** Checks one low-detail camera frame for integrity signals. */
-  OPENAI_VISION_MODEL: secret.default("gpt-5.6-luna"),
-  /**
-   * Embeds repository memory and search queries. Must natively produce
-   * REPOSITORY_MEMORY_EMBEDDING_DIMENSIONS-sized vectors: output is never truncated, and a
-   * mismatching model fails at runtime instead of writing embeddings.
-   */
+ 
+  OPENAI_REALTIME_TRANSCRIPTION_MODEL: secret.default("gpt-live-transcribe"),
+  
+  OPENAI_VISION_MODEL: secret.default("gpt-6-luna"),
+ 
   OPENAI_EMBEDDING_MODEL: secret.default("text-embedding-3-small"),
 });
 
