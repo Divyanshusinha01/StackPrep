@@ -145,7 +145,7 @@ Each task reads its model from an environment variable, so models can change wit
 | Task                                   | Model                        | Variable                 |
 | -------------------------------------- | ---------------------------- | ------------------------ |
 | Live voice interviewer                 | `gpt-realtime-2.1-mini`      | `OPENAI_REALTIME_MODEL`  |
-| Live candidate speech transcription    | `gpt-live-transcribe`        | `OPENAI_REALTIME_TRANSCRIPTION_MODEL` |
+| Live candidate speech transcription    | `gpt-4o-mini-transcribe`     | `OPENAI_REALTIME_TRANSCRIPTION_MODEL` |
 | Interview planning                     | `gpt-6.1-sol`                | `OPENAI_PLANNING_MODEL`  |
 | Deep analysis                          | `gpt-6.1-sol`                | `OPENAI_PLANNING_MODEL`  |
 | Answer evaluation, report generation   | `gpt-6-luna`                 | `OPENAI_EVALUATION_MODEL` |
@@ -155,6 +155,8 @@ Each task reads its model from an environment variable, so models can change wit
 Planning and evaluation keep separate variables, so either can change on its own. Evaluation and vision use the same model today but also keep separate variables.
 
 The transcription model is set on the Realtime session when the backend mints the credential. It transcribes only the candidate's speech for the persisted transcript; the interviewer's own transcript comes from the voice model.
+
+The transcription model must be supported as input transcription inside a WebRTC Realtime voice session with `server_vad`. `gpt-4o-mini-transcribe` is, but OpenAI removes it on **Feb 26, 2027**. Its recommended replacements do not fit this session: `gpt-live-transcribe` runs only in a dedicated transcription session (`type: "transcription"`) with `turn_detection: null`, and `gpt-transcribe` runs inside a Realtime session only over WebSocket. Migrating therefore needs a second, transcription-only WebRTC session on the same microphone track, committed on the voice session's `speech_stopped`, with its item ids mapped back to the voice session's turns. That design is not yet adopted.
 
 Deep analysis is a single structured call per analyzed commit and reuses `OPENAI_PLANNING_MODEL` rather than adding its own variable. Its token usage is persisted to `ai_usage` with task `deep_analysis` and no interview, like every other AI call (see [Usage tracking](#usage-tracking)).
 
@@ -191,7 +193,7 @@ Text and vision calls (planning, deep analysis, report, answer evaluation, integ
 Voice usage belongs to a **voice segment**: the connected time opened by a `connected` interview event and closed by the next `disconnected` or `connected`, using the same pairing as voice time.
 
 - **Relayed usage.** The browser relays each Realtime `response.done` usage through `POST /interviews/:id/events` as a `voice_usage` event (`client_event_id`, `response_id`, text and audio input / cached-input / output tokens). The backend stores it as a `client_reported` row for the server's `OPENAI_REALTIME_MODEL`, linked to the open segment, idempotent on `client_event_id`, with each count capped and cached counts never above input. Usage relayed while no segment is open is rejected with `409 voice_not_connected`.
-- **Duration estimate.** When a segment closes (a `disconnected`, a `connected` that implies a missed disconnect, or the 35-minute limit completing the interview), the backend writes two `duration_estimate` rows keyed by the segment, so each segment is estimated once: the realtime model, priced from `ESTIMATED_REALTIME_AUDIO_TOKENS_PER_SECOND`, and the transcription model, priced per minute (`TRANSCRIPTION_ESTIMATED_USD_PER_MINUTE`, $0.017/min for `gpt-live-transcribe`) with no token counts.
+- **Duration estimate.** When a segment closes (a `disconnected`, a `connected` that implies a missed disconnect, or the 35-minute limit completing the interview), the backend writes two `duration_estimate` rows keyed by the segment, so each segment is estimated once: the realtime model, priced from `ESTIMATED_REALTIME_AUDIO_TOKENS_PER_SECOND`, and the transcription model, priced per minute (`TRANSCRIPTION_ESTIMATED_USD_PER_MINUTE`, $0.003/min for `gpt-4o-mini-transcribe`) with no token counts.
 
 The view `ai_usage_effective` applies the reconciliation rule without changing raw rows. Non-voice rows pass through. For voice, per segment and model, it uses `provider` rows if any exist, else `client_reported` rows, else the `duration_estimate` row, flagged `is_estimate`. So relayed usage supersedes the realtime estimate, while the transcription estimate stands until provider-side transcription usage exists. The superseded estimate stays in `ai_usage` as the cross-check for client-reported numbers.
 

@@ -44,8 +44,12 @@ export const openAIEnvSchema = z.object({
   /** Scores answers during the live interview (evaluate_answer); latency matters. */
   OPENAI_EVALUATION_MODEL: secret.default("gpt-6-luna"),
   OPENAI_REALTIME_MODEL: secret.default("gpt-realtime-2.1-mini"),
-  /** Transcribes the candidate's speech for the live transcript; the interviewer's own transcript is free. */
-  OPENAI_REALTIME_TRANSCRIPTION_MODEL: secret.default("gpt-live-transcribe"),
+  /**
+   * Transcribes the candidate's speech for the live transcript; the interviewer's own transcript is free.
+   * Must be supported inside a WebRTC Realtime voice session with server_vad: gpt-live-transcribe and
+   * gpt-transcribe are not.
+   */
+  OPENAI_REALTIME_TRANSCRIPTION_MODEL: secret.default("gpt-4o-mini-transcribe"),
   /** Checks one low-detail camera frame for integrity signals. */
   OPENAI_VISION_MODEL: secret.default("gpt-6-luna"),
   /**
