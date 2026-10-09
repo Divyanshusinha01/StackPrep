@@ -50,6 +50,8 @@ export interface ModelPrice {
 }
 
 export const AI_PRICES: Readonly<Record<string, ModelPrice>> = {
+  "gpt-6.1-sol": { text: { input: 2.0, cachedInput: 0.1, output: 10.0 } },
+  "gpt-6-luna": { text: { input: 0.1, cachedInput: 0.01, output: 0.5 } },
   "gpt-5.6-terra": { text: { input: 2.0, cachedInput: 0.2, output: 12.0 } },
   "gpt-5.6-luna": { text: { input: 0.2, cachedInput: 0.02, output: 1.2 } },
   "gpt-realtime-2.1-mini": {
@@ -63,6 +65,7 @@ export const AI_PRICES: Readonly<Record<string, ModelPrice>> = {
 
 /** Per-minute estimate for transcription, used when no token counts are available. */
 export const TRANSCRIPTION_ESTIMATED_USD_PER_MINUTE: Readonly<Record<string, number>> = {
+  "gpt-live-transcribe": 0.017,
   "gpt-4o-mini-transcribe": 0.003,
 };
 

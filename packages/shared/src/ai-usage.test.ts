@@ -18,6 +18,17 @@ describe("estimateCostUsd", () => {
     expect(cost).toBeCloseTo(2.48, 10);
   });
 
+  it("prices the default planning and evaluation models", () => {
+    // gpt-6.1-sol: 600k * 2.00 + 400k * 0.10 + 100k * 10.00 = 1.20 + 0.04 + 1.00
+    expect(
+      estimateCostUsd("gpt-6.1-sol", { input_tokens: 1_000_000, cached_input_tokens: 400_000, output_tokens: 100_000 }),
+    ).toBeCloseTo(2.24, 10);
+    // gpt-6-luna: 600k * 0.10 + 400k * 0.01 + 100k * 0.50 = 0.06 + 0.004 + 0.05
+    expect(
+      estimateCostUsd("gpt-6-luna", { input_tokens: 1_000_000, cached_input_tokens: 400_000, output_tokens: 100_000 }),
+    ).toBeCloseTo(0.114, 10);
+  });
+
   it("prices text and audio buckets separately with cached subtraction in each", () => {
     // text: 10k * 0.60 + 0 cached + 2k * 2.40 = 0.006 + 0.0048
     // audio: (50k - 20k) * 10.00 + 20k * 0.30 + 10k * 20.00 = 0.30 + 0.006 + 0.20
@@ -68,6 +79,7 @@ describe("estimateTranscriptionCostUsd", () => {
   it("charges the per-minute rate pro rata", () => {
     expect(estimateTranscriptionCostUsd("gpt-4o-mini-transcribe", 600)).toBeCloseTo(0.03, 10);
     expect(estimateTranscriptionCostUsd("gpt-4o-mini-transcribe", 90)).toBeCloseTo(0.0045, 10);
+    expect(estimateTranscriptionCostUsd("gpt-live-transcribe", 600)).toBeCloseTo(0.17, 10);
   });
 
   it("returns null for a model without a per-minute rate", () => {

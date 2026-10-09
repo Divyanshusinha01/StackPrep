@@ -13,14 +13,14 @@
 | **Background jobs** | **Inngest**                  | Durable serverless jobs; free tier, no card required |
 | AI                  | **OpenAI API**               | LLM + voice + vision                                 |
 | Voice model         | **`gpt-realtime-2.1-mini`** (configurable) | Voice is ~90% of AI cost; mini keeps a 30-min interview cheap while the backend does the heavy reasoning |
-| Transcription model | **`gpt-4o-mini-transcribe`** (configurable via `OPENAI_REALTIME_TRANSCRIPTION_MODEL`) | Transcribes only the candidate's speech in the Realtime session; the interviewer's transcript comes free from the voice model |
-| Text models         | **`gpt-5.6-terra`** for planning, answer evaluation, report, and deep analysis (deep analysis reuses `OPENAI_PLANNING_MODEL`; all configurable per task) | One stronger model for everything users judge; `gpt-5.6-luna` is used only for vision |
+| Transcription model | **`gpt-live-transcribe`** (configurable via `OPENAI_REALTIME_TRANSCRIPTION_MODEL`) | Transcribes only the candidate's speech in the Realtime session; the interviewer's transcript comes free from the voice model |
+| Text models         | **`gpt-6.1-sol`** for planning and deep analysis (deep analysis reuses `OPENAI_PLANNING_MODEL`); **`gpt-6-luna`** for answer evaluation and the report (`OPENAI_EVALUATION_MODEL`); all configurable per task | The stronger model prepares the interview once per run; the faster, cheaper model scores answers while the candidate waits and writes the report |
 | Embeddings          | **`text-embedding-3-small`** (configurable via `OPENAI_EMBEDDING_MODEL`) | Embeds repository memory rows and `search_repository` queries for pgvector retrieval. The model must natively output the 1536 dimensions the `vector(1536)` column requires; output is never truncated implicitly |
 | Voice               | **OpenAI Realtime API over WebRTC** | No separate voice provider; browser connects directly to OpenAI for audio |
 | Voice credentials   | **Ephemeral Realtime credential minted by Edge Function** | `OPENAI_API_KEY` stays server-side; browser only gets a short-lived credential |
 | Application communication | **HTTP + SSE**         | HTTP for commands/state. SSE (`GET /interviews/:id/events`, fetch-based reader with a composite `Last-Event-ID` cursor) for interview events: `interview_status`, `turn_persisted`, `report_ready`. 4 s polling (`use-poll-while.ts`) for analysis progress, lobby readiness, and pending reports, and as the fallback when the stream fails |
 | Transcript storage  | **Supabase PostgreSQL (canonical)** | OpenAI Realtime runs the live session; StackPrep persists the interview record |
-| Vision              | **`gpt-5.6-luna`, 1 low-detail frame every 10 s** | No CV infrastructure; frames are analyzed and discarded |
+| Vision              | **`gpt-6-luna`, 1 low-detail frame every 10 s** | No CV infrastructure; frames are analyzed and discarded |
 | GitHub              | **GitHub App**               | Secure repository access                             |
 | Parsing             | **Tree-sitter (`web-tree-sitter` WASM)** via `packages/code-parser`, plus rule-based baseline extraction | Syntactic code facts (symbols, imports, calls) for TypeScript/TSX, JavaScript/JSX, Python, Java and Go; runs in the Inngest Edge Function, verified on hosted Supabase Edge. The rule-based extractor still produces the baseline and covers files Tree-sitter does not parse |
 | Validation          | **Zod**                      | Lightweight schema validation                        |
