@@ -102,6 +102,11 @@ describe("integration env schemas", () => {
       OPENAI_REALTIME_TRANSCRIPTION_MODEL: "gpt-4o-mini-transcribe",
       OPENAI_VISION_MODEL: "gpt-6-luna",
       OPENAI_EMBEDDING_MODEL: "text-embedding-3-small",
+      OPENAI_REPORT_MODEL: "gpt-6-luna",
+      OPENAI_PLANNING_REASONING_EFFORT: "medium",
+      OPENAI_EVALUATION_REASONING_EFFORT: "low",
+      OPENAI_REPORT_REASONING_EFFORT: "low",
+      OPENAI_VISION_REASONING_EFFORT: "low",
     });
     expect(
       parseEnv("openai", openAIEnvSchema, { OPENAI_API_KEY: "sk-test", OPENAI_VISION_MODEL: "gpt-vision" })
@@ -118,6 +123,16 @@ describe("integration env schemas", () => {
     expect(() =>
       parseEnv("openai", openAIEnvSchema, { OPENAI_API_KEY: "sk-test", OPENAI_PLANNING_MODEL: " " })
     ).toThrowError(/OPENAI_PLANNING_MODEL/);
+  });
+
+  it("accepts per-task reasoning effort and rejects unknown values", () => {
+    expect(
+      parseEnv("openai", openAIEnvSchema, { OPENAI_API_KEY: "sk-test", OPENAI_EVALUATION_REASONING_EFFORT: "default" })
+        .OPENAI_EVALUATION_REASONING_EFFORT,
+    ).toBe("default");
+    expect(() =>
+      parseEnv("openai", openAIEnvSchema, { OPENAI_API_KEY: "sk-test", OPENAI_PLANNING_REASONING_EFFORT: "max" })
+    ).toThrowError(/OPENAI_PLANNING_REASONING_EFFORT/);
   });
 
   it("defaults the embedding model and rejects an empty one", () => {

@@ -11,7 +11,7 @@ import { initSentry, withSentry } from "../_shared/sentry.ts";
 import { createInterviewReader, createInterviewsHandler, createInterviewStore } from "./handler.ts";
 import { createReportJobStore } from "./report-request.ts";
 
-/** evaluate_answer runs while the candidate waits for the interviewer to speak. */
+/** Fallback only: evaluate_answer and frame checks set their own per-attempt timeouts and retries. */
 const EVALUATION_TIMEOUT_MS = 20_000;
 
 initSentry("interviews");
@@ -52,9 +52,11 @@ Deno.serve(withSentry(
     }),
     ai: createOpenAIProvider({ apiKey: env.OPENAI_API_KEY, timeoutMs: EVALUATION_TIMEOUT_MS }),
     evaluationModel: env.OPENAI_EVALUATION_MODEL,
+    evaluationReasoningEffort: env.OPENAI_EVALUATION_REASONING_EFFORT,
     // No provider timeout: search_repository bounds the whole vector fill with one shared deadline.
     embeddings: { provider: createOpenAIEmbeddingProvider({ apiKey: env.OPENAI_API_KEY }), model: env.OPENAI_EMBEDDING_MODEL },
     visionModel: env.OPENAI_VISION_MODEL,
+    visionReasoningEffort: env.OPENAI_VISION_REASONING_EFFORT,
     jobs: createInngestJobQueue(createInngestClient(env)),
     reportJobs: createReportJobStore(serviceClient),
   }),

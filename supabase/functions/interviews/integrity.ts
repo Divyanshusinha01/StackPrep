@@ -1,8 +1,12 @@
 import type { IntegritySignalKind } from "@stackprep/shared";
 import { z } from "zod";
-import type { AIProvider, AIUsage } from "../_shared/ai/provider.ts";
+import type { AIProvider, AIUsage, ReasoningEffort } from "../_shared/ai/provider.ts";
 
-const MAX_OUTPUT_TOKENS = 200;
+/** Includes reasoning tokens; observed checks use up to about 160. */
+const MAX_OUTPUT_TOKENS = 400;
+/** Two attempts plus the retry pause stay under the 20 s the single attempt used to get. */
+const AI_TIMEOUT_MS = 9_000;
+const AI_RETRIES = 1;
 
 /** Strict and fully required, so it doubles as the OpenAI structured-output schema. */
 export const integrityAnalysisSchema = z.strictObject({
@@ -61,6 +65,7 @@ export interface IntegrityStore {
 export interface FrameAnalysisContext {
   ai: AIProvider;
   model: string;
+  reasoningEffort?: ReasoningEffort;
   log: (entry: Record<string, string | number | boolean>) => void;
   /** Persists the call's usage. Must not throw. */
   recordUsage: (usage: AIUsage) => Promise<unknown>;
@@ -79,6 +84,10 @@ export async function analyzeFrame(ctx: FrameAnalysisContext, image: string): Pr
     schemaName: "integrity_signal",
     schema: integrityAnalysisSchema,
     maxOutputTokens: MAX_OUTPUT_TOKENS,
+    reasoningEffort: ctx.reasoningEffort,
+    verbosity: "low",
+    timeoutMs: AI_TIMEOUT_MS,
+    retries: AI_RETRIES,
   });
   ctx.log({
     event: "integrity_ai_usage",

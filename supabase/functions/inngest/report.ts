@@ -7,6 +7,7 @@ import {
   AIRateLimitedError,
   AIRequestError,
   AIUnavailableError,
+  type ReasoningEffort,
 } from "../_shared/ai/provider.ts";
 import { providerTokens } from "../_shared/ai-usage.ts";
 import type { StepRunner } from "./function.ts";
@@ -15,6 +16,10 @@ import type { ReportContext, ReportEvidence, ReportStore, ReportTarget } from ".
 export const REPORT_EVENT = "interview.report.requested";
 export const REPORT_FUNCTION_ID = "interview-report";
 const FN = "inngest";
+/** Includes reasoning tokens; observed reports use about 1.4k, longer interviews add categories. */
+const MAX_OUTPUT_TOKENS = 8_000;
+/** Single attempt: Inngest retries the whole step, so an in-step retry would only stack wall-clock time. */
+const AI_TIMEOUT_MS = 120_000;
 
 /** Bounds the context sent to the report model. */
 const MAX_TRANSCRIPT_CHARS = 80_000;
@@ -42,6 +47,7 @@ export const REPORT_FAILURE_MESSAGES: Record<ReportErrorCode, string> = {
 export interface ReportDeps {
   ai: AIProvider;
   model: string;
+  reasoningEffort?: ReasoningEffort;
   store: ReportStore;
   log?: (line: string) => void;
 }
@@ -267,6 +273,9 @@ export async function runInterviewReport(
         input: buildReportInput(target, context),
         schemaName: "interview_report",
         schema: interviewReportSchema,
+        maxOutputTokens: MAX_OUTPUT_TOKENS,
+        reasoningEffort: deps.reasoningEffort,
+        timeoutMs: AI_TIMEOUT_MS,
       });
       logLine(deps, {
         event: "report_ai_usage",

@@ -16,6 +16,7 @@ import {
   AIRateLimitedError,
   AIRequestError,
   AIUnavailableError,
+  type ReasoningEffort,
 } from "../_shared/ai/provider.ts";
 import { providerTokens } from "../_shared/ai-usage.ts";
 import type { JobQueue } from "../_shared/jobs.ts";
@@ -32,6 +33,10 @@ export const DEEP_ANALYSIS_EVENT = "repository.deep_analysis.requested";
 export const DEEP_ANALYSIS_FUNCTION_ID = "deep-analysis";
 export const DEEP_ANALYZER_VERSION = "deep-1";
 const FN = "inngest";
+/** Includes reasoning tokens; observed analyses use about 1.6k. */
+const MAX_OUTPUT_TOKENS = 8_000;
+/** Single attempt: Inngest retries the whole step, so an in-step retry would only stack wall-clock time. */
+const AI_TIMEOUT_MS = 120_000;
 
 /** Bounds the repository context sent to the model. */
 const MAX_MEMORY_CHARS = 60_000;
@@ -58,6 +63,7 @@ export const DEEP_ANALYSIS_FAILURE_MESSAGES: Record<DeepAnalysisErrorCode, strin
 export interface DeepAnalysisDeps {
   ai: AIProvider;
   model: string;
+  reasoningEffort?: ReasoningEffort;
   store: DeepAnalysisStore;
   /** Sends the best-effort memory embedding that follows a successful write. */
   jobs: JobQueue;
@@ -334,6 +340,9 @@ export async function runDeepAnalysis(
         input: buildDeepAnalysisInput(event.commit_sha, memory.rows),
         schemaName: "deep_analysis",
         schema: deepAnalysisOutputSchema,
+        maxOutputTokens: MAX_OUTPUT_TOKENS,
+        reasoningEffort: deps.reasoningEffort,
+        timeoutMs: AI_TIMEOUT_MS,
       });
       logLine(deps, {
         event: "deep_analysis_ai_usage",

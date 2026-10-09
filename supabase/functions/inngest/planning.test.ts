@@ -191,6 +191,7 @@ Deno.test("a successful run loads memory and prior outcomes, plans, and writes t
   const req = provider.calls[0];
   assertEquals(req.model, "gpt-test");
   assertEquals(req.system, PLANNING_SYSTEM_PROMPT);
+  assertEquals([req.maxOutputTokens, req.timeoutMs, req.retries], [8_000, 120_000, undefined], "bounded, single attempt");
   assert(req.input.includes("Next.js app."));
   assert(req.input.includes("Token rotation"), "prior outcomes are passed as guidance");
 

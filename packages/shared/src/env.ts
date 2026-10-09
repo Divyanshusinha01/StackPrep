@@ -6,6 +6,8 @@ const httpUrl = z.url({ protocol: /^https?$/ });
 
 const secret = z.string().trim().min(1);
 
+const reasoningEffort = z.enum(["default", "none", "minimal", "low", "medium", "high"]);
+
 export const webEnvSchema = z.object({
   NODE_ENV: nodeEnv,
   NEXT_PUBLIC_SUPABASE_URL: httpUrl,
@@ -58,6 +60,16 @@ export const openAIEnvSchema = z.object({
    * mismatching model fails at runtime instead of writing embeddings.
    */
   OPENAI_EMBEDDING_MODEL: secret.default("text-embedding-3-small"),
+  /** Writes the post-interview report. Defaults to the evaluation model; set separately to resize either. */
+  OPENAI_REPORT_MODEL: secret.default("gpt-6-luna"),
+  /**
+   * Reasoning effort per task; hidden reasoning tokens dominate latency. "default" omits the
+   * parameter for models that do not accept it. Deep analysis uses the planning effort.
+   */
+  OPENAI_PLANNING_REASONING_EFFORT: reasoningEffort.default("medium"),
+  OPENAI_EVALUATION_REASONING_EFFORT: reasoningEffort.default("low"),
+  OPENAI_REPORT_REASONING_EFFORT: reasoningEffort.default("low"),
+  OPENAI_VISION_REASONING_EFFORT: reasoningEffort.default("low"),
 });
 
 export const githubAppEnvSchema = z.object({

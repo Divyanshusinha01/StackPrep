@@ -5,7 +5,13 @@ export interface AIUsage {
   input_tokens: number;
   cached_input_tokens: number;
   output_tokens: number;
+  /** Hidden reasoning tokens, already included in `output_tokens`; only for latency logging. */
+  reasoning_tokens?: number;
 }
+
+/** "default" omits the parameter, for models that do not accept it. */
+export type ReasoningEffort = "default" | "none" | "minimal" | "low" | "medium" | "high";
+export type Verbosity = "low" | "medium" | "high";
 
 export interface StructuredRequest<T> {
   model: string;
@@ -19,7 +25,14 @@ export interface StructuredRequest<T> {
   schemaName: string;
   /** Must be a strict object with every field required. */
   schema: z.ZodType<T>;
+  /** Includes reasoning tokens; a response that hits it is invalid output (`incomplete`). */
   maxOutputTokens?: number;
+  reasoningEffort?: ReasoningEffort;
+  verbosity?: Verbosity;
+  /** Per attempt; defaults to the provider's timeout. */
+  timeoutMs?: number;
+  /** Extra attempts after an AIUnavailableError (network, timeout, 5xx). Defaults to 0. */
+  retries?: number;
 }
 
 export interface StructuredResult<T> {

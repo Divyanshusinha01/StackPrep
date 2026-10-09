@@ -5,7 +5,7 @@ import type {
   ToolError,
   ToolErrorCode,
 } from "@stackprep/shared";
-import type { AIProvider, EmbeddingProvider } from "../../_shared/ai/provider.ts";
+import type { AIProvider, EmbeddingProvider, ReasoningEffort } from "../../_shared/ai/provider.ts";
 import type { AiUsageRecorder } from "../../_shared/ai-usage.ts";
 import type { FileSymbol, SymbolSearchHit } from "../../_shared/code-index/reader.ts";
 import type { GithubApp } from "../../_shared/github-app.ts";
@@ -142,6 +142,7 @@ export interface ToolContext {
   trees: TreeCache;
   ai: AIProvider;
   evaluationModel: string;
+  evaluationReasoningEffort?: ReasoningEffort;
   /** Enables the vector fill in search_repository; keyword search alone without it. */
   embeddings?: SearchEmbeddings;
   elapsedSeconds: number;

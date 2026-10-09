@@ -33,11 +33,13 @@ function completed(text: string, extra: Record<string, unknown> = {}) {
 
 function stub(respond: () => Response | Promise<Response>) {
   const calls: { url: string; init: RequestInit }[] = [];
+  const logs: Record<string, unknown>[] = [];
   const fetchFn = ((url: string, init: RequestInit) => {
     calls.push({ url, init });
     return Promise.resolve(respond());
   }) as typeof fetch;
-  return { provider: createOpenAIProvider({ apiKey: "sk-test-key", fetch: fetchFn }), calls };
+  const provider = createOpenAIProvider({ apiKey: "sk-test-key", fetch: fetchFn, retryDelayMs: 0, log: (e) => logs.push(e) });
+  return { provider, calls, logs };
 }
 
 Deno.test("sends a strict JSON-schema request and returns validated output with usage", async () => {
@@ -57,6 +59,94 @@ Deno.test("sends a strict JSON-schema request and returns validated output with 
   assertEquals(body.text.format.strict, true);
   assertEquals(body.text.format.schema.additionalProperties, false);
   assertEquals(body.text.format.schema.required, ["title", "count"]);
+});
+
+Deno.test("omits reasoning and verbosity unless requested, and caps output at 16k by default", async () => {
+  const { provider, calls } = stub(() => Response.json(completed(JSON.stringify({ title: "Plan", count: 2 }))));
+  await provider.generateStructured(request);
+  await provider.generateStructured({ ...request, reasoningEffort: "default" });
+  for (const call of calls) {
+    const body = JSON.parse(call.init.body as string);
+    assert(!("reasoning" in body));
+    assert(!("verbosity" in body.text));
+    assertEquals(body.max_output_tokens, 16_000);
+  }
+});
+
+Deno.test("sends reasoning effort, verbosity, and the output cap when requested", async () => {
+  const { provider, calls } = stub(() => Response.json(completed(JSON.stringify({ title: "Plan", count: 2 }))));
+  await provider.generateStructured({ ...request, reasoningEffort: "low", verbosity: "low", maxOutputTokens: 1500 });
+  const body = JSON.parse(calls[0].init.body as string);
+  assertEquals(body.reasoning, { effort: "low" });
+  assertEquals(body.text.verbosity, "low");
+  assertEquals(body.text.format.type, "json_schema");
+  assertEquals(body.max_output_tokens, 1500);
+});
+
+Deno.test("reports reasoning tokens and logs latency without content", async () => {
+  const { provider, logs } = stub(() =>
+    Response.json(completed(JSON.stringify({ title: "Plan", count: 2 }), {
+      usage: { input_tokens: 120, output_tokens: 30, output_tokens_details: { reasoning_tokens: 12 } },
+    }))
+  );
+  const { usage } = await provider.generateStructured(request);
+  assertEquals(usage, { input_tokens: 120, cached_input_tokens: 0, output_tokens: 30, reasoning_tokens: 12 });
+  assertEquals(logs.length, 1);
+  const { elapsed_ms, ...rest } = logs[0];
+  assertEquals(typeof elapsed_ms, "number");
+  assertEquals(rest, {
+    event: "ai_call",
+    kind: "structured",
+    model: "gpt-test",
+    schema: "test_output",
+    attempt: 1,
+    outcome: "ok",
+    input_tokens: 120,
+    cached_input_tokens: 0,
+    output_tokens: 30,
+    reasoning_tokens: 12,
+  });
+  assert(!JSON.stringify(logs).includes("hello"), "logs never carry input");
+});
+
+Deno.test("retries an unavailable call up to `retries` times, never other errors", async () => {
+  let n = 0;
+  const flaky = stub(() => ++n === 1 ? new Response("", { status: 503 }) : Response.json(completed(JSON.stringify({ title: "Ok", count: 1 }))));
+  assertEquals((await flaky.provider.generateStructured({ ...request, retries: 1 })).output, { title: "Ok", count: 1 });
+  assertEquals(flaky.calls.length, 2);
+  assertEquals(flaky.logs.map((l) => [l.attempt, l.outcome, l.retry]), [[1, "AIUnavailableError", true], [2, "ok", undefined]]);
+
+  const down = stub(() => new Response("", { status: 502 }));
+  assertInstanceOf(await assertRejects(() => down.provider.generateStructured({ ...request, retries: 1 })), AIUnavailableError);
+  assertEquals(down.calls.length, 2);
+
+  const once = stub(() => new Response("", { status: 502 }));
+  await assertRejects(() => once.provider.generateStructured(request));
+  assertEquals(once.calls.length, 1, "no retry by default");
+
+  for (const status of [400, 429]) {
+    const rejected = stub(() => new Response("", { status }));
+    await assertRejects(() => rejected.provider.generateStructured({ ...request, retries: 1 }));
+    assertEquals(rejected.calls.length, 1, `${status} is not retried`);
+  }
+});
+
+Deno.test("a per-request timeout aborts a stuck call and the retry gets a fresh one", async () => {
+  const signals: AbortSignal[] = [];
+  const fetchFn = ((_url: string, init: RequestInit) =>
+    new Promise<Response>((_resolve, reject) => {
+      signals.push(init.signal!);
+      init.signal!.addEventListener("abort", () => reject(init.signal!.reason));
+    })) as typeof fetch;
+  const provider = createOpenAIProvider({ apiKey: "k", fetch: fetchFn, retryDelayMs: 0, log: () => {} });
+  const started = Date.now();
+  assertInstanceOf(await assertRejects(() => provider.generateStructured({ ...request, timeoutMs: 30, retries: 1 })), AIUnavailableError);
+  assertEquals(signals.length, 2);
+  assert(Date.now() - started < 1_000);
+});
+
+Deno.test("the strict JSON schema is built once per schema", () => {
+  assert(toStrictJsonSchema(schema) === toStrictJsonSchema(schema));
 });
 
 Deno.test("sends images as low-detail input_image parts after the text", async () => {

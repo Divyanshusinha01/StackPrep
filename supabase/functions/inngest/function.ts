@@ -204,6 +204,15 @@ async function queueCodeIndex(deps: AnalysisDeps, step: StepRunner, event: Analy
   });
 }
 
+/** The follow-up jobs are independent Inngest functions, so their enqueue steps run in parallel. */
+async function queueFollowUps(deps: AnalysisDeps, step: StepRunner, event: AnalysisEvent): Promise<void> {
+  await Promise.all([
+    queueDeepAnalysis(deps, step, event),
+    queueCodeIndex(deps, step, event),
+    queueMemoryEmbedding(deps, step, { workspace_id: event.workspace_id, job_id: event.job_id, commit_sha: event.commit_sha }),
+  ]);
+}
+
 function decodeText(bytes: Uint8Array): string | null {
   if (bytes.includes(0)) {
     return null;
@@ -244,9 +253,7 @@ export async function runRepositoryAnalysis(
       classified(() => deps.store.complete(event.workspace_id, event.job_id, event.commit_sha, [])));
     logLine(deps, { event: "analysis_skipped", reason: "memory_exists", ...ids });
     if (ready) {
-      await queueDeepAnalysis(deps, step, event);
-      await queueCodeIndex(deps, step, event);
-      await queueMemoryEmbedding(deps, step, { workspace_id: event.workspace_id, job_id: event.job_id, commit_sha: event.commit_sha });
+      await queueFollowUps(deps, step, event);
     }
     return { outcome: "skipped", reason: "memory_exists", ready };
   }
@@ -297,9 +304,7 @@ export async function runRepositoryAnalysis(
     limits_hit: scan.limits_hit.join(",") || "none",
   });
   if (ready) {
-    await queueDeepAnalysis(deps, step, event);
-    await queueCodeIndex(deps, step, event);
-    await queueMemoryEmbedding(deps, step, { workspace_id: event.workspace_id, job_id: event.job_id, commit_sha: event.commit_sha });
+    await queueFollowUps(deps, step, event);
   }
   return { outcome: "completed", ready, memory_rows: memory.length };
 }

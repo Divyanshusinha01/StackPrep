@@ -148,11 +148,14 @@ Each task reads its model from an environment variable, so models can change wit
 | Live candidate speech transcription    | `gpt-4o-mini-transcribe`     | `OPENAI_REALTIME_TRANSCRIPTION_MODEL` |
 | Interview planning                     | `gpt-6.1-sol`                | `OPENAI_PLANNING_MODEL`  |
 | Deep analysis                          | `gpt-6.1-sol`                | `OPENAI_PLANNING_MODEL`  |
-| Answer evaluation, report generation   | `gpt-6-luna`                 | `OPENAI_EVALUATION_MODEL` |
+| Answer evaluation                      | `gpt-6-luna`                 | `OPENAI_EVALUATION_MODEL` |
+| Report generation                      | `gpt-6-luna`                 | `OPENAI_REPORT_MODEL`    |
 | Integrity monitoring                   | `gpt-6-luna`                 | `OPENAI_VISION_MODEL`    |
 | Repository memory and search query embeddings | `text-embedding-3-small` | `OPENAI_EMBEDDING_MODEL` |
 
-Planning and evaluation keep separate variables, so either can change on its own. Evaluation and vision use the same model today but also keep separate variables.
+Planning and evaluation keep separate variables, so either can change on its own. Evaluation, report, and vision use the same model today but also keep separate variables, so the latency-sensitive evaluation and vision calls can move to a smaller model without changing the report.
+
+Each structured call also sets a reasoning effort, read per task from `OPENAI_PLANNING_REASONING_EFFORT` (also used by deep analysis; default `medium`), `OPENAI_EVALUATION_REASONING_EFFORT`, `OPENAI_REPORT_REASONING_EFFORT`, and `OPENAI_VISION_REASONING_EFFORT` (default `low`). `default` omits the parameter for models that reject it. Every call has an explicit output-token cap (reasoning included) and timeout; the interview-time calls (evaluation, vision) retry once on a network error, timeout, or 5xx, while background calls rely on Inngest step retries. Every OpenAI call logs one `ai_call` line with model, schema, `elapsed_ms`, and input, cached, output, and reasoning token counts, never content.
 
 The transcription model is set on the Realtime session when the backend mints the credential. It transcribes only the candidate's speech for the persisted transcript; the interviewer's own transcript comes from the voice model.
 
@@ -1075,7 +1078,7 @@ Each integration has its own Zod schema in `@stackprep/shared` (`packages/shared
 | `edgeEnvSchema` (required) | `WEB_ORIGIN`                                                                                  |
 | `edgeSupabaseEnvSchema`    | `SUPABASE_URL`, `SUPABASE_ANON_KEY`, `SUPABASE_SERVICE_ROLE_KEY` (injected by the runtime)     |
 | `inngestEnvSchema`         | `INNGEST_EVENT_KEY`, `INNGEST_SIGNING_KEY`                                                    |
-| `openAIEnvSchema`          | `OPENAI_API_KEY`, `OPENAI_REALTIME_MODEL`, `OPENAI_REALTIME_TRANSCRIPTION_MODEL`, `OPENAI_PLANNING_MODEL`, `OPENAI_EVALUATION_MODEL`, `OPENAI_VISION_MODEL`, `OPENAI_EMBEDDING_MODEL` (default `text-embedding-3-small`; must natively output 1536 dimensions). |
+| `openAIEnvSchema`          | `OPENAI_API_KEY`, `OPENAI_REALTIME_MODEL`, `OPENAI_REALTIME_TRANSCRIPTION_MODEL`, `OPENAI_PLANNING_MODEL`, `OPENAI_EVALUATION_MODEL`, `OPENAI_REPORT_MODEL`, `OPENAI_VISION_MODEL`, `OPENAI_EMBEDDING_MODEL` (default `text-embedding-3-small`; must natively output 1536 dimensions), and per-task `OPENAI_{PLANNING,EVALUATION,REPORT,VISION}_REASONING_EFFORT`. |
 | `githubAppEnvSchema`       | `GITHUB_APP_ID`, `GITHUB_APP_CLIENT_ID`, `GITHUB_APP_CLIENT_SECRET`, `GITHUB_APP_PRIVATE_KEY`, `GITHUB_APP_WEBHOOK_SECRET` |
 | `edgeSentryEnvSchema`      | `SENTRY_DSN`, `SENTRY_ENVIRONMENT`                                                            |
 

@@ -13,6 +13,7 @@ import {
   AIRateLimitedError,
   AIRequestError,
   AIUnavailableError,
+  type ReasoningEffort,
 } from "../_shared/ai/provider.ts";
 import { providerTokens } from "../_shared/ai-usage.ts";
 import type { StepRunner } from "./function.ts";
@@ -21,6 +22,10 @@ import { INITIAL_STATE_VERSION, type PlanningMemory, type PlanningStore, type Pl
 export const PLANNING_EVENT = "interview.planning.requested";
 export const PLANNING_FUNCTION_ID = "interview-planning";
 const FN = "inngest";
+/** Includes reasoning tokens; observed plans use about 2.5k. */
+const MAX_OUTPUT_TOKENS = 8_000;
+/** Single attempt: Inngest retries the whole step, so an in-step retry would only stack wall-clock time. */
+const AI_TIMEOUT_MS = 120_000;
 
 /** Bounds the repository context sent to the planner; AI sections come out of the same total. */
 export const MAX_MEMORY_CHARS = 60_000;
@@ -53,6 +58,7 @@ export const PLANNING_FAILURE_MESSAGES: Record<PlanningErrorCode, string> = {
 export interface PlanningDeps {
   ai: AIProvider;
   model: string;
+  reasoningEffort?: ReasoningEffort;
   store: PlanningStore;
   log?: (line: string) => void;
 }
@@ -278,17 +284,19 @@ export async function runInterviewPlanning(
   }
 
   // Only memory for the pinned commit: planning never falls back to another commit's analysis.
-  const memory = await step.run("load-memory", () =>
-    classified(async () => {
-      const rows = await deps.store.loadMemory(event.workspace_id, target.commit_sha);
-      if (rows.length === 0) {
-        throw nonRetriable("repository_memory_unavailable");
-      }
-      return rows;
-    }));
-
-  const prior = await step.run("load-prior-outcomes", () =>
-    classified(() => deps.store.loadPriorOutcomes(event.workspace_id, event.interview_id)));
+  // Independent reads, so the two steps run in parallel.
+  const [memory, prior] = await Promise.all([
+    step.run("load-memory", () =>
+      classified(async () => {
+        const rows = await deps.store.loadMemory(event.workspace_id, target.commit_sha);
+        if (rows.length === 0) {
+          throw nonRetriable("repository_memory_unavailable");
+        }
+        return rows;
+      })),
+    step.run("load-prior-outcomes", () =>
+      classified(() => deps.store.loadPriorOutcomes(event.workspace_id, event.interview_id))),
+  ]);
 
   const output = await step.run("plan", () =>
     classified(async () => {
@@ -299,6 +307,9 @@ export async function runInterviewPlanning(
         input: buildPlanningInput(target, memory, prior),
         schemaName: "interview_plan",
         schema: interviewPlanningOutputSchema,
+        maxOutputTokens: MAX_OUTPUT_TOKENS,
+        reasoningEffort: deps.reasoningEffort,
+        timeoutMs: AI_TIMEOUT_MS,
       });
       logLine(deps, {
         event: "planning_ai_usage",

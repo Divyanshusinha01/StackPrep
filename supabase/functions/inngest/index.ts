@@ -56,6 +56,7 @@ Deno.serve(withSentry(
     createDeepAnalysisFunction(inngest, {
       ai,
       model: env.OPENAI_PLANNING_MODEL,
+      reasoningEffort: env.OPENAI_PLANNING_REASONING_EFFORT,
       store: createDeepAnalysisStore(serviceClient),
       jobs,
     }),
@@ -67,11 +68,13 @@ Deno.serve(withSentry(
     createInterviewPlanningFunction(inngest, {
       ai,
       model: env.OPENAI_PLANNING_MODEL,
+      reasoningEffort: env.OPENAI_PLANNING_REASONING_EFFORT,
       store: createPlanningStore(serviceClient),
     }),
     createInterviewReportFunction(inngest, {
       ai,
-      model: env.OPENAI_EVALUATION_MODEL,
+      model: env.OPENAI_REPORT_MODEL,
+      reasoningEffort: env.OPENAI_REPORT_REASONING_EFFORT,
       store: createReportStore(serviceClient),
     }),
   ]),

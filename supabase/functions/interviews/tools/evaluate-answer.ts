@@ -3,16 +3,22 @@ import { z } from "zod";
 import { scrubSecrets } from "../../_shared/analysis/scrub.ts";
 import { AIError } from "../../_shared/ai/provider.ts";
 import { providerTokens } from "../../_shared/ai-usage.ts";
+import { runInBackground } from "../../_shared/background.ts";
 import { NON_SUMMARY_KIND_LIST } from "../../_shared/code-index/memory.ts";
 import { parseState, raiseStatus, updateCoverage } from "./coverage.ts";
 import { type EvaluationRecord, failed, type MemoryEntry, type ToolContext, type ToolOutcome, type TranscriptMessage } from "./types.ts";
 
-const RECENT_MESSAGES = 16;
+/** The voice model is silent until this tool returns, so the prompt is kept small. */
+const RECENT_MESSAGES = 10;
 const MAX_MESSAGE_CHARS = 1500;
-const MAX_TRANSCRIPT_CHARS = 8000;
-const MAX_MEMORY_CHARS = 8000;
+const MAX_TRANSCRIPT_CHARS = 5000;
+const MAX_MEMORY_CHARS = 5000;
 const MAX_MEMORY_ENTRY_CHARS = 2000;
+/** Includes reasoning tokens; observed evaluations use about 300. */
 const MAX_OUTPUT_TOKENS = 1500;
+/** Two attempts plus the retry pause stay under the 20 s the single attempt used to get. */
+const AI_TIMEOUT_MS = 9_000;
+const AI_RETRIES = 1;
 const GENERAL_CATEGORY = "general";
 
 const shortText = z.string().min(1).max(300);
@@ -156,6 +162,7 @@ export async function evaluateAnswer(ctx: ToolContext, input: EvaluateAnswerInpu
   const state = parseState(snapshot);
 
   let evaluation: AnswerEvaluation;
+  const startedAt = Date.now();
   try {
     const { output, usage } = await ctx.ai.generateStructured({
       model: ctx.evaluationModel,
@@ -173,30 +180,40 @@ export async function evaluateAnswer(ctx: ToolContext, input: EvaluateAnswerInpu
       schemaName: "answer_evaluation",
       schema: answerEvaluationSchema,
       maxOutputTokens: MAX_OUTPUT_TOKENS,
+      reasoningEffort: ctx.evaluationReasoningEffort,
+      verbosity: "low",
+      timeoutMs: AI_TIMEOUT_MS,
+      retries: AI_RETRIES,
     });
     evaluation = output;
     ctx.log({
       event: "evaluation_ai_usage",
       model: ctx.evaluationModel,
+      elapsed_ms: Date.now() - startedAt,
       input_tokens: usage.input_tokens,
       cached_input_tokens: usage.cached_input_tokens,
       output_tokens: usage.output_tokens,
+      reasoning_tokens: usage.reasoning_tokens ?? 0,
     });
-    await store.recordAiUsage({
-      userId: ctx.userId,
-      workspaceId: interview.workspace_id,
-      interviewId: interview.id,
-      task: "evaluation",
-      model: ctx.evaluationModel,
-      source: "provider",
-      tokens: providerTokens(usage),
-      idempotencyKey: `evaluation:${interview.id}:${crypto.randomUUID()}`,
-    });
+    // Not awaited: the voice model waits on this tool, and recording never throws.
+    runInBackground(
+      "evaluation_usage_record_failed",
+      store.recordAiUsage({
+        userId: ctx.userId,
+        workspaceId: interview.workspace_id,
+        interviewId: interview.id,
+        task: "evaluation",
+        model: ctx.evaluationModel,
+        source: "provider",
+        tokens: providerTokens(usage),
+        idempotencyKey: `evaluation:${interview.id}:${crypto.randomUUID()}`,
+      }),
+    );
   } catch (err) {
     if (!(err instanceof AIError)) {
       throw err;
     }
-    ctx.log({ event: "evaluate_answer_failed", reason: err.name });
+    ctx.log({ event: "evaluate_answer_failed", reason: err.name, elapsed_ms: Date.now() - startedAt });
     return failed("internal", false);
   }
 

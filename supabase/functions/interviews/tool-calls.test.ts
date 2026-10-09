@@ -209,6 +209,7 @@ function setup({
     github,
     ai: fakeAI,
     evaluationModel: "gpt-eval",
+    evaluationReasoningEffort: "low",
     embeddings,
     visionModel: "gpt-vision",
     jobs,
@@ -699,6 +700,33 @@ Deno.test("evaluate_answer: stores a hidden evaluation, updates coverage, and re
   });
   assert(idempotencyKey.startsWith(`evaluation:${interviewRow.id}:`));
   assertEquals(aiUsageCost({ ...usage, model: "gpt-5.6-terra" }), (100 * 2 + 50 * 12) / 1_000_000);
+});
+
+Deno.test("evaluate_answer: asks for a fast, bounded call with one retry", async () => {
+  const { handler, ai } = setup();
+  await result(await handler(toolCall("evaluate_answer", { answerSummary: "x" })));
+  const { reasoningEffort, verbosity, maxOutputTokens, timeoutMs, retries } = ai.calls[0];
+  assertEquals({ reasoningEffort, verbosity, maxOutputTokens, retries }, {
+    reasoningEffort: "low",
+    verbosity: "low",
+    maxOutputTokens: 1500,
+    retries: 1,
+  });
+  assert(timeoutMs !== undefined && timeoutMs * 2 < 20_000, "both attempts fit the old 20 s budget");
+});
+
+Deno.test("evaluate_answer: returns guidance without waiting for the usage write", async () => {
+  const store = createFakeToolStore({ memory, messages, state: stateSnapshot() });
+  const record = store.recordAiUsage;
+  let release: () => void = () => {};
+  store.recordAiUsage = (entry) => new Promise((resolve) => (release = () => resolve(record(entry))));
+  const { handler } = setup({ store });
+  const body = await result(await handler(toolCall("evaluate_answer", { answerSummary: "x" })));
+  assertEquals(body.ok, true);
+  assertEquals(store.usage, [], "the write is still pending when the tool returns");
+  release();
+  await new Promise((resolve) => setTimeout(resolve, 0));
+  assertEquals(store.usage.map((u) => u.task), ["evaluation"]);
 });
 
 Deno.test("evaluate_answer: a replayed call returns the stored guidance without re-evaluating", async () => {

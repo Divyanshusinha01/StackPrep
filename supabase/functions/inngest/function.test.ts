@@ -322,21 +322,28 @@ Deno.test("GitHub errors map to retriable or non-retriable fixed codes", async (
   assertEquals(classifyAnalysisError(new Error("connection refused: password=hunter2")).message, "internal_error");
 });
 
+/** The follow-up enqueues run as parallel steps, so their relative order is not fixed. */
+function sorted<T>(items: T[]): T[] {
+  return [...items].sort((a, b) => JSON.stringify(a).localeCompare(JSON.stringify(b)));
+}
+
 Deno.test("deep analysis is requested and enqueued only after the baseline completes", async () => {
   const { deps, calls, enqueued } = setup();
   const result = await runRepositoryAnalysis(deps, { data: event, runId: "r", step: stepRunner().step });
   assertEquals(result, { outcome: "completed", ready: true, memory_rows: 6 });
-  assertEquals(calls.slice(calls.indexOf("complete")), [
-    "complete",
+  const after = calls.slice(calls.indexOf("complete"));
+  assertEquals(after[0], "complete");
+  assertEquals(sorted(after.slice(1)), sorted([
     `request-deep:${event.workspace_id}:${SHA}`,
     `enqueue:${DEEP_ANALYSIS_EVENT}`,
     `request-code:${event.workspace_id}:${SHA}:${PARSER_VERSION}`,
     `enqueue:${MEMORY_EMBEDDING_EVENT}`,
-  ]);
-  assertEquals(enqueued, [
+  ]));
+  assert(after.indexOf(`request-deep:${event.workspace_id}:${SHA}`) < after.indexOf(`enqueue:${DEEP_ANALYSIS_EVENT}`));
+  assertEquals(sorted(enqueued), sorted<[string, unknown]>([
     [DEEP_ANALYSIS_EVENT, { workspace_id: event.workspace_id, job_id: DEEP_JOB_ID, commit_sha: SHA }],
     [MEMORY_EMBEDDING_EVENT, { workspace_id: event.workspace_id, job_id: event.job_id, commit_sha: SHA }],
-  ]);
+  ]));
 });
 
 Deno.test("reused memory also chains into deep analysis", async () => {
@@ -345,7 +352,7 @@ Deno.test("reused memory also chains into deep analysis", async () => {
   const result = await runRepositoryAnalysis(deps, { data: event, runId: "r", step });
   assertEquals(result, { outcome: "skipped", reason: "memory_exists", ready: true });
   assertEquals(order, ["verify", "check-existing", "complete", "queue-deep-analysis", "queue-code-index", "queue-memory-embedding"]);
-  assertEquals(enqueued.map(([name]) => name), [DEEP_ANALYSIS_EVENT, MEMORY_EMBEDDING_EVENT]);
+  assertEquals(sorted(enqueued.map(([name]) => name)), sorted([DEEP_ANALYSIS_EVENT, MEMORY_EMBEDDING_EVENT]));
 });
 
 Deno.test("a failed deep analysis request still returns the completed baseline", async () => {
@@ -393,7 +400,7 @@ Deno.test("a replay after the chain step never queues a second deep job", async 
   const memo = new Map<string, unknown>();
   await runRepositoryAnalysis(deps, { data: event, runId: "r", step: stepRunner(memo).step });
   await runRepositoryAnalysis(deps, { data: event, runId: "r", step: stepRunner(memo).step });
-  assertEquals(enqueued.map(([name]) => name), [DEEP_ANALYSIS_EVENT, MEMORY_EMBEDDING_EVENT]);
+  assertEquals(sorted(enqueued.map(([name]) => name)), sorted([DEEP_ANALYSIS_EVENT, MEMORY_EMBEDDING_EVENT]));
 });
 
 Deno.test("a failed embedding enqueue is swallowed and keeps the baseline result", async () => {
@@ -411,8 +418,8 @@ Deno.test("the code index is requested for the parser version and enqueued after
   const result = await runRepositoryAnalysis(deps, { data: event, runId: "r", step: stepRunner().step });
   assertEquals(result, { outcome: "completed", ready: true, memory_rows: 6 });
   assert(calls.indexOf(`request-code:${event.workspace_id}:${SHA}:${PARSER_VERSION}`) > calls.indexOf("complete"));
-  assertEquals(enqueued.map(([name]) => name), [DEEP_ANALYSIS_EVENT, CODE_INDEX_EVENT, MEMORY_EMBEDDING_EVENT]);
-  assertEquals(enqueued[1][1], { workspace_id: event.workspace_id, job_id: CODE_JOB_ID, commit_sha: SHA });
+  assertEquals(sorted(enqueued.map(([name]) => name)), sorted([DEEP_ANALYSIS_EVENT, CODE_INDEX_EVENT, MEMORY_EMBEDDING_EVENT]));
+  assertEquals(enqueued.find(([name]) => name === CODE_INDEX_EVENT)![1], { workspace_id: event.workspace_id, job_id: CODE_JOB_ID, commit_sha: SHA });
   assertEquals(failures, []);
 });
 

@@ -29,7 +29,7 @@ import {
   VOICE_LIMIT_SECONDS,
 } from "@stackprep/shared";
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { AIError, type AIProvider, type AIUsage } from "../_shared/ai/provider.ts";
+import { AIError, type AIProvider, type AIUsage, type ReasoningEffort } from "../_shared/ai/provider.ts";
 import { providerTokens } from "../_shared/ai-usage.ts";
 import type { Authenticate } from "../_shared/auth.ts";
 import { NON_SUMMARY_KINDS } from "../_shared/code-index/memory.ts";
@@ -195,9 +195,11 @@ export interface InterviewsHandlerOptions {
   github: GithubApp;
   ai: AIProvider;
   evaluationModel: string;
+  evaluationReasoningEffort?: ReasoningEffort;
   /** Vector fill for search_repository; omitted means keyword search only. */
   embeddings?: SearchEmbeddings;
   visionModel: string;
+  visionReasoningEffort?: ReasoningEffort;
   jobs: JobQueue;
   reportJobs: ReportJobStore;
   trees?: TreeCache;
@@ -459,8 +461,10 @@ export function createInterviewsHandler({
   github,
   ai,
   evaluationModel,
+  evaluationReasoningEffort,
   embeddings,
   visionModel,
+  visionReasoningEffort,
   jobs,
   reportJobs,
   trees = createTreeCache(),
@@ -651,6 +655,7 @@ export function createInterviewsHandler({
       trees,
       ai,
       evaluationModel,
+      evaluationReasoningEffort,
       embeddings,
       elapsedSeconds,
       requestReport: async () => {
@@ -751,7 +756,10 @@ export function createInterviewsHandler({
           tokens: providerTokens(usage),
           idempotencyKey: `vision:${reservation.checkId}`,
         });
-      kind = await analyzeFrame({ ai, model: visionModel, log, recordUsage }, frame.data.image);
+      kind = await analyzeFrame(
+        { ai, model: visionModel, reasoningEffort: visionReasoningEffort, log, recordUsage },
+        frame.data.image,
+      );
     } catch (err) {
       if (!(err instanceof AIError)) {
         throw err;
@@ -830,6 +838,7 @@ export function createInterviewsHandler({
     });
 
     let credential;
+    const mintStartedAt = Date.now();
     try {
       credential = await realtime.createClientSecret(
         { model, transcriptionModel, instructions, tools },
@@ -839,6 +848,7 @@ export function createInterviewsHandler({
       logGithubError(FN, err, { event: "realtime_session_failed", code: "realtime_unavailable", interview_id: interview.id });
       return apiError("realtime_unavailable", cors);
     }
+    console.log(JSON.stringify({ fn: FN, event: "realtime_session_minted", interview_id: interview.id, elapsed_ms: Date.now() - mintStartedAt }));
 
     const body = realtimeSessionResponseSchema.parse({
       client_secret: credential.value,
