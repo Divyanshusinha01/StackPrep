@@ -1,0 +1,134 @@
+[
+  {
+    "category": "other",
+    "query": "SELECT users.aud, users.banned_until, users.confirmation_sent_at, users.confirmation_token, users.confirmed_at, users.created_at, users.deleted_at, users.email, users.email_change, users.email_change_confirm_status, users.email_change_sent_at, users.email_change_token_current, users.email_change_token_new, users.email_confirmed_at, users.encrypted_password, users.id, users.instance_id, users.invit",
+    "calls": 184,
+    "totalMs": 17.472
+  },
+  {
+    "category": "other",
+    "query": "SELECT identities.created_at, identities.email, identities.id, identities.identity_data, identities.last_sign_in_at, identities.provider, identities.provider_id, identities.updated_at, identities.user_id FROM identities AS identities WHERE user_id = $1",
+    "calls": 184,
+    "totalMs": 108.247
+  },
+  {
+    "category": "other",
+    "query": "SELECT mfa_factors.created_at, mfa_factors.factor_type, mfa_factors.friendly_name, mfa_factors.id, mfa_factors.last_challenged_at, mfa_factors.last_webauthn_challenge_data, mfa_factors.phone, mfa_factors.secret, mfa_factors.status, mfa_factors.updated_at, mfa_factors.user_id, mfa_factors.web_authn_aaguid, mfa_factors.web_authn_credential FROM mfa_factors AS mfa_factors WHERE user_id = $1",
+    "calls": 184,
+    "totalMs": 4.982
+  },
+  {
+    "category": "other",
+    "query": "select set_config('search_path', $1, true), set_config($2, $3, true), set_config('role', $4, true), set_config('request.jwt.claims', $5, true), set_config('request.method', $6, true), set_config('request.path', $7, true), set_config('request.headers', $8, true), set_config('request.cookies', $9, true)",
+    "calls": 160,
+    "totalMs": 13.047
+  },
+  {
+    "category": "other",
+    "query": "select set_config('search_path', $1, true), set_config('role', $2, true), set_config('request.jwt.claims', $3, true), set_config('request.method', $4, true), set_config('request.path', $5, true), set_config('request.headers', $6, true), set_config('request.cookies', $7, true)",
+    "calls": 151,
+    "totalMs": 9.992
+  },
+  {
+    "category": "interview_lookup",
+    "query": "WITH pgrst_source AS ( SELECT \"public\".\"interviews\".\"id\", \"public\".\"interviews\".\"workspace_id\", \"public\".\"interviews\".\"status\", \"public\".\"interviews\".\"repository_commit_sha\" FROM \"public\".\"interviews\" WHERE \"public\".\"interviews\".\"id\" = $1 LIMIT $2 OFFSET $3 ) SELECT $4::bigint AS total_result_set, pg_catalog.count(_postgrest_t) AS page_total, coalesce(json_agg(_postgrest_t), $5) AS body, nullif(cu",
+    "calls": 110,
+    "totalMs": 16.577
+  },
+  {
+    "category": "event_write",
+    "query": "WITH pgrst_source AS (SELECT \"pgrst_call\".* FROM (SELECT $1 AS json_data) pgrst_payload, LATERAL (SELECT \"p_interview_id\", \"p_user_id\", \"p_client_event_id\", \"p_role\", \"p_content\", \"p_metadata\" FROM json_to_record(pgrst_payload.json_data) AS _(\"p_interview_id\" uuid, \"p_user_id\" uuid, \"p_client_event_id\" uuid, \"p_role\" public.message_role, \"p_content\" text, \"p_metadata\" jsonb) LIMIT $4) pgrst_body ,",
+    "calls": 73,
+    "totalMs": 265.824
+  },
+  {
+    "category": "other",
+    "query": "select count(*) filter (where state = $1 and pid <> pg_backend_pid())::int as active, count(*)::int as total from pg_stat_activity where datname = $2",
+    "calls": 59,
+    "totalMs": 21.071
+  },
+  {
+    "category": "other",
+    "query": "WITH pgrst_source AS (INSERT INTO \"public\".\"ai_usage\"(\"audio_cached_input_tokens\", \"audio_input_tokens\", \"audio_output_tokens\", \"audio_seconds\", \"cached_input_tokens\", \"estimated_cost_usd\", \"idempotency_key\", \"input_tokens\", \"interview_id\", \"model\", \"output_tokens\", \"source\", \"task\", \"user_id\", \"voice_segment_event_id\", \"workspace_id\") SELECT \"pgrst_body\".\"audio_cached_input_tokens\", \"pgrst_body\".",
+    "calls": 38,
+    "totalMs": 157.769
+  },
+  {
+    "category": "other",
+    "query": "NOTIFY \"7MVMAMH4ENA7HZRK6GSCCDDIN4CXW4OJZLSJZC7H4NE6VAALTSXQ____\", 'realtime@127.0.0.1'",
+    "calls": 24,
+    "totalMs": 0.135
+  },
+  {
+    "category": "stream_poll",
+    "query": "WITH pgrst_source AS ( SELECT \"public\".\"interview_events\".\"id\", \"public\".\"interview_events\".\"sequence\", \"public\".\"interview_events\".\"event_type\", \"public\".\"interview_events\".\"occurred_at\" FROM \"public\".\"interview_events\" WHERE \"public\".\"interview_events\".\"interview_id\" = $1 AND \"public\".\"interview_events\".\"event_type\" = ANY ($2) ORDER BY \"public\".\"interview_events\".\"sequence\" ASC LIMIT $3 OFFSET $",
+    "calls": 20,
+    "totalMs": 3.616
+  },
+  {
+    "category": "event_write",
+    "query": "WITH pgrst_source AS (SELECT \"pgrst_call\".* FROM (SELECT $1 AS json_data) pgrst_payload, LATERAL (SELECT \"p_interview_id\", \"p_user_id\", \"p_client_event_id\", \"p_event_type\", \"p_payload\" FROM json_to_record(pgrst_payload.json_data) AS _(\"p_interview_id\" uuid, \"p_user_id\" uuid, \"p_client_event_id\" uuid, \"p_event_type\" public.event_type, \"p_payload\" jsonb) LIMIT $4) pgrst_body , LATERAL \"public\".\"reco",
+    "calls": 20,
+    "totalMs": 164.694
+  },
+  {
+    "category": "other",
+    "query": "BEGIN ISOLATION LEVEL READ COMMITTED READ ONLY",
+    "calls": 18,
+    "totalMs": 0.692
+  },
+  {
+    "category": "other",
+    "query": "SET client_min_messages TO WARNING",
+    "calls": 18,
+    "totalMs": 0.088
+  },
+  {
+    "category": "other",
+    "query": "BEGIN ISOLATION LEVEL READ COMMITTED READ WRITE",
+    "calls": 18,
+    "totalMs": 0.636
+  },
+  {
+    "category": "stream_poll",
+    "query": "WITH pgrst_source AS ( SELECT \"public\".\"interview_messages\".\"sequence\", \"public\".\"interview_messages\".\"role\", \"public\".\"interview_messages\".\"client_event_id\", \"public\".\"interview_messages\".\"metadata\"->>$1 AS \"item_id\", \"public\".\"interview_messages\".\"created_at\" FROM \"public\".\"interview_messages\" WHERE \"public\".\"interview_messages\".\"interview_id\" = $2 AND \"public\".\"interview_messages\".\"role\" = ANY ",
+    "calls": 17,
+    "totalMs": 1.209
+  },
+  {
+    "category": "stream_poll",
+    "query": "WITH pgrst_source AS ( SELECT \"public\".\"interview_events\".\"sequence\", \"public\".\"interview_events\".\"event_type\", \"public\".\"interview_events\".\"occurred_at\", \"public\".\"interview_events\".\"created_at\" FROM \"public\".\"interview_events\" WHERE \"public\".\"interview_events\".\"interview_id\" = $1 AND \"public\".\"interview_events\".\"event_type\" = ANY ($2) AND \"public\".\"interview_events\".\"sequence\" > $3 ORDER BY \"pub",
+    "calls": 17,
+    "totalMs": 1.933
+  },
+  {
+    "category": "stream_poll",
+    "query": "WITH pgrst_source AS ( SELECT \"public\".\"reports\".\"generated_at\" FROM \"public\".\"reports\" WHERE \"public\".\"reports\".\"interview_id\" = $1 LIMIT $2 OFFSET $3 ) SELECT $4::bigint AS total_result_set, pg_catalog.count(_postgrest_t) AS page_total, coalesce(json_agg(_postgrest_t), $5) AS body, nullif(current_setting($6, $7), $8) AS response_headers, nullif(current_setting($9, $10), $11) AS response_status, ",
+    "calls": 16,
+    "totalMs": 1.525
+  },
+  {
+    "category": "other",
+    "query": "SELECT pg_backend_pid()",
+    "calls": 4,
+    "totalMs": 0.067
+  },
+  {
+    "category": "other",
+    "query": "SELECT e0.\"id\", e0.\"type\", e0.\"settings\", e0.\"tenant_external_id\", e0.\"inserted_at\", e0.\"updated_at\", e0.\"tenant_external_id\" FROM \"extensions\" AS e0 WHERE (e0.\"tenant_external_id\" = $1) ORDER BY e0.\"tenant_external_id\"",
+    "calls": 4,
+    "totalMs": 0.212
+  },
+  {
+    "category": "other",
+    "query": "SELECT t0.\"id\", t0.\"name\", t0.\"external_id\", t0.\"jwt_secret\", t0.\"jwt_jwks\", t0.\"postgres_cdc_default\", t0.\"max_concurrent_users\", t0.\"max_events_per_second\", t0.\"max_presence_events_per_second\", t0.\"max_payload_size_in_kb\", t0.\"max_bytes_per_second\", t0.\"max_channels_per_client\", t0.\"max_joins_per_second\", t0.\"suspend\", t0.\"private_only\", t0.\"migrations_ran\", t0.\"broadcast_adapter\", t0.\"max_clien",
+    "calls": 4,
+    "totalMs": 0.304
+  },
+  {
+    "category": "other",
+    "query": "select queryid::text, query, calls::float8 as calls, total_exec_time from extensions.pg_stat_statements s join pg_database d on d.oid = s.dbid where d.datname = $1",
+    "calls": 1,
+    "totalMs": 15.666
+  }
+]

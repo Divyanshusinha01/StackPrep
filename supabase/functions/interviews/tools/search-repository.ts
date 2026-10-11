@@ -13,6 +13,8 @@ import {
   type ToolContext,
   type ToolOutcome,
   topLevelArea,
+  type VectorFallbackReason,
+  type VectorFillTiming,
 } from "./types.ts";
 
 export const MAX_EXCERPT_CHARS = 1500;
@@ -203,10 +205,8 @@ export const keywordSearch: RepositorySearch = (memory, query, limit) => {
     .slice(0, limit);
 };
 
-type FallbackReason = "deadline" | "embed_error" | "rpc_error" | "no_results" | "disabled";
-
 class VectorFallback extends Error {
-  constructor(readonly reason: FallbackReason) {
+  constructor(readonly reason: VectorFallbackReason) {
     super(reason);
   }
 }
@@ -268,12 +268,17 @@ async function vectorHits(
  * The whole fill (query embedding plus match) shares one deadline; on the deadline or any failure
  * the keyword hits are returned unchanged, without a retry.
  */
-async function fillWithVectorHits(ctx: ToolContext, query: string, limit: number, hits: SearchHit[]): Promise<SearchHit[]> {
+async function fillWithVectorHits(
+  ctx: ToolContext,
+  query: string,
+  limit: number,
+  hits: SearchHit[],
+): Promise<{ hits: SearchHit[]; fallbackReason: VectorFallbackReason | null }> {
   const embeddings = ctx.embeddings;
   const startedAt = Date.now();
-  const fallback = (reason: FallbackReason) => {
+  const fallback = (reason: VectorFallbackReason) => {
     ctx.log({ event: "repository_search_vector_fallback", reason, elapsed_ms: Date.now() - startedAt });
-    return hits;
+    return { hits, fallbackReason: reason };
   };
   if (!embeddings) {
     return fallback("disabled");
@@ -308,7 +313,7 @@ async function fillWithVectorHits(ctx: ToolContext, query: string, limit: number
         filled.push(hit);
       }
     }
-    return filled;
+    return { hits: filled, fallbackReason: null };
   } catch (err) {
     return fallback(err instanceof VectorFallback ? err.reason : "embed_error");
   } finally {
@@ -382,9 +387,14 @@ export async function searchRepository(
     symbolHits(ctx, input.query, input.limit),
   ]);
   const indexedHits = mergeSymbolHits(search(memory, input.query, input.limit), symbols, input.limit);
-  const hits = indexedHits.length < input.limit
-    ? await fillWithVectorHits(ctx, input.query, input.limit, indexedHits)
-    : indexedHits;
+  let hits = indexedHits;
+  let vectorFill: VectorFillTiming | undefined;
+  if (indexedHits.length < input.limit) {
+    const startedAt = Date.now();
+    const filled = await fillWithVectorHits(ctx, input.query, input.limit, indexedHits);
+    hits = filled.hits;
+    vectorFill = { elapsedMs: Date.now() - startedAt, fallbackReason: filled.fallbackReason };
+  }
   const output: SearchRepositoryOutput = {
     ok: true,
     results: hits.map(({ path, area, excerpt, symbol }) => ({
@@ -410,5 +420,6 @@ export async function searchRepository(
     output,
     summary: { ok: true, paths: hits.map((hit) => hit.path), ...(symbolCount ? { symbols: symbolCount } : {}) },
     evidence,
+    ...(vectorFill ? { vectorFill } : {}),
   };
 }

@@ -1,0 +1,110 @@
+{
+  "recordedAt": "2026-10-11T16:21:30.624Z",
+  "transport": "sse",
+  "overridden": false,
+  "edgeWorkerCpuLimitsMs": {
+    "soft": 1000,
+    "hard": 2000,
+    "source": "CLI main service default"
+  },
+  "host": {
+    "os": "windows 10.0.26300",
+    "cpu": "13th Gen Intel(R) Core(TM) i5-13500H",
+    "logicalCpus": 16,
+    "ramGiB": 15.7
+  },
+  "docker": {
+    "server": "29.8.1",
+    "vmCpus": 16,
+    "vmMemGiB": 7.6
+  },
+  "versions": {
+    "supabaseCli": "2.119.0",
+    "k6": "k6.exe v2.2.0 (go1.27.1, windows/amd64)\nExtensions:\n  github.com/phymbert/xk6-sse v0.2.0, k6/x/sse [js]",
+    "deno": "2.9.7",
+    "images": {
+      "supabase_db_stackprep": "public.ecr.aws/supabase/postgres:17.11.0.002",
+      "supabase_edge_runtime_stackprep": "",
+      "supabase_realtime_stackprep": "public.ecr.aws/supabase/realtime:v2.140.3",
+      "supabase_auth_stackprep": "public.ecr.aws/supabase/gotrue:v2.197.0",
+      "supabase_rest_stackprep": "public.ecr.aws/supabase/postgrest:v14.18",
+      "supabase_kong_stackprep": "public.ecr.aws/supabase/kong:2.8.1"
+    }
+  },
+  "git": {
+    "commit": "cd1eff1d58fa8586efb7736a7567e9c67a65cf72",
+    "dirtyFiles": 28
+  },
+  "apiUrl": "http://127.0.0.1:54321",
+  "notes": [
+    "Edge runtime: the container `supabase functions serve` creates (same image, command, mounts, env; default per_worker policy), started per run without the CLI file watcher. With NTFS last-access updates enabled, the watcher fired on worker boots and restarted the runtime mid-run, killing every open stream.",
+    "Access tokens are HS256, minted with the local JWT secret (the gateway logs 'Legacy token type'); browser sessions on this stack are ES256. The handler still verifies every token with Supabase Auth getUser.",
+    "Writers use POST /interviews/:id/events (the browser path) for turns and voice events, and the service-role RPCs complete_interview, request_report, save_report (the server-side path) for the terminal rows.",
+    "Frame delay is client receipt minus the row's created_at, corrected by the measured database-host clock offset."
+  ],
+  "config": {
+    "seed": 20261011,
+    "stages": [
+      10,
+      25,
+      50,
+      100,
+      200
+    ],
+    "extensionStages": [
+      300,
+      400
+    ],
+    "runsPerStage": 3,
+    "timing": {
+      "startDelayMs": 8000,
+      "connectRampMs": 10000,
+      "warmupMs": 30000,
+      "holdMs": 120000,
+      "reportAfterCompleteMs": 2000,
+      "drainMs": 20000
+    },
+    "workload": {
+      "turnIntervalMs": 6000,
+      "voiceEventIntervalMs": 30000,
+      "turnContentChars": 400
+    },
+    "bottleneck": {
+      "p95FrameDelayMs": 3000,
+      "errorRate": 0.01,
+      "cpuSaturationShare": 0.9
+    },
+    "containers": {
+      "supabase_db_stackprep": {
+        "cpus": 2,
+        "memory": "2g"
+      },
+      "supabase_edge_runtime_stackprep": {
+        "cpus": 2,
+        "memory": "3g"
+      },
+      "supabase_realtime_stackprep": {
+        "cpus": 1,
+        "memory": "512m"
+      },
+      "supabase_auth_stackprep": {
+        "cpus": 1,
+        "memory": "256m"
+      },
+      "supabase_rest_stackprep": {
+        "cpus": 1,
+        "memory": "256m"
+      },
+      "supabase_kong_stackprep": {
+        "cpus": 1,
+        "memory": "512m"
+      }
+    },
+    "pins": {
+      "supabaseCli": "2.119.0",
+      "k6": "v2.2.0",
+      "xk6Sse": "github.com/phymbert/xk6-sse@v0.2.0",
+      "xk6Image": "grafana/xk6@sha256:2bf2f319554253656a00fa9224bc7b40bc401e45b9f04041074d62e39561c084"
+    }
+  }
+}

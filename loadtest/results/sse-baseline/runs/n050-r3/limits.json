@@ -1,0 +1,26 @@
+{
+  "supabase_db_stackprep": {
+    "nanoCpus": 2000000000,
+    "memoryBytes": 2147483648
+  },
+  "supabase_edge_runtime_stackprep": {
+    "nanoCpus": 2000000000,
+    "memoryBytes": 3221225472
+  },
+  "supabase_realtime_stackprep": {
+    "nanoCpus": 1000000000,
+    "memoryBytes": 536870912
+  },
+  "supabase_auth_stackprep": {
+    "nanoCpus": 1000000000,
+    "memoryBytes": 268435456
+  },
+  "supabase_rest_stackprep": {
+    "nanoCpus": 1000000000,
+    "memoryBytes": 268435456
+  },
+  "supabase_kong_stackprep": {
+    "nanoCpus": 1000000000,
+    "memoryBytes": 536870912
+  }
+}

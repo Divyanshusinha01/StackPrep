@@ -1,0 +1,25 @@
+
+
+  █ TOTAL RESULTS 
+
+    CUSTOM
+    sse_event......................: 117    0.436556/s
+
+    HTTP
+    http_req_duration..............: min=8.5ms med=94.14ms p(95)=3.46s p(99)=4.25s max=4.7s  count=370
+      { expected_response:true }...: min=8.5ms med=94.14ms p(95)=3.46s p(99)=4.25s max=4.7s  count=370
+    http_req_failed................: 0.00%  0 out of 370
+    http_reqs......................: 370    1.380561/s
+
+    EXECUTION
+    iteration_duration.............: min=2m40s med=2m43s   p(95)=2m45s p(99)=2m45s max=2m45s count=10 
+    iterations.....................: 10     0.037312/s
+    vus............................: 10     min=10       max=20
+    vus_max........................: 20     min=20       max=20
+
+    NETWORK
+    data_received..................: 220 kB 821 B/s
+    data_sent......................: 466 kB 1.7 kB/s
+
+
+

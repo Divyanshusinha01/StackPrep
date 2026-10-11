@@ -200,6 +200,14 @@ Voice usage belongs to a **voice segment**: the connected time opened by a `conn
 
 The view `ai_usage_effective` applies the reconciliation rule without changing raw rows. Non-voice rows pass through. For voice, per segment and model, it uses `provider` rows if any exist, else `client_reported` rows, else the `duration_estimate` row, flagged `is_estimate`. So relayed usage supersedes the realtime estimate, while the transcription estimate stands until provider-side transcription usage exists. The superseded estimate stays in `ai_usage` as the cross-check for client-reported numbers.
 
+#### Admin dashboard
+
+`/admin` in the web app shows cost per interview, the voice/text split, prompt-cache hit rate, and tool latency over a window of 1, 7, 30, or 90 days. Data comes only from the four service-role SQL functions `admin_interview_cost` (fixed limit of 50), `admin_voice_text_split`, `admin_cache_hit_rate`, and `admin_tool_latency`, which read `ai_usage_effective` and `tool_call_metrics`. Output carries interview ids and aggregates, never transcripts, repository content, or emails.
+
+- **Allowlist.** `ADMIN_USER_IDS` is a comma-separated list of Supabase Auth user ids, parsed by `parseAdminUserIds` in `@stackprep/shared`. It fails closed: an empty value, or any entry that is not a UUID, means no admins. Emails are never used for authorization.
+- **Web gate.** The page calls `requireAdmin` (`apps/web/src/lib/admin.ts`, `server-only`) before reading anything. It gets the identity from `supabase.auth.getUser()` and compares the user id to the allowlist; unauthenticated and non-admin visitors both get `notFound()`, so the route is not revealed.
+- **Backend.** The page then calls `GET /admin/metrics?days=N` (Edge Function `admin`) with the admin's own session. The function verifies the JWT, re-checks the id against its own `ADMIN_USER_IDS` (`404 not_found` otherwise), validates the window (`400 invalid_request`), and only then calls the four functions with the service-role client. The service-role key stays in Edge Functions; the web app has none.
+
 ---
 
 ## 4. Workspace Model
@@ -549,6 +557,7 @@ POST   /interviews/:id/resume
 POST   /interviews/:id/end
 DELETE /interviews/:id
 GET    /interviews/:id/report
+GET    /admin/metrics?days=N           (allowlisted admins only)
 ```
 
 `GET /interviews/:id/events` is the server-to-client event stream (see [Transport](#transport)).
@@ -954,6 +963,8 @@ Request
 
 Never rely on frontend route protection alone.
 
+Operational admin access (see [Admin dashboard](#admin-dashboard)) is not ownership-based: it is granted only to user ids in `ADMIN_USER_IDS`, checked both by the web page and by the `admin` Edge Function.
+
 ---
 
 ## 12. Background Processing
@@ -1061,7 +1072,7 @@ Environment-specific configuration is managed through environment variables.
 
 ### Environment variables
 
-Each integration has its own Zod schema in `@stackprep/shared` (`packages/shared/src/env.ts`) and is validated only where that integration is used. Only the core Supabase variables are required at boot. Secrets live only in the Edge Functions environment; the web app receives only `NEXT_PUBLIC_*` values plus Sentry build-time variables.
+Each integration has its own Zod schema in `@stackprep/shared` (`packages/shared/src/env.ts`) and is validated only where that integration is used. Only the core Supabase variables are required at boot. Secrets live only in the Edge Functions environment; the web app receives only `NEXT_PUBLIC_*` values, Sentry build-time variables, and the non-secret server-only `ADMIN_USER_IDS` allowlist.
 
 **Vercel (Next.js)** — template in `apps/web/.env.example`
 
@@ -1070,6 +1081,7 @@ Each integration has its own Zod schema in `@stackprep/shared` (`packages/shared
 | `webEnvSchema` (required) | `NODE_ENV`, `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY` |
 | `webSentryEnvSchema`    | `NEXT_PUBLIC_SENTRY_DSN`; build-time `SENTRY_ORG`, `SENTRY_PROJECT`, `SENTRY_AUTH_TOKEN` |
 | `webGithubAppEnvSchema` | `NEXT_PUBLIC_GITHUB_APP_SLUG` (install link only)                            |
+| `adminEnvSchema`        | `ADMIN_USER_IDS` (server-only; `/admin` allowlist, fails closed)             |
 
 **Supabase Edge Functions** — template in `supabase/functions/.env.example`, set in production with `supabase secrets set`
 
@@ -1081,6 +1093,7 @@ Each integration has its own Zod schema in `@stackprep/shared` (`packages/shared
 | `openAIEnvSchema`          | `OPENAI_API_KEY`, `OPENAI_REALTIME_MODEL`, `OPENAI_REALTIME_TRANSCRIPTION_MODEL`, `OPENAI_PLANNING_MODEL`, `OPENAI_EVALUATION_MODEL`, `OPENAI_REPORT_MODEL`, `OPENAI_VISION_MODEL`, `OPENAI_EMBEDDING_MODEL` (default `text-embedding-3-small`; must natively output 1536 dimensions), and per-task `OPENAI_{PLANNING,EVALUATION,REPORT,VISION}_REASONING_EFFORT`. |
 | `githubAppEnvSchema`       | `GITHUB_APP_ID`, `GITHUB_APP_CLIENT_ID`, `GITHUB_APP_CLIENT_SECRET`, `GITHUB_APP_PRIVATE_KEY`, `GITHUB_APP_WEBHOOK_SECRET` |
 | `edgeSentryEnvSchema`      | `SENTRY_DSN`, `SENTRY_ENVIRONMENT`                                                            |
+| `adminEnvSchema`           | `ADMIN_USER_IDS` (`admin` function; same list as the web app)                                 |
 
 Edge Functions read their variables with the `readEnv(name, schema)` helper in `supabase/functions/_shared/env.ts`.
 

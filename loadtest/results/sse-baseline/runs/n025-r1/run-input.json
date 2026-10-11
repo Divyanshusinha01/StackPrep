@@ -1,0 +1,51 @@
+{
+  "count": 25,
+  "startAt": 1791736764346,
+  "warmupMs": 30000,
+  "holdMs": 120000,
+  "streamLifetimeMs": 140000,
+  "interviewIds": [
+    "acd1c3b6-2c46-4934-bc24-3a02732360f2",
+    "68130948-e898-4c75-ae79-edda7329dd1d",
+    "f2882b73-19b1-48a5-9b69-84c60dc5fb6c",
+    "864cfbf5-68c1-49a7-bfb9-bc6dc7a47325",
+    "38bbce27-71e4-4d87-b396-75394515a15a",
+    "895124cb-3477-4849-ac5e-6cb7c5a5daf2",
+    "b25e6fe0-c992-4f79-bf6b-89cb0e623178",
+    "aea22582-d405-48ad-a647-642516c20fee",
+    "59339732-67b7-4a16-acef-6f90cdfb5afd",
+    "04fd900e-1fb0-4c62-a9a3-9434294f491b",
+    "4cfbbc55-5dee-4303-b4ab-3a69224ff676",
+    "64c7aa19-72da-47ec-9a16-cba2cce967bd",
+    "6f0525b2-ea90-41d0-a76b-d9ea2c81b34a",
+    "58e62433-887b-44fd-ab9e-efac649c1bc0",
+    "ea3b12ac-23d7-4561-8e50-a468a2a42176",
+    "5d881844-0217-40e8-9da4-824feca99b56",
+    "dfe859e2-78d3-4e78-b9e2-bcff42de7cd6",
+    "db672260-1b5a-41a3-a284-497741513f39",
+    "935ba385-b4ab-444b-a143-2b24a06bd0fc",
+    "1b768dc5-2fa4-481d-b8a0-30f936138e3c",
+    "112d0d57-08c1-46d1-a3d8-6e9a288627f0",
+    "2df6554b-7cb2-4167-96e2-f7851fcb46f3",
+    "2972a8f3-64ab-42b6-85ac-ffaa48bfd710",
+    "339c6c57-4c81-47e6-9a4c-ba0b88230526",
+    "9e8758dd-e0eb-48df-8e52-d71501623c8a"
+  ],
+  "scheduledWritesPerInterview": 36,
+  "containerCpus": {
+    "supabase_db_stackprep": 2,
+    "supabase_edge_runtime_stackprep": 2,
+    "supabase_realtime_stackprep": 1,
+    "supabase_auth_stackprep": 1,
+    "supabase_rest_stackprep": 1,
+    "supabase_kong_stackprep": 1
+  },
+  "edgeErrorLines": 46,
+  "edgeWorkerLimitLines": 18,
+  "edgeRuntimeCrash": null,
+  "thresholds": {
+    "p95FrameDelayMs": 3000,
+    "errorRate": 0.01,
+    "cpuSaturationShare": 0.9
+  }
+}

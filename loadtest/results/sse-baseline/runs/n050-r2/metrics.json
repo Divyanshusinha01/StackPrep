@@ -1,0 +1,221 @@
+{
+  "count": 50,
+  "window": {
+    "startAt": 1791738164068,
+    "endAt": 1791738284068
+  },
+  "clockOffsetMs": 2.3,
+  "frameDelayMs": {
+    "count": 46,
+    "p50": 1193.3,
+    "p95": 1896.6,
+    "p99": 2071.9,
+    "max": 2086.3
+  },
+  "connectedFrameDelayMs": {
+    "count": 16,
+    "p50": 1220.8,
+    "p95": 1676.1,
+    "p99": 1867.5,
+    "max": 1915.3
+  },
+  "reconnectGapFrameDelayMs": {
+    "count": 30,
+    "p50": 1145.8,
+    "p95": 1958,
+    "p99": 2077,
+    "max": 2086.3
+  },
+  "completedStatusDelayMs": {
+    "count": 0,
+    "p50": null,
+    "p95": null,
+    "p99": null,
+    "max": null
+  },
+  "reportReadyDelayMs": {
+    "count": 0,
+    "p50": null,
+    "p95": null,
+    "p99": null,
+    "max": null
+  },
+  "timeToFirstFrameMs": {
+    "count": 8,
+    "p50": 1573,
+    "p95": 7004.9,
+    "p99": 7018.6,
+    "max": 7022
+  },
+  "timeToOpenMs": {
+    "count": 30,
+    "p50": 10015.5,
+    "p95": 10033.2,
+    "p99": 10065.5,
+    "max": 10078
+  },
+  "frames": {
+    "expected": 1291,
+    "receivedUnique": 176,
+    "dropped": 1115,
+    "duplicates": 0,
+    "unexpected": 0,
+    "malformed": 0,
+    "readersWithoutReport": 50
+  },
+  "connections": {
+    "attempts": 30,
+    "byStatus": {
+      "200": 11,
+      "503": 19
+    },
+    "failed": 19,
+    "premature": 0,
+    "streamErrors": 11,
+    "lifetimeReconnects": 11,
+    "fallbacks": 0,
+    "sampleErrors": [
+      "unexpected EOF"
+    ]
+  },
+  "writes": {
+    "scheduled": 1800,
+    "logged": 1800,
+    "failed": 82,
+    "missing": 0,
+    "byStatus": {
+      "200": 50,
+      "201": 1618,
+      "204": 50,
+      "500": 1,
+      "503": 81
+    },
+    "latencyMs": {
+      "count": 1800,
+      "p50": 4093,
+      "p95": 11665.1,
+      "p99": 13443.6,
+      "max": 19861
+    },
+    "slipMs": {
+      "count": 1800,
+      "p50": 26146,
+      "p95": 51906.9,
+      "p99": 62148.8,
+      "max": 72684
+    }
+  },
+  "errorRate": 0.0612,
+  "edgeFunctionErrors": 299,
+  "edgeWorkerLimitEvents": 44,
+  "edgeRuntimeCrash": null,
+  "db": {
+    "statementsByCategory": {
+      "other": {
+        "callsPerSec": 65.6,
+        "meanMs": 0.749
+      },
+      "interview_lookup": {
+        "callsPerSec": 9.4,
+        "meanMs": 0.899
+      },
+      "event_write": {
+        "callsPerSec": 9.4,
+        "meanMs": 9.117
+      },
+      "stream_poll": {
+        "callsPerSec": 12,
+        "meanMs": 0.596
+      }
+    },
+    "activeConnections": {
+      "count": 58,
+      "p50": 1,
+      "p95": 5,
+      "p99": 7.7,
+      "max": 10
+    },
+    "totalConnections": {
+      "count": 58,
+      "p50": 23.5,
+      "p95": 30,
+      "p99": 30.4,
+      "max": 31
+    }
+  },
+  "resources": {
+    "supabase_db_stackprep": {
+      "cpuPct": {
+        "count": 58,
+        "p50": 203.3,
+        "p95": 222.5,
+        "p99": 242.7,
+        "max": 251.6
+      },
+      "cpuShareOfLimitP50": 1.017,
+      "memMiBMax": 210
+    },
+    "supabase_edge_runtime_stackprep": {
+      "cpuPct": {
+        "count": 58,
+        "p50": 129.7,
+        "p95": 198.9,
+        "p99": 211.3,
+        "max": 219.4
+      },
+      "cpuShareOfLimitP50": 0.649,
+      "memMiBMax": 2086
+    },
+    "supabase_realtime_stackprep": {
+      "cpuPct": {
+        "count": 58,
+        "p50": 0.7,
+        "p95": 6.4,
+        "p99": 16.2,
+        "max": 18.6
+      },
+      "cpuShareOfLimitP50": 0.007,
+      "memMiBMax": 209
+    },
+    "supabase_auth_stackprep": {
+      "cpuPct": {
+        "count": 58,
+        "p50": 43.9,
+        "p95": 58.9,
+        "p99": 71.2,
+        "max": 79.7
+      },
+      "cpuShareOfLimitP50": 0.439,
+      "memMiBMax": 24
+    },
+    "supabase_rest_stackprep": {
+      "cpuPct": {
+        "count": 58,
+        "p50": 13.1,
+        "p95": 96.1,
+        "p99": 106.2,
+        "max": 109.3
+      },
+      "cpuShareOfLimitP50": 0.131,
+      "memMiBMax": 110
+    },
+    "supabase_kong_stackprep": {
+      "cpuPct": {
+        "count": 58,
+        "p50": 9.7,
+        "p95": 20.1,
+        "p99": 23.9,
+        "max": 26.4
+      },
+      "cpuShareOfLimitP50": 0.097,
+      "memMiBMax": 190
+    }
+  },
+  "saturatedContainers": [
+    "supabase_db_stackprep"
+  ],
+  "breaches": [
+    "error rate 6.12% > 1%",
+    "DB CPU at 102% of its limit"
+  ]
+}
