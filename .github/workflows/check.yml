@@ -55,6 +55,17 @@ jobs:
       - name: Run checks
         run: pnpm check
 
+      # Datasets, corpora and recordings must match evals/projects/stackprep/pins.json.
+      - name: Eval integrity
+        run: pnpm eval:verify
+
+      # Replays committed model outputs: no network, no OPENAI_API_KEY. Fails on a regression against
+      # baseline.json, a replay miss, a suite error or a non-identical second replay.
+      # consistency-synthetic is left out of the suite list: its strong-above-weak sanity check fails on the
+      # current recordings and it is excluded from the approved baseline (see its reason). Re-add it once fixed.
+      - name: Eval (replay)
+        run: pnpm eval:replay
+
   db:
     name: Database tests
     runs-on: ubuntu-latest
