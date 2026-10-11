@@ -31,6 +31,9 @@ pnpm-debug.log*
 supabase/.branches
 supabase/.temp
 
+# eval run output (baselines and pins live under evals/projects and are committed)
+evals/results/
+
 # typescript
 *.tsbuildinfo
 next-env.d.ts

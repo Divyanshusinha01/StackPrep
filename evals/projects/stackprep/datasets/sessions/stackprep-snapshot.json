@@ -1,0 +1,145 @@
+{
+  "format": 1,
+  "corpus": "stackprep-snapshot",
+  "guidelines": [
+    "Each session is a short scripted interview on the snapshot: interviewer question, candidate answer, the interviewer's answer_summary for evaluate_answer, and the evidence examined before the answer.",
+    "Sessions mix accurate answers with answers that contradict the code at the pinned commit, so evaluations and reports have both strengths and discrepancies to describe.",
+    "The state is a hand-written plan in the shape planning writes. Evaluations and reports start from it, so re-recording the plan never invalidates them.",
+    "Line ranges refer to the snapshot bundle; refreshing the snapshot means re-checking them."
+  ],
+  "state": {
+    "coverage_map": {
+      "areas": [
+        {
+          "id": "interview_engine",
+          "name": "Interview engine",
+          "priority": "high",
+          "rationale": "The voice interview depends on evaluate_answer and the other realtime tools returning quickly and safely.",
+          "topics": ["evaluation prompt", "evaluation failures and latency", "interviewer guidance"],
+          "repo_evidence": ["supabase/functions/interviews/tools/evaluate-answer.ts", "supabase/functions/interviews/tools/types.ts"],
+          "status": "not_started"
+        },
+        {
+          "id": "reports",
+          "name": "Interview reports",
+          "priority": "high",
+          "rationale": "The report job turns transcripts and evaluations into the candidate-facing report and must stay grounded in the repository.",
+          "topics": ["report grounding", "report model input", "report job retries"],
+          "repo_evidence": ["supabase/functions/inngest/report.ts", "supabase/functions/inngest/report-store.ts"],
+          "status": "not_started"
+        },
+        {
+          "id": "planning",
+          "name": "Interview planning",
+          "priority": "medium",
+          "rationale": "Planning builds the coverage map and plan from repository memory and earlier interviews.",
+          "topics": ["plan normalization", "memory budget", "earlier interviews"],
+          "repo_evidence": ["supabase/functions/inngest/planning.ts", "supabase/functions/inngest/planning-store.ts"],
+          "status": "not_started"
+        },
+        {
+          "id": "security",
+          "name": "Prompt and data safety",
+          "priority": "medium",
+          "rationale": "Untrusted repository and transcript text reaches every model prompt.",
+          "topics": ["prompt fencing", "secret scrubbing"],
+          "repo_evidence": ["supabase/functions/_shared/analysis/scrub.ts"],
+          "status": "not_started"
+        }
+      ]
+    },
+    "plan": {
+      "summary": "StackPrep runs voice interviews about a candidate's own repository: Supabase edge functions serve the realtime interview tools, and Inngest jobs plan interviews, index code and write reports with OpenAI. The interview probes the evaluation tool, report grounding and planning.",
+      "phases": [
+        { "title": "Reports", "coverage_area_ids": ["reports", "security"], "goals": ["Check how reports stay grounded and how the job handles model failures"], "minutes": 7 },
+        { "title": "Live evaluation", "coverage_area_ids": ["interview_engine"], "goals": ["Probe the evaluation prompt and what happens when the model is slow"], "minutes": 7 },
+        { "title": "Planning", "coverage_area_ids": ["planning"], "goals": ["Explore plan normalization and the context sent to the planner"], "minutes": 6 }
+      ],
+      "opening_question": "Walk me through what happens between an interview ending and the candidate seeing their report."
+    },
+    "strategy": {
+      "difficulty": "advanced",
+      "focus_area_ids": ["reports", "interview_engine"],
+      "avoid_repeating": [],
+      "follow_up_style": "Ask for the function involved and what happens when the model misbehaves.",
+      "notes": []
+    }
+  },
+  "sessions": [
+    {
+      "id": "sp1-reports",
+      "description": "Report answers: right about grounding and error classification, wrong that the report model sees discrepancy_detail.",
+      "turns": [
+        {
+          "question": "How does the report job stop the model from citing files the interview never touched?",
+          "answer": "groundReport filters repository_evidence: an entry survives only if its path was examined during the interview, cited in an evaluation's repo_evidence, or appears somewhere in repository memory. Then it re-parses the report with the schema and treats a mismatch as invalid output.",
+          "answer_summary": "Explains groundReport: repository_evidence entries are kept only for examined paths, evaluation repo_evidence or paths in memory, then the report is re-validated.",
+          "evidence": [{ "path": "supabase/functions/inngest/report.ts", "symbol": "groundReport", "startLine": 224, "endLine": 236 }]
+        },
+        {
+          "question": "What does the report model see about each evaluation?",
+          "answer": "buildReportInput hands it the whole evaluation row: the score, the rating, strengths, gaps, repo_evidence and the discrepancy_detail text, so the model can quote the exact contradiction.",
+          "answer_summary": "Claims buildReportInput passes each evaluation's score, rating, strengths, gaps, repo_evidence and discrepancy_detail to the report model.",
+          "evidence": [{ "path": "supabase/functions/inngest/report.ts", "symbol": "buildReportInput", "startLine": 166, "endLine": 218 }]
+        },
+        {
+          "question": "Which report failures does the job retry?",
+          "answer": "classifyReportError maps rate limits to a RetryAfterError using the provider's delay, retries unavailable and invalid output, except a refusal, which is non-retriable, and makes other request errors a non-retriable internal_error.",
+          "answer_summary": "Describes classifyReportError: rate limits retry after the provider delay, unavailable and invalid output retry, refusals and request errors are non-retriable.",
+          "evidence": [{ "path": "supabase/functions/inngest/report.ts", "symbol": "classifyReportError", "startLine": 102, "endLine": 119 }]
+        }
+      ]
+    },
+    {
+      "id": "sp2-evaluation",
+      "description": "Evaluation answers: right about the prompt and focus rules, wrong about a heuristic fallback on timeout.",
+      "turns": [
+        {
+          "question": "What goes into the prompt when evaluate_answer runs?",
+          "answer": "buildEvaluationInput fences six blocks: the plan summary and coverage areas, summary rows of repository memory within a budget, the examined evidence paths, the recent transcript, the current question and the interviewer's answer summary.",
+          "answer_summary": "Lists the fenced prompt blocks of buildEvaluationInput: plan and coverage, budgeted memory, examined evidence, recent transcript, question and answer summary.",
+          "evidence": [{ "path": "supabase/functions/interviews/tools/evaluate-answer.ts", "symbol": "buildEvaluationInput", "startLine": 109, "endLine": 147 }]
+        },
+        {
+          "question": "What happens if the evaluation model is slow or times out?",
+          "answer": "After the timeout evaluateAnswer falls back to a keyword heuristic that scores the answer against the coverage topics, so every answer still gets a rating.",
+          "answer_summary": "Claims evaluateAnswer falls back to a keyword heuristic score when the model times out.",
+          "evidence": [
+            { "path": "supabase/functions/interviews/tools/evaluate-answer.ts", "startLine": 11, "endLine": 22 },
+            { "path": "supabase/functions/interviews/tools/evaluate-answer.ts", "symbol": "evaluateAnswer", "startLine": 149, "endLine": 218 }
+          ]
+        },
+        {
+          "question": "Could the guidance sent back to the voice model leak a score to the candidate?",
+          "answer": "The system prompt says focus is spoken guidance and must never include a score, rating or judgement, and the schema comment says the same. The focus text is also scrubbed and clipped before it goes back.",
+          "answer_summary": "Says the prompt and schema forbid scores in focus, and focus is scrubbed and clipped before returning.",
+          "evidence": [{ "path": "supabase/functions/interviews/tools/evaluate-answer.ts", "symbol": "EVALUATION_SYSTEM_PROMPT", "startLine": 27, "endLine": 65 }]
+        }
+      ]
+    },
+    {
+      "id": "sp3-planning",
+      "description": "Planning answers: right about normalizePlan and prior interviews, wrong that planner memory is unbounded.",
+      "turns": [
+        {
+          "question": "What does normalizePlan do to the model's output?",
+          "answer": "It rejects duplicate area ids, drops phase and focus references to unknown areas, removes phases that end up empty, resets every area to not_started and re-validates, throwing invalid output if the result no longer parses.",
+          "answer_summary": "Describes normalizePlan: duplicate ids rejected, unknown area references dropped, empty phases removed, statuses reset to not_started, result re-validated.",
+          "evidence": [{ "path": "supabase/functions/inngest/planning.ts", "symbol": "normalizePlan", "startLine": 241, "endLine": 259 }]
+        },
+        {
+          "question": "Is there a limit on how much repository memory goes to the planner?",
+          "answer": "No, buildPlanningInput sends every memory row in full; the planning model has a big context window so there was no need for a limit.",
+          "answer_summary": "Claims buildPlanningInput sends all repository memory with no size limit.",
+          "evidence": [{ "path": "supabase/functions/inngest/planning.ts", "symbol": "buildPlanningInput", "startLine": 199, "endLine": 235 }]
+        },
+        {
+          "question": "How do earlier interviews influence a new plan?",
+          "answer": "priorGuidance re-projects each earlier interview onto its number, status, coverage area statuses and per-category ratings, strengths and gaps, and that goes into a prior_interviews block so the planner can focus on gaps and avoid repeats.",
+          "answer_summary": "Explains that priorGuidance passes an allowlisted summary of earlier interviews into a prior_interviews block for the planner.",
+          "evidence": [{ "path": "supabase/functions/inngest/planning.ts", "symbol": "priorGuidance", "startLine": 190, "endLine": 197 }]
+        }
+      ]
+    }
+  ]
+}

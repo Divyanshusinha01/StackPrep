@@ -1,0 +1,220 @@
+{
+  "components": {
+    "evaluation": {
+      "model": "gpt-6-luna",
+      "reasoningEffort": "low"
+    },
+    "format": 1,
+    "k": 10,
+    "samples": "635cebd95ff05ac8c7ed89871b428ec5efa5ea2f42a025df82ff226cdfb17e38"
+  },
+  "format": 1,
+  "key": "bf9455475c7d99288898273a7809c9ba6ae0bee2f2406a79b5459818f344020f",
+  "output": {
+    "recordedAt": "2026-10-11T08:23:13.362Z",
+    "values": {
+      "discrepancyAgreement": 1,
+      "guidanceAgreement": 0.7222222222222222,
+      "k": 10,
+      "measured": 9,
+      "ratingAgreement": 0.8333333333333334,
+      "scoreRange": 0.7777777777777778,
+      "scoreStd": 0.36205460061082734,
+      "separation": {
+        "strong": 4.066666666666667,
+        "value": 1.266666666666667,
+        "weak": 2.8000000000000003
+      },
+      "transcripts": [
+        {
+          "discrepancy": {
+            "mode": false,
+            "share": 1
+          },
+          "expected": "strong",
+          "guidance": {
+            "mode": "follow_up",
+            "share": 0.5
+          },
+          "id": "sp1-reports/q1",
+          "rating": {
+            "mode": "proficient",
+            "share": 1
+          },
+          "scoreMean": 4,
+          "scoreRange": 0,
+          "scoreStd": 0,
+          "valid": 10
+        },
+        {
+          "discrepancy": {
+            "mode": false,
+            "share": 1
+          },
+          "expected": "weak",
+          "guidance": {
+            "mode": "follow_up",
+            "share": 0.6
+          },
+          "id": "sp1-reports/q2",
+          "rating": {
+            "mode": "proficient",
+            "share": 0.9
+          },
+          "scoreMean": 3.6,
+          "scoreRange": 1,
+          "scoreStd": 0.5163977794943223,
+          "valid": 10
+        },
+        {
+          "discrepancy": {
+            "mode": false,
+            "share": 1
+          },
+          "expected": "strong",
+          "guidance": {
+            "mode": "move_on",
+            "share": 1
+          },
+          "id": "sp1-reports/q3",
+          "rating": {
+            "mode": "proficient",
+            "share": 0.5
+          },
+          "scoreMean": 4.5,
+          "scoreRange": 1,
+          "scoreStd": 0.5270462766947299,
+          "valid": 10
+        },
+        {
+          "discrepancy": {
+            "mode": false,
+            "share": 1
+          },
+          "expected": "strong",
+          "guidance": {
+            "mode": "follow_up",
+            "share": 0.7
+          },
+          "id": "sp2-evaluation/q1",
+          "rating": {
+            "mode": "proficient",
+            "share": 1
+          },
+          "scoreMean": 4,
+          "scoreRange": 0,
+          "scoreStd": 0,
+          "valid": 10
+        },
+        {
+          "discrepancy": {
+            "mode": false,
+            "share": 1
+          },
+          "expected": "weak",
+          "guidance": {
+            "mode": "follow_up",
+            "share": 0.7
+          },
+          "id": "sp2-evaluation/q2",
+          "rating": {
+            "mode": "developing",
+            "share": 0.7
+          },
+          "scoreMean": 2.4,
+          "scoreRange": 2,
+          "scoreStd": 0.6992058987801011,
+          "valid": 10
+        },
+        {
+          "discrepancy": {
+            "mode": false,
+            "share": 1
+          },
+          "expected": "strong",
+          "guidance": {
+            "mode": "follow_up",
+            "share": 0.8
+          },
+          "id": "sp2-evaluation/q3",
+          "rating": {
+            "mode": "proficient",
+            "share": 0.8
+          },
+          "scoreMean": 3.6,
+          "scoreRange": 1,
+          "scoreStd": 0.5163977794943223,
+          "valid": 10
+        },
+        {
+          "discrepancy": {
+            "mode": false,
+            "share": 1
+          },
+          "expected": "strong",
+          "guidance": {
+            "mode": "follow_up",
+            "share": 0.7
+          },
+          "id": "sp3-planning/q1",
+          "rating": {
+            "mode": "proficient",
+            "share": 0.7
+          },
+          "scoreMean": 4.3,
+          "scoreRange": 1,
+          "scoreStd": 0.48304589153964794,
+          "valid": 10
+        },
+        {
+          "discrepancy": {
+            "mode": false,
+            "share": 1
+          },
+          "expected": "weak",
+          "guidance": {
+            "mode": "clarify",
+            "share": 0.5
+          },
+          "id": "sp3-planning/q2",
+          "rating": {
+            "mode": "developing",
+            "share": 0.9
+          },
+          "scoreMean": 2.4,
+          "scoreRange": 1,
+          "scoreStd": 0.5163977794943223,
+          "valid": 10
+        },
+        {
+          "discrepancy": {
+            "mode": false,
+            "share": 1
+          },
+          "expected": "strong",
+          "guidance": {
+            "mode": "move_on",
+            "share": 1
+          },
+          "id": "sp3-planning/q3",
+          "rating": {
+            "mode": "proficient",
+            "share": 1
+          },
+          "scoreMean": 4,
+          "scoreRange": 0,
+          "scoreStd": 0,
+          "valid": 10
+        }
+      ],
+      "validRate": 1
+    }
+  },
+  "pins": {
+    "dataset.consistency.stackprep-snapshot": "0d58b5e6bd41cebc845917ef07f2894c8f069bab93e021621bb24caaf7be8227",
+    "dataset.sessions.stackprep-snapshot": "d18d966c3808841e73cc15da11d08dd362fcc0ec68105995ecc3bb563ea34fb5",
+    "stackprep-snapshot": "f33851e8acae609fe53d36cb43e162e54942f1d01c3306ca2210c65e492adff8"
+  },
+  "sample": 0,
+  "site": "consistency_summary"
+}

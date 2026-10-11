@@ -1,0 +1,175 @@
+{
+  "format": 1,
+  "corpus": "synthetic",
+  "guidelines": [
+    "Each session is a short scripted interview on the corpus: interviewer question, candidate answer, the interviewer's answer_summary for evaluate_answer, and the evidence examined before the answer.",
+    "Sessions mix accurate answers with answers that contradict the code (the planted flaws), so evaluations and reports have both strengths and discrepancies to describe.",
+    "The state is a hand-written plan in the shape planning writes. Evaluations and reports start from it, so re-recording the plan never invalidates them.",
+    "Sessions feed the citations and support suites; claim labels live in datasets/claims, not here."
+  ],
+  "state": {
+    "coverage_map": {
+      "areas": [
+        {
+          "id": "security",
+          "name": "Security",
+          "priority": "high",
+          "rationale": "The storefront stores passwords, issues sessions, checks CSRF tokens and accepts payment gateway webhooks.",
+          "topics": ["password hashing", "session lifecycle", "webhook authenticity", "CSRF protection"],
+          "repo_evidence": ["src/auth/password.ts", "src/auth/session.ts", "src/payments/webhook.ts", "src/middleware/csrf.ts"],
+          "status": "not_started"
+        },
+        {
+          "id": "payments",
+          "name": "Orders and payments",
+          "priority": "high",
+          "rationale": "Order creation writes to Postgres and charges cards through an external gateway with retries.",
+          "topics": ["order creation flow", "retry policy", "idempotency of order creation"],
+          "repo_evidence": ["src/orders/service.ts", "src/payments/charge.ts", "src/utils/retry.ts"],
+          "status": "not_started"
+        },
+        {
+          "id": "data",
+          "name": "Data access",
+          "priority": "medium",
+          "rationale": "Queries go through a pooled Postgres client and an orders repository module.",
+          "topics": ["SQL safety", "transactions", "pagination"],
+          "repo_evidence": ["src/db/orders-repo.ts", "src/db/client.ts"],
+          "status": "not_started"
+        },
+        {
+          "id": "reliability",
+          "name": "Reliability and scaling",
+          "priority": "medium",
+          "rationale": "Rate limiting, caching, inventory reservations and the email worker all keep state in one process.",
+          "topics": ["rate limiting across instances", "cache invalidation", "inventory concurrency", "email delivery retries"],
+          "repo_evidence": ["src/middleware/rate-limit.ts", "src/cache/lru.ts", "services/inventory/reserve.go", "workers/email_worker.py"],
+          "status": "not_started"
+        }
+      ]
+    },
+    "plan": {
+      "summary": "Tidepool is a small storefront: a Node HTTP API for orders and payments over Postgres, a Go inventory service, a Python email worker, a React cart and a Java CSV exporter. The interview probes security, payment correctness, data access and how the services behave under concurrency and failure.",
+      "phases": [
+        { "title": "Security", "coverage_area_ids": ["security"], "goals": ["Check how credentials, sessions and webhooks are protected"], "minutes": 6 },
+        { "title": "Orders and payments", "coverage_area_ids": ["payments", "data"], "goals": ["Trace an order from request to charge", "Probe retries and duplicate requests"], "minutes": 8 },
+        { "title": "Reliability", "coverage_area_ids": ["reliability"], "goals": ["Explore behaviour with several instances and failing dependencies"], "minutes": 6 }
+      ],
+      "opening_question": "Give me a quick tour of what happens when a customer places an order."
+    },
+    "strategy": {
+      "difficulty": "intermediate",
+      "focus_area_ids": ["security", "payments"],
+      "avoid_repeating": [],
+      "follow_up_style": "Ask for the concrete code path and what happens when it fails.",
+      "notes": []
+    }
+  },
+  "sessions": [
+    {
+      "id": "s1-security",
+      "description": "Security answers: a wrong claim about password hashing, an honest one about session expiry, a wrong claim about webhook signatures.",
+      "turns": [
+        {
+          "question": "Walk me through how passwords are stored when a user signs up.",
+          "answer": "We hash them with bcrypt and a per-user salt in hashPassword, so two users with the same password end up with different hashes. verifyPassword then compares in constant time.",
+          "answer_summary": "Says hashPassword uses bcrypt with a per-user salt, and verifyPassword compares in constant time.",
+          "evidence": [{ "path": "src/auth/password.ts", "symbol": "hashPassword", "startLine": 6, "endLine": 8 }]
+        },
+        {
+          "question": "How long does a session stay valid once it is created?",
+          "answer": "createSession sets expiresAt thirty minutes out. To be honest I'm not sure verifySession ever looks at it; I think it only checks that the token is in the map, so a stolen token would work until logout or a restart.",
+          "answer_summary": "Sessions get a 30 minute expiresAt, but the candidate believes verifySession never checks it, so tokens live until logout or restart.",
+          "evidence": [{ "path": "src/auth/session.ts", "symbol": "verifySession", "startLine": 35, "endLine": 41 }]
+        },
+        {
+          "question": "How do you make sure gateway webhooks really come from the payment gateway?",
+          "answer": "handleGatewayWebhook verifies an HMAC signature from the headers with the webhook secret from config before it marks the order paid, so forged calls are rejected.",
+          "answer_summary": "Claims the webhook handler verifies an HMAC signature with the configured webhook secret before updating the order.",
+          "evidence": [{ "path": "src/payments/webhook.ts", "symbol": "handleGatewayWebhook", "startLine": 12, "endLine": 21 }]
+        }
+      ]
+    },
+    {
+      "id": "s2-payments",
+      "description": "Strong payment answers that name the real flaws (no idempotency, retrying declines).",
+      "turns": [
+        {
+          "question": "What happens end to end when POST /orders is called?",
+          "answer": "The route parses the body and calls OrderService.createOrder. That validates it with the zod schema in validateOrderInput, writes the order and its items in one transaction through Database.transaction, and only after the commit calls chargeCard. Then it drops the customer's cached order list.",
+          "answer_summary": "Traces POST /orders through createOrder: zod validation, order and items in one transaction, charge after commit, cache invalidation.",
+          "evidence": [
+            { "path": "src/server.ts", "symbol": "buildRoutes", "startLine": 12, "endLine": 28 },
+            { "path": "src/orders/service.ts", "symbol": "OrderService.createOrder", "startLine": 21, "endLine": 31 }
+          ]
+        },
+        {
+          "question": "What happens if the client retries an order request that timed out?",
+          "answer": "Nothing stops it: createOrder has no idempotency key, so the retry inserts a second order and charges the card again. I'd accept an Idempotency-Key header, store it with a unique constraint and return the existing order on conflict.",
+          "answer_summary": "Explains that createOrder is not idempotent, so a retry creates a second order and charge; proposes an idempotency key with a unique constraint.",
+          "evidence": [{ "path": "src/orders/service.ts", "symbol": "OrderService.createOrder", "startLine": 21, "endLine": 31 }]
+        },
+        {
+          "question": "How does chargeCard deal with gateway failures?",
+          "answer": "It wraps postCharge in withRetry with five attempts and zero delay, and withRetry retries every error. That includes CardDeclinedError from a 402, which is pointless, and there is no backoff. I'd only retry timeouts and 5xx with exponential backoff and jitter.",
+          "answer_summary": "Says chargeCard retries five times with no delay through withRetry, including card declines; proposes retrying only transient errors with backoff.",
+          "evidence": [
+            { "path": "src/payments/charge.ts", "symbol": "chargeCard", "startLine": 29, "endLine": 31 },
+            { "path": "src/utils/retry.ts", "symbol": "withRetry", "startLine": 9, "endLine": 22 }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "s3-data",
+      "description": "Weak data-access answers: wrong about SQL injection and pagination, right about transactions.",
+      "turns": [
+        {
+          "question": "How does findOrdersByCustomer build its query?",
+          "answer": "It uses parameterized queries like everything else in the repo, so SQL injection isn't possible there.",
+          "answer_summary": "Claims findOrdersByCustomer uses parameterized queries, so injection is impossible.",
+          "evidence": [{ "path": "src/db/orders-repo.ts", "symbol": "findOrdersByCustomer", "startLine": 25, "endLine": 27 }]
+        },
+        {
+          "question": "Can a client ask GET /orders for a huge page of results?",
+          "answer": "I don't think so, I believe listOrders caps the limit at 100 somewhere.",
+          "answer_summary": "Believes listOrders caps the page size at 100.",
+          "evidence": [
+            { "path": "src/orders/service.ts", "symbol": "OrderService.listOrders", "startLine": 33, "endLine": 36 },
+            { "path": "src/server.ts", "symbol": "buildRoutes", "startLine": 12, "endLine": 28 }
+          ]
+        },
+        {
+          "question": "How do transactions work in the database client?",
+          "answer": "Database.transaction checks out one pooled connection, runs BEGIN, calls the callback with a Queryable bound to that connection, commits, and on any error rolls back and rethrows. The client is always released in finally.",
+          "answer_summary": "Accurately describes Database.transaction: one pooled connection, BEGIN, COMMIT or ROLLBACK on error, release in finally.",
+          "evidence": [{ "path": "src/db/client.ts", "symbol": "Database.transaction", "startLine": 21, "endLine": 37 }]
+        }
+      ]
+    },
+    {
+      "id": "s4-reliability",
+      "description": "Reliability answers: right about the rate limiter, wrong about inventory locking and the email dead-letter queue.",
+      "turns": [
+        {
+          "question": "If you ran three instances of the API, how would rate limiting behave?",
+          "answer": "Each instance has its own RateLimiter with an in-memory map, so a client gets roughly three times the configured limit, and every counter resets on restart. It would need a shared store like Redis.",
+          "answer_summary": "Explains that RateLimiter counters are per process, so limits multiply across instances and reset on restart.",
+          "evidence": [{ "path": "src/middleware/rate-limit.ts", "symbol": "RateLimiter", "startLine": 12, "endLine": 33 }]
+        },
+        {
+          "question": "How does Store.Reserve in the inventory service avoid overselling?",
+          "answer": "It takes the write lock for the whole check and update, so two concurrent reservations can't both pass the availability check.",
+          "answer_summary": "Claims Reserve holds the write lock across the availability check and the update.",
+          "evidence": [{ "path": "services/inventory/reserve.go", "symbol": "Reserve", "startLine": 31, "endLine": 40 }]
+        },
+        {
+          "question": "What happens to an email that keeps failing to send?",
+          "answer": "The worker requeues it until MAX_ATTEMPTS, and after that it goes to a dead-letter queue so someone can replay it later.",
+          "answer_summary": "Says failed emails are retried up to MAX_ATTEMPTS and then moved to a dead-letter queue.",
+          "evidence": [{ "path": "workers/email_worker.py", "symbol": "EmailWorker.process", "startLine": 38, "endLine": 45 }]
+        }
+      ]
+    }
+  ]
+}

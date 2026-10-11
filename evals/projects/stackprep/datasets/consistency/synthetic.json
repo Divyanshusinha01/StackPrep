@@ -1,0 +1,23 @@
+{
+  "format": 1,
+  "corpus": "synthetic",
+  "guidelines": [
+    "Each transcript is one turn of a session in datasets/sessions/synthetic.json: the conversation up to and including that answer, the evidence examined so far, and the hand-written interview state. Every sample starts from a fresh store, so the K samples of a transcript send identical requests.",
+    "expected is the human judgement of the answer against the pinned code: strong (accurate and specific), weak (contradicts the code or is unsupported), mixed (partly right or openly unsure). It feeds only the strong-above-weak sanity check, never the variability metrics.",
+    "Labels were set from the session descriptions and the planted flaws in the fixture repo, before any evaluation output was seen."
+  ],
+  "transcripts": [
+    { "session": "s1-security", "turn": 1, "expected": "weak", "why": "Claims bcrypt with a per-user salt; hashPassword uses SHA-256 with a static salt." },
+    { "session": "s1-security", "turn": 2, "expected": "mixed", "why": "Correctly suspects verifySession ignores expiresAt, but says it is not sure." },
+    { "session": "s1-security", "turn": 3, "expected": "weak", "why": "Claims an HMAC signature check the webhook handler does not have." },
+    { "session": "s2-payments", "turn": 1, "expected": "strong", "why": "Accurate end-to-end trace of POST /orders." },
+    { "session": "s2-payments", "turn": 2, "expected": "strong", "why": "Names the missing idempotency key and a concrete fix." },
+    { "session": "s2-payments", "turn": 3, "expected": "strong", "why": "Names the retry of declines without backoff and a concrete fix." },
+    { "session": "s3-data", "turn": 1, "expected": "weak", "why": "Claims parameterized queries; findOrdersByCustomer interpolates SQL." },
+    { "session": "s3-data", "turn": 2, "expected": "weak", "why": "Believes a page-size cap exists that the code does not have." },
+    { "session": "s3-data", "turn": 3, "expected": "strong", "why": "Accurate description of Database.transaction." },
+    { "session": "s4-reliability", "turn": 1, "expected": "strong", "why": "Correctly explains per-process rate-limit counters." },
+    { "session": "s4-reliability", "turn": 2, "expected": "weak", "why": "Claims the write lock spans check and update; it does not." },
+    { "session": "s4-reliability", "turn": 3, "expected": "weak", "why": "Claims a dead-letter queue the worker does not have." }
+  ]
+}

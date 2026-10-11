@@ -17,6 +17,12 @@
     "db:types": "supabase gen types typescript --local --schema public > packages/shared/src/database.types.ts",
     "test:db": "supabase test db",
     "test:db:concurrency": "deno test --allow-env --allow-net --config supabase/functions/deno.json supabase/tests/concurrency",
+    "eval": "deno run --allow-env --allow-read --allow-write=evals --allow-net=api.openai.com --allow-run=git --config supabase/functions/deno.json evals/projects/stackprep/project.ts",
+    "eval:replay": "deno run --allow-env --allow-read --allow-write=evals/results --config supabase/functions/deno.json evals/projects/stackprep/project.ts run --check-determinism --suite retrieval-synthetic,retrieval-stackprep-snapshot,citations-synthetic,citations-stackprep-snapshot,support-synthetic,support-stackprep-snapshot,consistency-stackprep-snapshot,contradiction-synthetic",
+    "eval:verify": "deno run --allow-env --allow-read --config supabase/functions/deno.json evals/projects/stackprep/project.ts verify",
+    "test:evals": "deno test --allow-env --allow-read --allow-write --config supabase/functions/deno.json evals/core evals/projects/stackprep/src evals/projects/stackprep/suites",
+    "typecheck:evals": "deno check --config supabase/functions/deno.json evals/core evals/projects/stackprep/project.ts evals/projects/stackprep/src evals/projects/stackprep/suites evals/projects/stackprep/scripts",
+    "lint:evals": "deno lint evals/core evals/projects/stackprep/project.ts evals/projects/stackprep/src evals/projects/stackprep/suites evals/projects/stackprep/scripts",
     "build": "pnpm -r build",
     "typecheck": "pnpm -r typecheck",
     "lint": "pnpm -r lint",
@@ -26,7 +32,7 @@
     "e2e:stack:down": "supabase stop",
     "test:e2e": "pnpm --filter @stackprep/web test:e2e",
     "test:e2e:ui": "pnpm --filter @stackprep/web test:e2e:ui",
-    "check": "pnpm typecheck && pnpm typecheck:functions && pnpm lint && pnpm test && pnpm test:functions && pnpm build"
+    "check": "pnpm typecheck && pnpm typecheck:functions && pnpm typecheck:evals && pnpm lint && pnpm test && pnpm test:functions && pnpm test:evals && pnpm build"
   },
   "devDependencies": {
     "@eslint/js": "^9.39.5",

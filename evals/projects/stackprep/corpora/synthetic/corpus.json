@@ -1,0 +1,40 @@
+{
+  "format": 1,
+  "id": "synthetic",
+  "label": "Synthetic fixture repo (Tidepool storefront)",
+  "commit_sha": "5f17e0c0de5f17e0c0de5f17e0c0de5f17e0c0de",
+  "source": { "type": "directory", "path": "repo" },
+  "notes": [
+    "Hand-written fixture with planted flaws. It gates CI; its numbers are never quoted as real-repository results.",
+    "The commit SHA is synthetic: it only identifies this corpus version inside the harness.",
+    "Fixture files are data. They are never linted, type-checked or executed; run repo tooling with explicit paths that exclude corpora/.",
+    "Only code index rows (code_module, file_summary) and symbols exist; there are no AI-generated memory rows."
+  ],
+  "planted_flaws": [
+    { "id": "weak-password-hash", "path": "src/auth/password.ts", "symbol": "hashPassword", "summary": "One SHA-256 round with a static salt, not a slow per-user salted KDF such as bcrypt or argon2." },
+    { "id": "session-never-expires", "path": "src/auth/session.ts", "symbol": "verifySession", "summary": "Sets expiresAt on creation but never checks it, so tokens stay valid until logout or restart." },
+    { "id": "rate-limit-per-process", "path": "src/middleware/rate-limit.ts", "symbol": "RateLimiter", "summary": "Fixed-window counters in process memory; not shared across instances and reset on restart." },
+    { "id": "order-not-idempotent", "path": "src/orders/service.ts", "symbol": "OrderService.createOrder", "summary": "No idempotency key; a retried request creates a second order and a second charge." },
+    { "id": "charge-retries-declines", "path": "src/payments/charge.ts", "symbol": "chargeCard", "summary": "Retries 5 times with delayMs 0 through withRetry, including CardDeclinedError; no backoff, no transient-error filter." },
+    { "id": "sql-injection", "path": "src/db/orders-repo.ts", "symbol": "findOrdersByCustomer", "summary": "Interpolates customerId into the SQL string instead of a bound parameter." },
+    { "id": "webhook-unverified", "path": "src/payments/webhook.ts", "symbol": "handleGatewayWebhook", "summary": "Never verifies the gateway signature; headers are ignored although gatewayWebhookSecret is configured." },
+    { "id": "inventory-race", "path": "services/inventory/reserve.go", "symbol": "Store.Reserve", "summary": "Check-then-act across two lock acquisitions; concurrent reservations can oversell." },
+    { "id": "email-dropped", "path": "workers/email_worker.py", "symbol": "EmailWorker.process", "summary": "After MAX_ATTEMPTS the job is dropped with a warning; there is no dead-letter queue." },
+    { "id": "cache-stale-status", "path": "src/cache/lru.ts", "symbol": "LruCache", "summary": "No TTL; customer order lists are invalidated only by createOrder, so webhook status changes stay stale." },
+    { "id": "pagination-unbounded", "path": "src/orders/service.ts", "symbol": "OrderService.listOrders", "summary": "The limit comes from the query string and is never capped." },
+    { "id": "log-redaction-narrow", "path": "src/lib/logger.ts", "symbol": "redact", "summary": "Redacts only the password key; tokens, emails and card data are logged as is." },
+    { "id": "client-side-tax", "path": "web/components/CartSummary.tsx", "symbol": "computeTotals", "summary": "Tax is a hardcoded 8% computed in the browser, not by the server." },
+    { "id": "report-in-memory", "path": "reports/src/ReportExporter.java", "symbol": "ReportExporter.exportAll", "summary": "Loads every order into memory before writing, and writes CSV fields without escaping." },
+    { "id": "sessions-in-memory", "path": "src/auth/session.ts", "symbol": "SessionStore", "summary": "Sessions live in a process-local Map; they are lost on restart and not shared across instances." }
+  ],
+  "truthful_controls": [
+    { "id": "csrf-double-submit", "path": "src/middleware/csrf.ts", "symbol": "requireCsrfToken", "summary": "Double-submit CSRF check with a constant-time comparison." },
+    { "id": "order-transaction", "path": "src/orders/service.ts", "symbol": "OrderService.createOrder", "summary": "The order and its items are written in one transaction that rolls back on error." },
+    { "id": "input-validation", "path": "src/orders/validate.ts", "symbol": "validateOrderInput", "summary": "Request bodies are parsed with a zod schema, capped at 50 line items." },
+    { "id": "graceful-shutdown", "path": "src/server.ts", "symbol": "main", "summary": "SIGTERM and SIGINT stop new connections, let in-flight requests finish, then close the pool." },
+    { "id": "parameterized-insert", "path": "src/db/orders-repo.ts", "symbol": "insertOrder", "summary": "Order inserts use bound parameters." },
+    { "id": "password-constant-time", "path": "src/auth/password.ts", "symbol": "verifyPassword", "summary": "Hashes are compared with timingSafeEqual." },
+    { "id": "inventory-release-locked", "path": "services/inventory/reserve.go", "symbol": "Store.Release", "summary": "Release holds the write lock for the whole update." },
+    { "id": "connection-pool", "path": "src/db/client.ts", "symbol": "Database", "summary": "Postgres access goes through a pg.Pool with at most 10 connections by default." }
+  ]
+}
