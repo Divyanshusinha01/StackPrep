@@ -36,6 +36,7 @@ import { CLOSING_GUIDANCE, CONTINUE_GUIDANCE } from "./tools/end-interview.ts";
 import { type AnswerEvaluation, resolveCurrentQuestion } from "./tools/evaluate-answer.ts";
 import { fileWindow, MAX_WINDOW_LINES, normalizePath } from "./tools/get-file.ts";
 import { MAX_EXCERPT_CHARS, memoryCandidates, mergeSymbolHits } from "./tools/search-repository.ts";
+import { recordToolMetrics, toolMetricsRow } from "./tools/store.ts";
 import type {
   InterviewStateSnapshot,
   MemoryEntry,
@@ -438,6 +439,83 @@ Deno.test("tool-calls: a replayed read call re-executes without a second record;
   await expectHttpError(await handler(toolCall("search_repository", { query: "x" }, { callId: "same" })), 409, "event_conflict");
 });
 
+Deno.test("tool-calls: each executed tool records one metric with its duration and outcome", async () => {
+  const { handler, store } = setup();
+  await result(await handler(toolCall("get_file", { path: "src/server.ts" })));
+  await expectToolError(await handler(toolCall("get_file", { path: "src/missing.ts" })), "not_found");
+  await expectToolError(await handler(toolCall("drop_tables", {})), "unknown_tool");
+  await expectToolError(await handler(toolCall("get_file", { path: "" })), "invalid_arguments");
+  assertEquals(
+    store.metrics.map(({ interviewId, tool, outcome, vectorFill }) => ({ interviewId, tool, outcome, vectorFill })),
+    [
+      { interviewId: INTERVIEW_ID, tool: "get_file", outcome: "ok", vectorFill: undefined },
+      { interviewId: INTERVIEW_ID, tool: "get_file", outcome: "not_found", vectorFill: undefined },
+    ],
+    "calls rejected before execution record nothing",
+  );
+  assert(store.metrics.every((m) => Number.isInteger(m.durationMs) && m.durationMs >= 0));
+});
+
+Deno.test("tool-calls: rate-limited and inactive calls record no metric", async () => {
+  const store = createFakeToolStore({ memory });
+  store.recentReads = READ_TOOL_LIMIT;
+  const { handler } = setup({ store });
+  await expectToolError(await handler(toolCall("get_file", { path: "src/server.ts" })), "rate_limited");
+  const inactive = setup({ interview: { ...interviewRow, status: "completed" } });
+  await expectToolError(await inactive.handler(toolCall("get_file", { path: "src/server.ts" })), "interview_not_active");
+  assertEquals([store.metrics.length, inactive.store.metrics.length], [0, 0]);
+});
+
+Deno.test("tool-calls: a tool that throws records an internal metric and answers internal_error", async () => {
+  const store = createFakeToolStore({ memory });
+  store.listRepositoryMemory = () => Promise.reject(new Error("db down"));
+  const { handler } = setup({ store });
+  await quietly(async () => {
+    await expectHttpError(await handler(toolCall("search_repository", { query: "auth" })), 500, "internal_error");
+  });
+  assertEquals(store.metrics.map((m) => [m.tool, m.outcome]), [["search_repository", "internal"]]);
+});
+
+Deno.test("tool-calls: a failed metrics write is logged and never thrown", async () => {
+  const rows: unknown[] = [];
+  const insert = (row: unknown) => {
+    rows.push(row);
+    return Promise.resolve({ error: { message: "permission denied" } });
+  };
+  const db = { from: (table: string) => (assertEquals(table, "tool_call_metrics"), { insert }) } as unknown as SupabaseClient;
+  const errors: string[] = [];
+  const error = console.error;
+  console.error = (line: string) => errors.push(line);
+  try {
+    await recordToolMetrics(db, {
+      interviewId: INTERVIEW_ID,
+      tool: "search_repository",
+      durationMs: 12.6,
+      outcome: "ok",
+      vectorFill: { elapsedMs: 3000.4, fallbackReason: "deadline" },
+    });
+  } finally {
+    console.error = error;
+  }
+  assertEquals(rows, [{
+    interview_id: INTERVIEW_ID,
+    tool: "search_repository",
+    duration_ms: 13,
+    outcome: "ok",
+    vector_ms: 3000,
+    vector_fallback_reason: "deadline",
+  }]);
+  assertEquals(JSON.parse(errors[0]).event, "tool_metrics_record_failed");
+  assertEquals(toolMetricsRow({ interviewId: INTERVIEW_ID, tool: "get_file", durationMs: 4, outcome: "not_found" }), {
+    interview_id: INTERVIEW_ID,
+    tool: "get_file",
+    duration_ms: 4,
+    outcome: "not_found",
+    vector_ms: null,
+    vector_fallback_reason: null,
+  });
+});
+
 Deno.test("tool-calls: read tools are rate limited per interview", async () => {
   const store = createFakeToolStore({ memory });
   store.recentReads = READ_TOOL_LIMIT;
@@ -532,6 +610,9 @@ Deno.test("search_repository: vector hits fill after keyword hits, deduplicated 
   assertEquals(provider.calls.map((c) => [c.model, c.input]), [["text-embedding-3-small", ["jwt auth"]]]);
   assertEquals(store.matchCalls.map((c) => [c.embedding.length, c.limit]), [[1536, 8]]);
   assertEquals(store.evidence.map((e) => e.path).sort(), ["config/auth.ts", "src/auth/jwt.ts"], "vector hits are not evidence");
+  assertEquals(store.metrics.map((m) => [m.tool, m.outcome, m.vectorFill?.fallbackReason]), [["search_repository", "ok", null]]);
+  const fill = store.metrics[0].vectorFill!;
+  assert(fill.elapsedMs >= 0 && fill.elapsedMs <= store.metrics[0].durationMs, "the fill is part of the tool duration");
 
   const usage = store.usage.filter((u) => u.task === "embedding");
   assertEquals(usage.length, 1);
@@ -568,6 +649,7 @@ Deno.test("search_repository: enough keyword hits never call the embedding provi
   const body = await result(await handler(toolCall("search_repository", { query: "jwt auth", limit: 2 })));
   assertEquals(body.results.length, 2);
   assertEquals([provider.calls.length, store.matchCalls.length], [0, 0]);
+  assertEquals(store.metrics.map((m) => m.vectorFill), [undefined], "no fill ran, so no fill timing");
 });
 
 Deno.test("search_repository: any vector failure falls back to the keyword results", async () => {
@@ -588,6 +670,7 @@ Deno.test("search_repository: any vector failure falls back to the keyword resul
     assertEquals(fallbackReason(logs), reason);
     assert(!JSON.stringify(logs).includes("hunter2"));
     assertEquals(store.records.length, 1, "the tool call still succeeds");
+    assertEquals(store.metrics.map((m): unknown[] => [m.outcome, m.vectorFill?.fallbackReason]), [["ok", reason]], reason);
   }
 });
 
@@ -603,6 +686,9 @@ Deno.test("search_repository: a slow embedding uses the whole budget and the mat
   assertEquals(fallbackReason(logs), "deadline");
   assertEquals(store.matchCalls, []);
   assert(elapsed >= 45 && elapsed < 50 + 500, `elapsed ${elapsed} ms`);
+  const fill = store.metrics[0].vectorFill!;
+  assertEquals(fill.fallbackReason, "deadline");
+  assert(fill.elapsedMs >= 45 && fill.elapsedMs < 50 + 500, `vector fill ${fill.elapsedMs} ms`);
 });
 
 Deno.test("search_repository: a fast embedding then a slow match is aborted at the same deadline", async () => {

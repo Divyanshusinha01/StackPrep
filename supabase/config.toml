@@ -51,6 +51,11 @@ enabled = true
 verify_jwt = true
 entrypoint = "./functions/interviews/index.ts"
 
+[functions.admin]
+enabled = true
+verify_jwt = true
+entrypoint = "./functions/admin/index.ts"
+
 # Called by Inngest, not browsers: requests are authenticated with the Inngest signing key.
 [functions.inngest]
 enabled = true

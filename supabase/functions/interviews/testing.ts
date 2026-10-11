@@ -13,6 +13,7 @@ import type {
   MemoryMatch,
   RepositoryAccess,
   ToolCallRecord,
+  ToolMetricsEntry,
   ToolStore,
   TranscriptMessage,
 } from "./tools/types.ts";
@@ -33,6 +34,8 @@ export interface FakeToolStore extends ToolStore {
   evaluations: EvaluationRecord[];
   /** Rows passed to recordAiUsage, deduplicated by idempotency key like the table. */
   usage: AiUsageEntry[];
+  /** Rows passed to recordToolMetrics, in order. */
+  metrics: ToolMetricsEntry[];
   completions: ("time_limit" | null)[];
   stateUpdates: InterviewStateSnapshot[];
   memory: MemoryEntry[];
@@ -66,6 +69,7 @@ export function createFakeToolStore(
     evidence: [],
     evaluations: [],
     usage: [],
+    metrics: [],
     completions: [],
     stateUpdates: [],
     memory: init.memory ?? [],
@@ -88,6 +92,10 @@ export function createFakeToolStore(
       }
       store.usage.push(entry);
       return Promise.resolve("created");
+    },
+    recordToolMetrics(entry) {
+      store.metrics.push(entry);
+      return Promise.resolve();
     },
     findToolCall(_interviewId, callId) {
       const record = store.records.find((r) => r.callId === callId);

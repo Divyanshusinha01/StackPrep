@@ -1,0 +1,213 @@
+{
+  "count": 25,
+  "window": {
+    "startAt": 1791737130627,
+    "endAt": 1791737250627
+  },
+  "clockOffsetMs": 0.7,
+  "frameDelayMs": {
+    "count": 76,
+    "p50": 938.7,
+    "p95": 1330.2,
+    "p99": 1694.2,
+    "max": 1962.7
+  },
+  "connectedFrameDelayMs": {
+    "count": 19,
+    "p50": 851.7,
+    "p95": 1447.9,
+    "p99": 1859.7,
+    "max": 1962.7
+  },
+  "reconnectGapFrameDelayMs": {
+    "count": 57,
+    "p50": 946.7,
+    "p95": 1319.9,
+    "p99": 1458.5,
+    "max": 1604.7
+  },
+  "completedStatusDelayMs": {
+    "count": 1,
+    "p50": 1169.7,
+    "p95": 1169.7,
+    "p99": 1169.7,
+    "max": 1169.7
+  },
+  "reportReadyDelayMs": {
+    "count": 1,
+    "p50": 674.7,
+    "p95": 674.7,
+    "p99": 674.7,
+    "max": 674.7
+  },
+  "timeToFirstFrameMs": {
+    "count": 7,
+    "p50": 88,
+    "p95": 2702.1,
+    "p99": 3571.6,
+    "max": 3789
+  },
+  "timeToOpenMs": {
+    "count": 7,
+    "p50": 85,
+    "p95": 2685.7,
+    "p99": 3557.1,
+    "max": 3775
+  },
+  "frames": {
+    "expected": 675,
+    "receivedUnique": 207,
+    "dropped": 468,
+    "duplicates": 0,
+    "unexpected": 0,
+    "malformed": 0,
+    "readersWithoutReport": 24
+  },
+  "connections": {
+    "attempts": 7,
+    "byStatus": {
+      "200": 7
+    },
+    "failed": 0,
+    "premature": 0,
+    "streamErrors": 6,
+    "lifetimeReconnects": 6,
+    "fallbacks": 0,
+    "sampleErrors": [
+      "unexpected EOF"
+    ]
+  },
+  "writes": {
+    "scheduled": 900,
+    "logged": 900,
+    "failed": 0,
+    "missing": 0,
+    "byStatus": {
+      "200": 25,
+      "201": 850,
+      "204": 25
+    },
+    "latencyMs": {
+      "count": 900,
+      "p50": 124,
+      "p95": 4237.6,
+      "p99": 5319.2,
+      "max": 8233
+    },
+    "slipMs": {
+      "count": 900,
+      "p50": 1,
+      "p95": 1747.2,
+      "p99": 3456.7,
+      "max": 5234
+    }
+  },
+  "errorRate": 0.00662,
+  "edgeFunctionErrors": 48,
+  "edgeWorkerLimitEvents": 16,
+  "edgeRuntimeCrash": null,
+  "db": {
+    "statementsByCategory": {
+      "other": {
+        "callsPerSec": 41.8,
+        "meanMs": 0.218
+      },
+      "interview_lookup": {
+        "callsPerSec": 5.6,
+        "meanMs": 0.141
+      },
+      "event_write": {
+        "callsPerSec": 5.6,
+        "meanMs": 1.639
+      },
+      "stream_poll": {
+        "callsPerSec": 9.5,
+        "meanMs": 0.172
+      }
+    },
+    "activeConnections": {
+      "count": 57,
+      "p50": 0,
+      "p95": 2,
+      "p99": 6,
+      "max": 6
+    },
+    "totalConnections": {
+      "count": 57,
+      "p50": 22,
+      "p95": 24,
+      "p99": 27.2,
+      "max": 30
+    }
+  },
+  "resources": {
+    "supabase_db_stackprep": {
+      "cpuPct": {
+        "count": 57,
+        "p50": 32.4,
+        "p95": 166.3,
+        "p99": 205.9,
+        "max": 210.5
+      },
+      "cpuShareOfLimitP50": 0.162,
+      "memMiBMax": 195
+    },
+    "supabase_edge_runtime_stackprep": {
+      "cpuPct": {
+        "count": 57,
+        "p50": 24.9,
+        "p95": 168.8,
+        "p99": 194.7,
+        "max": 199
+      },
+      "cpuShareOfLimitP50": 0.125,
+      "memMiBMax": 1947
+    },
+    "supabase_realtime_stackprep": {
+      "cpuPct": {
+        "count": 57,
+        "p50": 0.5,
+        "p95": 3.6,
+        "p99": 6.8,
+        "max": 9.3
+      },
+      "cpuShareOfLimitP50": 0.005,
+      "memMiBMax": 212
+    },
+    "supabase_auth_stackprep": {
+      "cpuPct": {
+        "count": 57,
+        "p50": 13.4,
+        "p95": 52.6,
+        "p99": 59.4,
+        "max": 61.3
+      },
+      "cpuShareOfLimitP50": 0.134,
+      "memMiBMax": 18
+    },
+    "supabase_rest_stackprep": {
+      "cpuPct": {
+        "count": 57,
+        "p50": 5.6,
+        "p95": 18,
+        "p99": 21.7,
+        "max": 21.8
+      },
+      "cpuShareOfLimitP50": 0.056,
+      "memMiBMax": 99
+    },
+    "supabase_kong_stackprep": {
+      "cpuPct": {
+        "count": 57,
+        "p50": 3.3,
+        "p95": 24,
+        "p99": 25.8,
+        "max": 26.7
+      },
+      "cpuShareOfLimitP50": 0.033,
+      "memMiBMax": 170
+    }
+  },
+  "saturatedContainers": [],
+  "breaches": []
+}

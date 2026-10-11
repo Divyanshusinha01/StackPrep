@@ -1,0 +1,1849 @@
+{
+  "clockOffsetMs": -1.7,
+  "statuses": [
+    {
+      "interview_id": "1a1e551c-8aa8-436a-ad8d-2ed9c8da866c",
+      "sequence": 2,
+      "event_type": "start",
+      "created_at": "2026-10-11T16:22:36.376Z"
+    },
+    {
+      "interview_id": "1a1e551c-8aa8-436a-ad8d-2ed9c8da866c",
+      "sequence": 13,
+      "event_type": "completion",
+      "created_at": "2026-10-11T16:25:22.034Z"
+    },
+    {
+      "interview_id": "5711f883-51b6-4f45-b10f-25e44de23828",
+      "sequence": 2,
+      "event_type": "start",
+      "created_at": "2026-10-11T16:22:36.361Z"
+    },
+    {
+      "interview_id": "5711f883-51b6-4f45-b10f-25e44de23828",
+      "sequence": 13,
+      "event_type": "completion",
+      "created_at": "2026-10-11T16:25:22.789Z"
+    },
+    {
+      "interview_id": "686dcaf8-d2a7-4286-9db3-2e53f6c44f44",
+      "sequence": 2,
+      "event_type": "start",
+      "created_at": "2026-10-11T16:22:36.364Z"
+    },
+    {
+      "interview_id": "686dcaf8-d2a7-4286-9db3-2e53f6c44f44",
+      "sequence": 13,
+      "event_type": "completion",
+      "created_at": "2026-10-11T16:25:20.518Z"
+    },
+    {
+      "interview_id": "8024125e-e8cb-4d01-9bea-8aac1a9d18cc",
+      "sequence": 2,
+      "event_type": "start",
+      "created_at": "2026-10-11T16:22:36.357Z"
+    },
+    {
+      "interview_id": "8024125e-e8cb-4d01-9bea-8aac1a9d18cc",
+      "sequence": 13,
+      "event_type": "completion",
+      "created_at": "2026-10-11T16:25:19.979Z"
+    },
+    {
+      "interview_id": "a8547f63-53d9-421a-a30f-5f6eed110a10",
+      "sequence": 2,
+      "event_type": "start",
+      "created_at": "2026-10-11T16:22:36.372Z"
+    },
+    {
+      "interview_id": "a8547f63-53d9-421a-a30f-5f6eed110a10",
+      "sequence": 13,
+      "event_type": "completion",
+      "created_at": "2026-10-11T16:25:23.247Z"
+    },
+    {
+      "interview_id": "ab8332c4-75f8-45a3-94fb-d660bd5ee0a8",
+      "sequence": 2,
+      "event_type": "start",
+      "created_at": "2026-10-11T16:22:36.361Z"
+    },
+    {
+      "interview_id": "ab8332c4-75f8-45a3-94fb-d660bd5ee0a8",
+      "sequence": 13,
+      "event_type": "completion",
+      "created_at": "2026-10-11T16:25:21.002Z"
+    },
+    {
+      "interview_id": "bb5c6e0e-46f6-4bbf-8922-10e33c86b654",
+      "sequence": 2,
+      "event_type": "start",
+      "created_at": "2026-10-11T16:22:36.358Z"
+    },
+    {
+      "interview_id": "bb5c6e0e-46f6-4bbf-8922-10e33c86b654",
+      "sequence": 13,
+      "event_type": "completion",
+      "created_at": "2026-10-11T16:25:18.192Z"
+    },
+    {
+      "interview_id": "d5379613-b46a-4b92-a020-0c46be109a6a",
+      "sequence": 2,
+      "event_type": "start",
+      "created_at": "2026-10-11T16:22:36.368Z"
+    },
+    {
+      "interview_id": "d5379613-b46a-4b92-a020-0c46be109a6a",
+      "sequence": 13,
+      "event_type": "completion",
+      "created_at": "2026-10-11T16:25:22.302Z"
+    },
+    {
+      "interview_id": "e33d7017-ac36-4183-99c7-3638bd553c1c",
+      "sequence": 2,
+      "event_type": "start",
+      "created_at": "2026-10-11T16:22:36.365Z"
+    },
+    {
+      "interview_id": "e33d7017-ac36-4183-99c7-3638bd553c1c",
+      "sequence": 13,
+      "event_type": "completion",
+      "created_at": "2026-10-11T16:25:19.609Z"
+    },
+    {
+      "interview_id": "f71a78a2-e7ef-47b6-a8eb-6c6ca83c10d1",
+      "sequence": 2,
+      "event_type": "start",
+      "created_at": "2026-10-11T16:22:36.363Z"
+    },
+    {
+      "interview_id": "f71a78a2-e7ef-47b6-a8eb-6c6ca83c10d1",
+      "sequence": 13,
+      "event_type": "completion",
+      "created_at": "2026-10-11T16:25:21.339Z"
+    }
+  ],
+  "turns": [
+    {
+      "interview_id": "1a1e551c-8aa8-436a-ad8d-2ed9c8da866c",
+      "sequence": 1,
+      "role": "ai",
+      "client_event_id": "5eed0007-0000-4000-8000-000000000000",
+      "created_at": "2026-10-11T16:22:52.120Z"
+    },
+    {
+      "interview_id": "1a1e551c-8aa8-436a-ad8d-2ed9c8da866c",
+      "sequence": 2,
+      "role": "user",
+      "client_event_id": "5eed0007-0000-4000-8000-000000000001",
+      "created_at": "2026-10-11T16:22:58.110Z"
+    },
+    {
+      "interview_id": "1a1e551c-8aa8-436a-ad8d-2ed9c8da866c",
+      "sequence": 3,
+      "role": "ai",
+      "client_event_id": "5eed0007-0000-4000-8000-000000000002",
+      "created_at": "2026-10-11T16:23:04.127Z"
+    },
+    {
+      "interview_id": "1a1e551c-8aa8-436a-ad8d-2ed9c8da866c",
+      "sequence": 4,
+      "role": "user",
+      "client_event_id": "5eed0007-0000-4000-8000-000000000005",
+      "created_at": "2026-10-11T16:23:10.671Z"
+    },
+    {
+      "interview_id": "1a1e551c-8aa8-436a-ad8d-2ed9c8da866c",
+      "sequence": 5,
+      "role": "ai",
+      "client_event_id": "5eed0007-0000-4000-8000-000000000006",
+      "created_at": "2026-10-11T16:23:16.108Z"
+    },
+    {
+      "interview_id": "1a1e551c-8aa8-436a-ad8d-2ed9c8da866c",
+      "sequence": 6,
+      "role": "user",
+      "client_event_id": "5eed0007-0000-4000-8000-000000000007",
+      "created_at": "2026-10-11T16:23:22.108Z"
+    },
+    {
+      "interview_id": "1a1e551c-8aa8-436a-ad8d-2ed9c8da866c",
+      "sequence": 7,
+      "role": "ai",
+      "client_event_id": "5eed0007-0000-4000-8000-000000000008",
+      "created_at": "2026-10-11T16:23:28.116Z"
+    },
+    {
+      "interview_id": "1a1e551c-8aa8-436a-ad8d-2ed9c8da866c",
+      "sequence": 8,
+      "role": "user",
+      "client_event_id": "5eed0007-0000-4000-8000-000000000009",
+      "created_at": "2026-10-11T16:23:34.111Z"
+    },
+    {
+      "interview_id": "1a1e551c-8aa8-436a-ad8d-2ed9c8da866c",
+      "sequence": 9,
+      "role": "ai",
+      "client_event_id": "5eed0007-0000-4000-8000-00000000000c",
+      "created_at": "2026-10-11T16:23:40.105Z"
+    },
+    {
+      "interview_id": "1a1e551c-8aa8-436a-ad8d-2ed9c8da866c",
+      "sequence": 10,
+      "role": "user",
+      "client_event_id": "5eed0007-0000-4000-8000-00000000000d",
+      "created_at": "2026-10-11T16:23:46.104Z"
+    },
+    {
+      "interview_id": "1a1e551c-8aa8-436a-ad8d-2ed9c8da866c",
+      "sequence": 11,
+      "role": "ai",
+      "client_event_id": "5eed0007-0000-4000-8000-00000000000e",
+      "created_at": "2026-10-11T16:23:52.109Z"
+    },
+    {
+      "interview_id": "1a1e551c-8aa8-436a-ad8d-2ed9c8da866c",
+      "sequence": 12,
+      "role": "user",
+      "client_event_id": "5eed0007-0000-4000-8000-00000000000f",
+      "created_at": "2026-10-11T16:23:58.105Z"
+    },
+    {
+      "interview_id": "1a1e551c-8aa8-436a-ad8d-2ed9c8da866c",
+      "sequence": 13,
+      "role": "ai",
+      "client_event_id": "5eed0007-0000-4000-8000-000000000010",
+      "created_at": "2026-10-11T16:24:04.116Z"
+    },
+    {
+      "interview_id": "1a1e551c-8aa8-436a-ad8d-2ed9c8da866c",
+      "sequence": 14,
+      "role": "user",
+      "client_event_id": "5eed0007-0000-4000-8000-000000000013",
+      "created_at": "2026-10-11T16:24:10.514Z"
+    },
+    {
+      "interview_id": "1a1e551c-8aa8-436a-ad8d-2ed9c8da866c",
+      "sequence": 15,
+      "role": "ai",
+      "client_event_id": "5eed0007-0000-4000-8000-000000000014",
+      "created_at": "2026-10-11T16:24:16.115Z"
+    },
+    {
+      "interview_id": "1a1e551c-8aa8-436a-ad8d-2ed9c8da866c",
+      "sequence": 16,
+      "role": "user",
+      "client_event_id": "5eed0007-0000-4000-8000-000000000015",
+      "created_at": "2026-10-11T16:24:22.105Z"
+    },
+    {
+      "interview_id": "1a1e551c-8aa8-436a-ad8d-2ed9c8da866c",
+      "sequence": 17,
+      "role": "ai",
+      "client_event_id": "5eed0007-0000-4000-8000-000000000016",
+      "created_at": "2026-10-11T16:24:28.105Z"
+    },
+    {
+      "interview_id": "1a1e551c-8aa8-436a-ad8d-2ed9c8da866c",
+      "sequence": 18,
+      "role": "user",
+      "client_event_id": "5eed0007-0000-4000-8000-000000000017",
+      "created_at": "2026-10-11T16:24:34.110Z"
+    },
+    {
+      "interview_id": "1a1e551c-8aa8-436a-ad8d-2ed9c8da866c",
+      "sequence": 19,
+      "role": "ai",
+      "client_event_id": "5eed0007-0000-4000-8000-00000000001a",
+      "created_at": "2026-10-11T16:24:40.103Z"
+    },
+    {
+      "interview_id": "1a1e551c-8aa8-436a-ad8d-2ed9c8da866c",
+      "sequence": 20,
+      "role": "user",
+      "client_event_id": "5eed0007-0000-4000-8000-00000000001b",
+      "created_at": "2026-10-11T16:24:46.105Z"
+    },
+    {
+      "interview_id": "1a1e551c-8aa8-436a-ad8d-2ed9c8da866c",
+      "sequence": 21,
+      "role": "ai",
+      "client_event_id": "5eed0007-0000-4000-8000-00000000001c",
+      "created_at": "2026-10-11T16:24:52.108Z"
+    },
+    {
+      "interview_id": "1a1e551c-8aa8-436a-ad8d-2ed9c8da866c",
+      "sequence": 22,
+      "role": "user",
+      "client_event_id": "5eed0007-0000-4000-8000-00000000001d",
+      "created_at": "2026-10-11T16:24:58.109Z"
+    },
+    {
+      "interview_id": "1a1e551c-8aa8-436a-ad8d-2ed9c8da866c",
+      "sequence": 23,
+      "role": "ai",
+      "client_event_id": "5eed0007-0000-4000-8000-00000000001e",
+      "created_at": "2026-10-11T16:25:04.108Z"
+    },
+    {
+      "interview_id": "1a1e551c-8aa8-436a-ad8d-2ed9c8da866c",
+      "sequence": 24,
+      "role": "user",
+      "client_event_id": "5eed0007-0000-4000-8000-000000000021",
+      "created_at": "2026-10-11T16:25:11.480Z"
+    },
+    {
+      "interview_id": "5711f883-51b6-4f45-b10f-25e44de23828",
+      "sequence": 1,
+      "role": "ai",
+      "client_event_id": "5eed0001-0000-4000-8000-000000000000",
+      "created_at": "2026-10-11T16:22:52.866Z"
+    },
+    {
+      "interview_id": "5711f883-51b6-4f45-b10f-25e44de23828",
+      "sequence": 2,
+      "role": "user",
+      "client_event_id": "5eed0001-0000-4000-8000-000000000001",
+      "created_at": "2026-10-11T16:22:58.904Z"
+    },
+    {
+      "interview_id": "5711f883-51b6-4f45-b10f-25e44de23828",
+      "sequence": 3,
+      "role": "ai",
+      "client_event_id": "5eed0001-0000-4000-8000-000000000002",
+      "created_at": "2026-10-11T16:23:09.292Z"
+    },
+    {
+      "interview_id": "5711f883-51b6-4f45-b10f-25e44de23828",
+      "sequence": 4,
+      "role": "user",
+      "client_event_id": "5eed0001-0000-4000-8000-000000000005",
+      "created_at": "2026-10-11T16:23:10.867Z"
+    },
+    {
+      "interview_id": "5711f883-51b6-4f45-b10f-25e44de23828",
+      "sequence": 5,
+      "role": "ai",
+      "client_event_id": "5eed0001-0000-4000-8000-000000000006",
+      "created_at": "2026-10-11T16:23:16.855Z"
+    },
+    {
+      "interview_id": "5711f883-51b6-4f45-b10f-25e44de23828",
+      "sequence": 6,
+      "role": "user",
+      "client_event_id": "5eed0001-0000-4000-8000-000000000007",
+      "created_at": "2026-10-11T16:23:22.866Z"
+    },
+    {
+      "interview_id": "5711f883-51b6-4f45-b10f-25e44de23828",
+      "sequence": 7,
+      "role": "ai",
+      "client_event_id": "5eed0001-0000-4000-8000-000000000008",
+      "created_at": "2026-10-11T16:23:28.866Z"
+    },
+    {
+      "interview_id": "5711f883-51b6-4f45-b10f-25e44de23828",
+      "sequence": 8,
+      "role": "user",
+      "client_event_id": "5eed0001-0000-4000-8000-000000000009",
+      "created_at": "2026-10-11T16:23:34.871Z"
+    },
+    {
+      "interview_id": "5711f883-51b6-4f45-b10f-25e44de23828",
+      "sequence": 9,
+      "role": "ai",
+      "client_event_id": "5eed0001-0000-4000-8000-00000000000c",
+      "created_at": "2026-10-11T16:23:40.870Z"
+    },
+    {
+      "interview_id": "5711f883-51b6-4f45-b10f-25e44de23828",
+      "sequence": 10,
+      "role": "user",
+      "client_event_id": "5eed0001-0000-4000-8000-00000000000d",
+      "created_at": "2026-10-11T16:23:46.882Z"
+    },
+    {
+      "interview_id": "5711f883-51b6-4f45-b10f-25e44de23828",
+      "sequence": 11,
+      "role": "ai",
+      "client_event_id": "5eed0001-0000-4000-8000-00000000000e",
+      "created_at": "2026-10-11T16:23:52.857Z"
+    },
+    {
+      "interview_id": "5711f883-51b6-4f45-b10f-25e44de23828",
+      "sequence": 12,
+      "role": "user",
+      "client_event_id": "5eed0001-0000-4000-8000-00000000000f",
+      "created_at": "2026-10-11T16:23:58.865Z"
+    },
+    {
+      "interview_id": "5711f883-51b6-4f45-b10f-25e44de23828",
+      "sequence": 13,
+      "role": "ai",
+      "client_event_id": "5eed0001-0000-4000-8000-000000000010",
+      "created_at": "2026-10-11T16:24:04.859Z"
+    },
+    {
+      "interview_id": "5711f883-51b6-4f45-b10f-25e44de23828",
+      "sequence": 14,
+      "role": "user",
+      "client_event_id": "5eed0001-0000-4000-8000-000000000013",
+      "created_at": "2026-10-11T16:24:10.869Z"
+    },
+    {
+      "interview_id": "5711f883-51b6-4f45-b10f-25e44de23828",
+      "sequence": 15,
+      "role": "ai",
+      "client_event_id": "5eed0001-0000-4000-8000-000000000014",
+      "created_at": "2026-10-11T16:24:16.864Z"
+    },
+    {
+      "interview_id": "5711f883-51b6-4f45-b10f-25e44de23828",
+      "sequence": 16,
+      "role": "user",
+      "client_event_id": "5eed0001-0000-4000-8000-000000000015",
+      "created_at": "2026-10-11T16:24:22.862Z"
+    },
+    {
+      "interview_id": "5711f883-51b6-4f45-b10f-25e44de23828",
+      "sequence": 17,
+      "role": "ai",
+      "client_event_id": "5eed0001-0000-4000-8000-000000000016",
+      "created_at": "2026-10-11T16:24:28.860Z"
+    },
+    {
+      "interview_id": "5711f883-51b6-4f45-b10f-25e44de23828",
+      "sequence": 18,
+      "role": "user",
+      "client_event_id": "5eed0001-0000-4000-8000-000000000017",
+      "created_at": "2026-10-11T16:24:34.862Z"
+    },
+    {
+      "interview_id": "5711f883-51b6-4f45-b10f-25e44de23828",
+      "sequence": 19,
+      "role": "ai",
+      "client_event_id": "5eed0001-0000-4000-8000-00000000001a",
+      "created_at": "2026-10-11T16:24:40.863Z"
+    },
+    {
+      "interview_id": "5711f883-51b6-4f45-b10f-25e44de23828",
+      "sequence": 20,
+      "role": "user",
+      "client_event_id": "5eed0001-0000-4000-8000-00000000001b",
+      "created_at": "2026-10-11T16:24:46.859Z"
+    },
+    {
+      "interview_id": "5711f883-51b6-4f45-b10f-25e44de23828",
+      "sequence": 21,
+      "role": "ai",
+      "client_event_id": "5eed0001-0000-4000-8000-00000000001c",
+      "created_at": "2026-10-11T16:24:52.861Z"
+    },
+    {
+      "interview_id": "5711f883-51b6-4f45-b10f-25e44de23828",
+      "sequence": 22,
+      "role": "user",
+      "client_event_id": "5eed0001-0000-4000-8000-00000000001d",
+      "created_at": "2026-10-11T16:24:58.861Z"
+    },
+    {
+      "interview_id": "5711f883-51b6-4f45-b10f-25e44de23828",
+      "sequence": 23,
+      "role": "ai",
+      "client_event_id": "5eed0001-0000-4000-8000-00000000001e",
+      "created_at": "2026-10-11T16:25:04.864Z"
+    },
+    {
+      "interview_id": "5711f883-51b6-4f45-b10f-25e44de23828",
+      "sequence": 24,
+      "role": "user",
+      "client_event_id": "5eed0001-0000-4000-8000-000000000021",
+      "created_at": "2026-10-11T16:25:11.837Z"
+    },
+    {
+      "interview_id": "686dcaf8-d2a7-4286-9db3-2e53f6c44f44",
+      "sequence": 1,
+      "role": "ai",
+      "client_event_id": "5eed0009-0000-4000-8000-000000000000",
+      "created_at": "2026-10-11T16:22:50.601Z"
+    },
+    {
+      "interview_id": "686dcaf8-d2a7-4286-9db3-2e53f6c44f44",
+      "sequence": 2,
+      "role": "user",
+      "client_event_id": "5eed0009-0000-4000-8000-000000000001",
+      "created_at": "2026-10-11T16:22:56.592Z"
+    },
+    {
+      "interview_id": "686dcaf8-d2a7-4286-9db3-2e53f6c44f44",
+      "sequence": 3,
+      "role": "ai",
+      "client_event_id": "5eed0009-0000-4000-8000-000000000002",
+      "created_at": "2026-10-11T16:23:02.594Z"
+    },
+    {
+      "interview_id": "686dcaf8-d2a7-4286-9db3-2e53f6c44f44",
+      "sequence": 4,
+      "role": "user",
+      "client_event_id": "5eed0009-0000-4000-8000-000000000005",
+      "created_at": "2026-10-11T16:23:10.431Z"
+    },
+    {
+      "interview_id": "686dcaf8-d2a7-4286-9db3-2e53f6c44f44",
+      "sequence": 5,
+      "role": "ai",
+      "client_event_id": "5eed0009-0000-4000-8000-000000000006",
+      "created_at": "2026-10-11T16:23:14.591Z"
+    },
+    {
+      "interview_id": "686dcaf8-d2a7-4286-9db3-2e53f6c44f44",
+      "sequence": 6,
+      "role": "user",
+      "client_event_id": "5eed0009-0000-4000-8000-000000000007",
+      "created_at": "2026-10-11T16:23:20.614Z"
+    },
+    {
+      "interview_id": "686dcaf8-d2a7-4286-9db3-2e53f6c44f44",
+      "sequence": 7,
+      "role": "ai",
+      "client_event_id": "5eed0009-0000-4000-8000-000000000008",
+      "created_at": "2026-10-11T16:23:26.590Z"
+    },
+    {
+      "interview_id": "686dcaf8-d2a7-4286-9db3-2e53f6c44f44",
+      "sequence": 8,
+      "role": "user",
+      "client_event_id": "5eed0009-0000-4000-8000-000000000009",
+      "created_at": "2026-10-11T16:23:32.597Z"
+    },
+    {
+      "interview_id": "686dcaf8-d2a7-4286-9db3-2e53f6c44f44",
+      "sequence": 9,
+      "role": "ai",
+      "client_event_id": "5eed0009-0000-4000-8000-00000000000c",
+      "created_at": "2026-10-11T16:23:38.593Z"
+    },
+    {
+      "interview_id": "686dcaf8-d2a7-4286-9db3-2e53f6c44f44",
+      "sequence": 10,
+      "role": "user",
+      "client_event_id": "5eed0009-0000-4000-8000-00000000000d",
+      "created_at": "2026-10-11T16:23:44.591Z"
+    },
+    {
+      "interview_id": "686dcaf8-d2a7-4286-9db3-2e53f6c44f44",
+      "sequence": 11,
+      "role": "ai",
+      "client_event_id": "5eed0009-0000-4000-8000-00000000000e",
+      "created_at": "2026-10-11T16:23:50.594Z"
+    },
+    {
+      "interview_id": "686dcaf8-d2a7-4286-9db3-2e53f6c44f44",
+      "sequence": 12,
+      "role": "user",
+      "client_event_id": "5eed0009-0000-4000-8000-00000000000f",
+      "created_at": "2026-10-11T16:23:56.597Z"
+    },
+    {
+      "interview_id": "686dcaf8-d2a7-4286-9db3-2e53f6c44f44",
+      "sequence": 13,
+      "role": "ai",
+      "client_event_id": "5eed0009-0000-4000-8000-000000000010",
+      "created_at": "2026-10-11T16:24:02.589Z"
+    },
+    {
+      "interview_id": "686dcaf8-d2a7-4286-9db3-2e53f6c44f44",
+      "sequence": 14,
+      "role": "user",
+      "client_event_id": "5eed0009-0000-4000-8000-000000000013",
+      "created_at": "2026-10-11T16:24:10.287Z"
+    },
+    {
+      "interview_id": "686dcaf8-d2a7-4286-9db3-2e53f6c44f44",
+      "sequence": 15,
+      "role": "ai",
+      "client_event_id": "5eed0009-0000-4000-8000-000000000014",
+      "created_at": "2026-10-11T16:24:14.597Z"
+    },
+    {
+      "interview_id": "686dcaf8-d2a7-4286-9db3-2e53f6c44f44",
+      "sequence": 16,
+      "role": "user",
+      "client_event_id": "5eed0009-0000-4000-8000-000000000015",
+      "created_at": "2026-10-11T16:24:20.591Z"
+    },
+    {
+      "interview_id": "686dcaf8-d2a7-4286-9db3-2e53f6c44f44",
+      "sequence": 17,
+      "role": "ai",
+      "client_event_id": "5eed0009-0000-4000-8000-000000000016",
+      "created_at": "2026-10-11T16:24:26.592Z"
+    },
+    {
+      "interview_id": "686dcaf8-d2a7-4286-9db3-2e53f6c44f44",
+      "sequence": 18,
+      "role": "user",
+      "client_event_id": "5eed0009-0000-4000-8000-000000000017",
+      "created_at": "2026-10-11T16:24:32.592Z"
+    },
+    {
+      "interview_id": "686dcaf8-d2a7-4286-9db3-2e53f6c44f44",
+      "sequence": 19,
+      "role": "ai",
+      "client_event_id": "5eed0009-0000-4000-8000-00000000001a",
+      "created_at": "2026-10-11T16:24:38.588Z"
+    },
+    {
+      "interview_id": "686dcaf8-d2a7-4286-9db3-2e53f6c44f44",
+      "sequence": 20,
+      "role": "user",
+      "client_event_id": "5eed0009-0000-4000-8000-00000000001b",
+      "created_at": "2026-10-11T16:24:44.587Z"
+    },
+    {
+      "interview_id": "686dcaf8-d2a7-4286-9db3-2e53f6c44f44",
+      "sequence": 21,
+      "role": "ai",
+      "client_event_id": "5eed0009-0000-4000-8000-00000000001c",
+      "created_at": "2026-10-11T16:24:50.589Z"
+    },
+    {
+      "interview_id": "686dcaf8-d2a7-4286-9db3-2e53f6c44f44",
+      "sequence": 22,
+      "role": "user",
+      "client_event_id": "5eed0009-0000-4000-8000-00000000001d",
+      "created_at": "2026-10-11T16:24:56.592Z"
+    },
+    {
+      "interview_id": "686dcaf8-d2a7-4286-9db3-2e53f6c44f44",
+      "sequence": 23,
+      "role": "ai",
+      "client_event_id": "5eed0009-0000-4000-8000-00000000001e",
+      "created_at": "2026-10-11T16:25:02.591Z"
+    },
+    {
+      "interview_id": "686dcaf8-d2a7-4286-9db3-2e53f6c44f44",
+      "sequence": 24,
+      "role": "user",
+      "client_event_id": "5eed0009-0000-4000-8000-000000000021",
+      "created_at": "2026-10-11T16:25:11.655Z"
+    },
+    {
+      "interview_id": "8024125e-e8cb-4d01-9bea-8aac1a9d18cc",
+      "sequence": 1,
+      "role": "ai",
+      "client_event_id": "5eed0000-0000-4000-8000-000000000000",
+      "created_at": "2026-10-11T16:22:50.066Z"
+    },
+    {
+      "interview_id": "8024125e-e8cb-4d01-9bea-8aac1a9d18cc",
+      "sequence": 2,
+      "role": "user",
+      "client_event_id": "5eed0000-0000-4000-8000-000000000001",
+      "created_at": "2026-10-11T16:22:56.056Z"
+    },
+    {
+      "interview_id": "8024125e-e8cb-4d01-9bea-8aac1a9d18cc",
+      "sequence": 3,
+      "role": "ai",
+      "client_event_id": "5eed0000-0000-4000-8000-000000000002",
+      "created_at": "2026-10-11T16:23:02.066Z"
+    },
+    {
+      "interview_id": "8024125e-e8cb-4d01-9bea-8aac1a9d18cc",
+      "sequence": 4,
+      "role": "user",
+      "client_event_id": "5eed0000-0000-4000-8000-000000000005",
+      "created_at": "2026-10-11T16:23:10.352Z"
+    },
+    {
+      "interview_id": "8024125e-e8cb-4d01-9bea-8aac1a9d18cc",
+      "sequence": 5,
+      "role": "ai",
+      "client_event_id": "5eed0000-0000-4000-8000-000000000006",
+      "created_at": "2026-10-11T16:23:14.052Z"
+    },
+    {
+      "interview_id": "8024125e-e8cb-4d01-9bea-8aac1a9d18cc",
+      "sequence": 6,
+      "role": "user",
+      "client_event_id": "5eed0000-0000-4000-8000-000000000007",
+      "created_at": "2026-10-11T16:23:20.079Z"
+    },
+    {
+      "interview_id": "8024125e-e8cb-4d01-9bea-8aac1a9d18cc",
+      "sequence": 7,
+      "role": "ai",
+      "client_event_id": "5eed0000-0000-4000-8000-000000000008",
+      "created_at": "2026-10-11T16:23:26.050Z"
+    },
+    {
+      "interview_id": "8024125e-e8cb-4d01-9bea-8aac1a9d18cc",
+      "sequence": 8,
+      "role": "user",
+      "client_event_id": "5eed0000-0000-4000-8000-000000000009",
+      "created_at": "2026-10-11T16:23:32.059Z"
+    },
+    {
+      "interview_id": "8024125e-e8cb-4d01-9bea-8aac1a9d18cc",
+      "sequence": 9,
+      "role": "ai",
+      "client_event_id": "5eed0000-0000-4000-8000-00000000000c",
+      "created_at": "2026-10-11T16:23:38.065Z"
+    },
+    {
+      "interview_id": "8024125e-e8cb-4d01-9bea-8aac1a9d18cc",
+      "sequence": 10,
+      "role": "user",
+      "client_event_id": "5eed0000-0000-4000-8000-00000000000d",
+      "created_at": "2026-10-11T16:23:44.049Z"
+    },
+    {
+      "interview_id": "8024125e-e8cb-4d01-9bea-8aac1a9d18cc",
+      "sequence": 11,
+      "role": "ai",
+      "client_event_id": "5eed0000-0000-4000-8000-00000000000e",
+      "created_at": "2026-10-11T16:23:50.056Z"
+    },
+    {
+      "interview_id": "8024125e-e8cb-4d01-9bea-8aac1a9d18cc",
+      "sequence": 12,
+      "role": "user",
+      "client_event_id": "5eed0000-0000-4000-8000-00000000000f",
+      "created_at": "2026-10-11T16:23:56.058Z"
+    },
+    {
+      "interview_id": "8024125e-e8cb-4d01-9bea-8aac1a9d18cc",
+      "sequence": 13,
+      "role": "ai",
+      "client_event_id": "5eed0000-0000-4000-8000-000000000010",
+      "created_at": "2026-10-11T16:24:02.067Z"
+    },
+    {
+      "interview_id": "8024125e-e8cb-4d01-9bea-8aac1a9d18cc",
+      "sequence": 14,
+      "role": "user",
+      "client_event_id": "5eed0000-0000-4000-8000-000000000013",
+      "created_at": "2026-10-11T16:24:09.820Z"
+    },
+    {
+      "interview_id": "8024125e-e8cb-4d01-9bea-8aac1a9d18cc",
+      "sequence": 15,
+      "role": "ai",
+      "client_event_id": "5eed0000-0000-4000-8000-000000000014",
+      "created_at": "2026-10-11T16:24:14.052Z"
+    },
+    {
+      "interview_id": "8024125e-e8cb-4d01-9bea-8aac1a9d18cc",
+      "sequence": 16,
+      "role": "user",
+      "client_event_id": "5eed0000-0000-4000-8000-000000000015",
+      "created_at": "2026-10-11T16:24:20.077Z"
+    },
+    {
+      "interview_id": "8024125e-e8cb-4d01-9bea-8aac1a9d18cc",
+      "sequence": 17,
+      "role": "ai",
+      "client_event_id": "5eed0000-0000-4000-8000-000000000016",
+      "created_at": "2026-10-11T16:24:26.055Z"
+    },
+    {
+      "interview_id": "8024125e-e8cb-4d01-9bea-8aac1a9d18cc",
+      "sequence": 18,
+      "role": "user",
+      "client_event_id": "5eed0000-0000-4000-8000-000000000017",
+      "created_at": "2026-10-11T16:24:32.056Z"
+    },
+    {
+      "interview_id": "8024125e-e8cb-4d01-9bea-8aac1a9d18cc",
+      "sequence": 19,
+      "role": "ai",
+      "client_event_id": "5eed0000-0000-4000-8000-00000000001a",
+      "created_at": "2026-10-11T16:24:38.067Z"
+    },
+    {
+      "interview_id": "8024125e-e8cb-4d01-9bea-8aac1a9d18cc",
+      "sequence": 20,
+      "role": "user",
+      "client_event_id": "5eed0000-0000-4000-8000-00000000001b",
+      "created_at": "2026-10-11T16:24:44.053Z"
+    },
+    {
+      "interview_id": "8024125e-e8cb-4d01-9bea-8aac1a9d18cc",
+      "sequence": 21,
+      "role": "ai",
+      "client_event_id": "5eed0000-0000-4000-8000-00000000001c",
+      "created_at": "2026-10-11T16:24:50.086Z"
+    },
+    {
+      "interview_id": "8024125e-e8cb-4d01-9bea-8aac1a9d18cc",
+      "sequence": 22,
+      "role": "user",
+      "client_event_id": "5eed0000-0000-4000-8000-00000000001d",
+      "created_at": "2026-10-11T16:24:56.059Z"
+    },
+    {
+      "interview_id": "8024125e-e8cb-4d01-9bea-8aac1a9d18cc",
+      "sequence": 23,
+      "role": "ai",
+      "client_event_id": "5eed0000-0000-4000-8000-00000000001e",
+      "created_at": "2026-10-11T16:25:02.050Z"
+    },
+    {
+      "interview_id": "8024125e-e8cb-4d01-9bea-8aac1a9d18cc",
+      "sequence": 24,
+      "role": "user",
+      "client_event_id": "5eed0000-0000-4000-8000-000000000021",
+      "created_at": "2026-10-11T16:25:11.257Z"
+    },
+    {
+      "interview_id": "a8547f63-53d9-421a-a30f-5f6eed110a10",
+      "sequence": 1,
+      "role": "ai",
+      "client_event_id": "5eed0005-0000-4000-8000-000000000000",
+      "created_at": "2026-10-11T16:22:53.323Z"
+    },
+    {
+      "interview_id": "a8547f63-53d9-421a-a30f-5f6eed110a10",
+      "sequence": 2,
+      "role": "user",
+      "client_event_id": "5eed0005-0000-4000-8000-000000000001",
+      "created_at": "2026-10-11T16:22:59.322Z"
+    },
+    {
+      "interview_id": "a8547f63-53d9-421a-a30f-5f6eed110a10",
+      "sequence": 3,
+      "role": "ai",
+      "client_event_id": "5eed0005-0000-4000-8000-000000000002",
+      "created_at": "2026-10-11T16:23:09.618Z"
+    },
+    {
+      "interview_id": "a8547f63-53d9-421a-a30f-5f6eed110a10",
+      "sequence": 4,
+      "role": "user",
+      "client_event_id": "5eed0005-0000-4000-8000-000000000005",
+      "created_at": "2026-10-11T16:23:11.317Z"
+    },
+    {
+      "interview_id": "a8547f63-53d9-421a-a30f-5f6eed110a10",
+      "sequence": 5,
+      "role": "ai",
+      "client_event_id": "5eed0005-0000-4000-8000-000000000006",
+      "created_at": "2026-10-11T16:23:17.315Z"
+    },
+    {
+      "interview_id": "a8547f63-53d9-421a-a30f-5f6eed110a10",
+      "sequence": 6,
+      "role": "user",
+      "client_event_id": "5eed0005-0000-4000-8000-000000000007",
+      "created_at": "2026-10-11T16:23:23.325Z"
+    },
+    {
+      "interview_id": "a8547f63-53d9-421a-a30f-5f6eed110a10",
+      "sequence": 7,
+      "role": "ai",
+      "client_event_id": "5eed0005-0000-4000-8000-000000000008",
+      "created_at": "2026-10-11T16:23:29.337Z"
+    },
+    {
+      "interview_id": "a8547f63-53d9-421a-a30f-5f6eed110a10",
+      "sequence": 8,
+      "role": "user",
+      "client_event_id": "5eed0005-0000-4000-8000-000000000009",
+      "created_at": "2026-10-11T16:23:35.327Z"
+    },
+    {
+      "interview_id": "a8547f63-53d9-421a-a30f-5f6eed110a10",
+      "sequence": 9,
+      "role": "ai",
+      "client_event_id": "5eed0005-0000-4000-8000-00000000000c",
+      "created_at": "2026-10-11T16:23:41.323Z"
+    },
+    {
+      "interview_id": "a8547f63-53d9-421a-a30f-5f6eed110a10",
+      "sequence": 10,
+      "role": "user",
+      "client_event_id": "5eed0005-0000-4000-8000-00000000000d",
+      "created_at": "2026-10-11T16:23:47.320Z"
+    },
+    {
+      "interview_id": "a8547f63-53d9-421a-a30f-5f6eed110a10",
+      "sequence": 11,
+      "role": "ai",
+      "client_event_id": "5eed0005-0000-4000-8000-00000000000e",
+      "created_at": "2026-10-11T16:23:53.320Z"
+    },
+    {
+      "interview_id": "a8547f63-53d9-421a-a30f-5f6eed110a10",
+      "sequence": 12,
+      "role": "user",
+      "client_event_id": "5eed0005-0000-4000-8000-00000000000f",
+      "created_at": "2026-10-11T16:23:59.316Z"
+    },
+    {
+      "interview_id": "a8547f63-53d9-421a-a30f-5f6eed110a10",
+      "sequence": 13,
+      "role": "ai",
+      "client_event_id": "5eed0005-0000-4000-8000-000000000010",
+      "created_at": "2026-10-11T16:24:05.328Z"
+    },
+    {
+      "interview_id": "a8547f63-53d9-421a-a30f-5f6eed110a10",
+      "sequence": 14,
+      "role": "user",
+      "client_event_id": "5eed0005-0000-4000-8000-000000000013",
+      "created_at": "2026-10-11T16:24:11.326Z"
+    },
+    {
+      "interview_id": "a8547f63-53d9-421a-a30f-5f6eed110a10",
+      "sequence": 15,
+      "role": "ai",
+      "client_event_id": "5eed0005-0000-4000-8000-000000000014",
+      "created_at": "2026-10-11T16:24:17.354Z"
+    },
+    {
+      "interview_id": "a8547f63-53d9-421a-a30f-5f6eed110a10",
+      "sequence": 16,
+      "role": "user",
+      "client_event_id": "5eed0005-0000-4000-8000-000000000015",
+      "created_at": "2026-10-11T16:24:23.318Z"
+    },
+    {
+      "interview_id": "a8547f63-53d9-421a-a30f-5f6eed110a10",
+      "sequence": 17,
+      "role": "ai",
+      "client_event_id": "5eed0005-0000-4000-8000-000000000016",
+      "created_at": "2026-10-11T16:24:29.332Z"
+    },
+    {
+      "interview_id": "a8547f63-53d9-421a-a30f-5f6eed110a10",
+      "sequence": 18,
+      "role": "user",
+      "client_event_id": "5eed0005-0000-4000-8000-000000000017",
+      "created_at": "2026-10-11T16:24:35.327Z"
+    },
+    {
+      "interview_id": "a8547f63-53d9-421a-a30f-5f6eed110a10",
+      "sequence": 19,
+      "role": "ai",
+      "client_event_id": "5eed0005-0000-4000-8000-00000000001a",
+      "created_at": "2026-10-11T16:24:41.316Z"
+    },
+    {
+      "interview_id": "a8547f63-53d9-421a-a30f-5f6eed110a10",
+      "sequence": 20,
+      "role": "user",
+      "client_event_id": "5eed0005-0000-4000-8000-00000000001b",
+      "created_at": "2026-10-11T16:24:47.333Z"
+    },
+    {
+      "interview_id": "a8547f63-53d9-421a-a30f-5f6eed110a10",
+      "sequence": 21,
+      "role": "ai",
+      "client_event_id": "5eed0005-0000-4000-8000-00000000001c",
+      "created_at": "2026-10-11T16:24:53.323Z"
+    },
+    {
+      "interview_id": "a8547f63-53d9-421a-a30f-5f6eed110a10",
+      "sequence": 22,
+      "role": "user",
+      "client_event_id": "5eed0005-0000-4000-8000-00000000001d",
+      "created_at": "2026-10-11T16:24:59.320Z"
+    },
+    {
+      "interview_id": "a8547f63-53d9-421a-a30f-5f6eed110a10",
+      "sequence": 23,
+      "role": "ai",
+      "client_event_id": "5eed0005-0000-4000-8000-00000000001e",
+      "created_at": "2026-10-11T16:25:05.320Z"
+    },
+    {
+      "interview_id": "a8547f63-53d9-421a-a30f-5f6eed110a10",
+      "sequence": 24,
+      "role": "user",
+      "client_event_id": "5eed0005-0000-4000-8000-000000000021",
+      "created_at": "2026-10-11T16:25:11.877Z"
+    },
+    {
+      "interview_id": "ab8332c4-75f8-45a3-94fb-d660bd5ee0a8",
+      "sequence": 1,
+      "role": "ai",
+      "client_event_id": "5eed0006-0000-4000-8000-000000000000",
+      "created_at": "2026-10-11T16:22:51.082Z"
+    },
+    {
+      "interview_id": "ab8332c4-75f8-45a3-94fb-d660bd5ee0a8",
+      "sequence": 2,
+      "role": "user",
+      "client_event_id": "5eed0006-0000-4000-8000-000000000001",
+      "created_at": "2026-10-11T16:22:57.082Z"
+    },
+    {
+      "interview_id": "ab8332c4-75f8-45a3-94fb-d660bd5ee0a8",
+      "sequence": 3,
+      "role": "ai",
+      "client_event_id": "5eed0006-0000-4000-8000-000000000002",
+      "created_at": "2026-10-11T16:23:03.074Z"
+    },
+    {
+      "interview_id": "ab8332c4-75f8-45a3-94fb-d660bd5ee0a8",
+      "sequence": 4,
+      "role": "user",
+      "client_event_id": "5eed0006-0000-4000-8000-000000000005",
+      "created_at": "2026-10-11T16:23:10.599Z"
+    },
+    {
+      "interview_id": "ab8332c4-75f8-45a3-94fb-d660bd5ee0a8",
+      "sequence": 5,
+      "role": "ai",
+      "client_event_id": "5eed0006-0000-4000-8000-000000000006",
+      "created_at": "2026-10-11T16:23:15.068Z"
+    },
+    {
+      "interview_id": "ab8332c4-75f8-45a3-94fb-d660bd5ee0a8",
+      "sequence": 6,
+      "role": "user",
+      "client_event_id": "5eed0006-0000-4000-8000-000000000007",
+      "created_at": "2026-10-11T16:23:21.096Z"
+    },
+    {
+      "interview_id": "ab8332c4-75f8-45a3-94fb-d660bd5ee0a8",
+      "sequence": 7,
+      "role": "ai",
+      "client_event_id": "5eed0006-0000-4000-8000-000000000008",
+      "created_at": "2026-10-11T16:23:27.071Z"
+    },
+    {
+      "interview_id": "ab8332c4-75f8-45a3-94fb-d660bd5ee0a8",
+      "sequence": 8,
+      "role": "user",
+      "client_event_id": "5eed0006-0000-4000-8000-000000000009",
+      "created_at": "2026-10-11T16:23:33.101Z"
+    },
+    {
+      "interview_id": "ab8332c4-75f8-45a3-94fb-d660bd5ee0a8",
+      "sequence": 9,
+      "role": "ai",
+      "client_event_id": "5eed0006-0000-4000-8000-00000000000c",
+      "created_at": "2026-10-11T16:23:39.074Z"
+    },
+    {
+      "interview_id": "ab8332c4-75f8-45a3-94fb-d660bd5ee0a8",
+      "sequence": 10,
+      "role": "user",
+      "client_event_id": "5eed0006-0000-4000-8000-00000000000d",
+      "created_at": "2026-10-11T16:23:45.075Z"
+    },
+    {
+      "interview_id": "ab8332c4-75f8-45a3-94fb-d660bd5ee0a8",
+      "sequence": 11,
+      "role": "ai",
+      "client_event_id": "5eed0006-0000-4000-8000-00000000000e",
+      "created_at": "2026-10-11T16:23:51.082Z"
+    },
+    {
+      "interview_id": "ab8332c4-75f8-45a3-94fb-d660bd5ee0a8",
+      "sequence": 12,
+      "role": "user",
+      "client_event_id": "5eed0006-0000-4000-8000-00000000000f",
+      "created_at": "2026-10-11T16:23:57.166Z"
+    },
+    {
+      "interview_id": "ab8332c4-75f8-45a3-94fb-d660bd5ee0a8",
+      "sequence": 13,
+      "role": "ai",
+      "client_event_id": "5eed0006-0000-4000-8000-000000000010",
+      "created_at": "2026-10-11T16:24:03.070Z"
+    },
+    {
+      "interview_id": "ab8332c4-75f8-45a3-94fb-d660bd5ee0a8",
+      "sequence": 14,
+      "role": "user",
+      "client_event_id": "5eed0006-0000-4000-8000-000000000013",
+      "created_at": "2026-10-11T16:24:10.159Z"
+    },
+    {
+      "interview_id": "ab8332c4-75f8-45a3-94fb-d660bd5ee0a8",
+      "sequence": 15,
+      "role": "ai",
+      "client_event_id": "5eed0006-0000-4000-8000-000000000014",
+      "created_at": "2026-10-11T16:24:15.072Z"
+    },
+    {
+      "interview_id": "ab8332c4-75f8-45a3-94fb-d660bd5ee0a8",
+      "sequence": 16,
+      "role": "user",
+      "client_event_id": "5eed0006-0000-4000-8000-000000000015",
+      "created_at": "2026-10-11T16:24:21.095Z"
+    },
+    {
+      "interview_id": "ab8332c4-75f8-45a3-94fb-d660bd5ee0a8",
+      "sequence": 17,
+      "role": "ai",
+      "client_event_id": "5eed0006-0000-4000-8000-000000000016",
+      "created_at": "2026-10-11T16:24:27.079Z"
+    },
+    {
+      "interview_id": "ab8332c4-75f8-45a3-94fb-d660bd5ee0a8",
+      "sequence": 18,
+      "role": "user",
+      "client_event_id": "5eed0006-0000-4000-8000-000000000017",
+      "created_at": "2026-10-11T16:24:33.071Z"
+    },
+    {
+      "interview_id": "ab8332c4-75f8-45a3-94fb-d660bd5ee0a8",
+      "sequence": 19,
+      "role": "ai",
+      "client_event_id": "5eed0006-0000-4000-8000-00000000001a",
+      "created_at": "2026-10-11T16:24:39.072Z"
+    },
+    {
+      "interview_id": "ab8332c4-75f8-45a3-94fb-d660bd5ee0a8",
+      "sequence": 20,
+      "role": "user",
+      "client_event_id": "5eed0006-0000-4000-8000-00000000001b",
+      "created_at": "2026-10-11T16:24:45.069Z"
+    },
+    {
+      "interview_id": "ab8332c4-75f8-45a3-94fb-d660bd5ee0a8",
+      "sequence": 21,
+      "role": "ai",
+      "client_event_id": "5eed0006-0000-4000-8000-00000000001c",
+      "created_at": "2026-10-11T16:24:51.072Z"
+    },
+    {
+      "interview_id": "ab8332c4-75f8-45a3-94fb-d660bd5ee0a8",
+      "sequence": 22,
+      "role": "user",
+      "client_event_id": "5eed0006-0000-4000-8000-00000000001d",
+      "created_at": "2026-10-11T16:24:57.074Z"
+    },
+    {
+      "interview_id": "ab8332c4-75f8-45a3-94fb-d660bd5ee0a8",
+      "sequence": 23,
+      "role": "ai",
+      "client_event_id": "5eed0006-0000-4000-8000-00000000001e",
+      "created_at": "2026-10-11T16:25:03.072Z"
+    },
+    {
+      "interview_id": "ab8332c4-75f8-45a3-94fb-d660bd5ee0a8",
+      "sequence": 24,
+      "role": "user",
+      "client_event_id": "5eed0006-0000-4000-8000-000000000021",
+      "created_at": "2026-10-11T16:25:11.295Z"
+    },
+    {
+      "interview_id": "bb5c6e0e-46f6-4bbf-8922-10e33c86b654",
+      "sequence": 1,
+      "role": "ai",
+      "client_event_id": "5eed0004-0000-4000-8000-000000000000",
+      "created_at": "2026-10-11T16:22:48.293Z"
+    },
+    {
+      "interview_id": "bb5c6e0e-46f6-4bbf-8922-10e33c86b654",
+      "sequence": 2,
+      "role": "user",
+      "client_event_id": "5eed0004-0000-4000-8000-000000000001",
+      "created_at": "2026-10-11T16:22:54.266Z"
+    },
+    {
+      "interview_id": "bb5c6e0e-46f6-4bbf-8922-10e33c86b654",
+      "sequence": 3,
+      "role": "ai",
+      "client_event_id": "5eed0004-0000-4000-8000-000000000002",
+      "created_at": "2026-10-11T16:23:00.268Z"
+    },
+    {
+      "interview_id": "bb5c6e0e-46f6-4bbf-8922-10e33c86b654",
+      "sequence": 4,
+      "role": "user",
+      "client_event_id": "5eed0004-0000-4000-8000-000000000005",
+      "created_at": "2026-10-11T16:23:09.964Z"
+    },
+    {
+      "interview_id": "bb5c6e0e-46f6-4bbf-8922-10e33c86b654",
+      "sequence": 5,
+      "role": "ai",
+      "client_event_id": "5eed0004-0000-4000-8000-000000000006",
+      "created_at": "2026-10-11T16:23:12.263Z"
+    },
+    {
+      "interview_id": "bb5c6e0e-46f6-4bbf-8922-10e33c86b654",
+      "sequence": 6,
+      "role": "user",
+      "client_event_id": "5eed0004-0000-4000-8000-000000000007",
+      "created_at": "2026-10-11T16:23:18.268Z"
+    },
+    {
+      "interview_id": "bb5c6e0e-46f6-4bbf-8922-10e33c86b654",
+      "sequence": 7,
+      "role": "ai",
+      "client_event_id": "5eed0004-0000-4000-8000-000000000008",
+      "created_at": "2026-10-11T16:23:24.302Z"
+    },
+    {
+      "interview_id": "bb5c6e0e-46f6-4bbf-8922-10e33c86b654",
+      "sequence": 8,
+      "role": "user",
+      "client_event_id": "5eed0004-0000-4000-8000-000000000009",
+      "created_at": "2026-10-11T16:23:30.266Z"
+    },
+    {
+      "interview_id": "bb5c6e0e-46f6-4bbf-8922-10e33c86b654",
+      "sequence": 9,
+      "role": "ai",
+      "client_event_id": "5eed0004-0000-4000-8000-00000000000c",
+      "created_at": "2026-10-11T16:23:36.269Z"
+    },
+    {
+      "interview_id": "bb5c6e0e-46f6-4bbf-8922-10e33c86b654",
+      "sequence": 10,
+      "role": "user",
+      "client_event_id": "5eed0004-0000-4000-8000-00000000000d",
+      "created_at": "2026-10-11T16:23:42.265Z"
+    },
+    {
+      "interview_id": "bb5c6e0e-46f6-4bbf-8922-10e33c86b654",
+      "sequence": 11,
+      "role": "ai",
+      "client_event_id": "5eed0004-0000-4000-8000-00000000000e",
+      "created_at": "2026-10-11T16:23:48.273Z"
+    },
+    {
+      "interview_id": "bb5c6e0e-46f6-4bbf-8922-10e33c86b654",
+      "sequence": 12,
+      "role": "user",
+      "client_event_id": "5eed0004-0000-4000-8000-00000000000f",
+      "created_at": "2026-10-11T16:23:54.263Z"
+    },
+    {
+      "interview_id": "bb5c6e0e-46f6-4bbf-8922-10e33c86b654",
+      "sequence": 13,
+      "role": "ai",
+      "client_event_id": "5eed0004-0000-4000-8000-000000000010",
+      "created_at": "2026-10-11T16:24:00.263Z"
+    },
+    {
+      "interview_id": "bb5c6e0e-46f6-4bbf-8922-10e33c86b654",
+      "sequence": 14,
+      "role": "user",
+      "client_event_id": "5eed0004-0000-4000-8000-000000000013",
+      "created_at": "2026-10-11T16:24:09.647Z"
+    },
+    {
+      "interview_id": "bb5c6e0e-46f6-4bbf-8922-10e33c86b654",
+      "sequence": 15,
+      "role": "ai",
+      "client_event_id": "5eed0004-0000-4000-8000-000000000014",
+      "created_at": "2026-10-11T16:24:12.264Z"
+    },
+    {
+      "interview_id": "bb5c6e0e-46f6-4bbf-8922-10e33c86b654",
+      "sequence": 16,
+      "role": "user",
+      "client_event_id": "5eed0004-0000-4000-8000-000000000015",
+      "created_at": "2026-10-11T16:24:18.262Z"
+    },
+    {
+      "interview_id": "bb5c6e0e-46f6-4bbf-8922-10e33c86b654",
+      "sequence": 17,
+      "role": "ai",
+      "client_event_id": "5eed0004-0000-4000-8000-000000000016",
+      "created_at": "2026-10-11T16:24:24.266Z"
+    },
+    {
+      "interview_id": "bb5c6e0e-46f6-4bbf-8922-10e33c86b654",
+      "sequence": 18,
+      "role": "user",
+      "client_event_id": "5eed0004-0000-4000-8000-000000000017",
+      "created_at": "2026-10-11T16:24:30.262Z"
+    },
+    {
+      "interview_id": "bb5c6e0e-46f6-4bbf-8922-10e33c86b654",
+      "sequence": 19,
+      "role": "ai",
+      "client_event_id": "5eed0004-0000-4000-8000-00000000001a",
+      "created_at": "2026-10-11T16:24:36.264Z"
+    },
+    {
+      "interview_id": "bb5c6e0e-46f6-4bbf-8922-10e33c86b654",
+      "sequence": 20,
+      "role": "user",
+      "client_event_id": "5eed0004-0000-4000-8000-00000000001b",
+      "created_at": "2026-10-11T16:24:42.272Z"
+    },
+    {
+      "interview_id": "bb5c6e0e-46f6-4bbf-8922-10e33c86b654",
+      "sequence": 21,
+      "role": "ai",
+      "client_event_id": "5eed0004-0000-4000-8000-00000000001c",
+      "created_at": "2026-10-11T16:24:48.267Z"
+    },
+    {
+      "interview_id": "bb5c6e0e-46f6-4bbf-8922-10e33c86b654",
+      "sequence": 22,
+      "role": "user",
+      "client_event_id": "5eed0004-0000-4000-8000-00000000001d",
+      "created_at": "2026-10-11T16:24:54.271Z"
+    },
+    {
+      "interview_id": "bb5c6e0e-46f6-4bbf-8922-10e33c86b654",
+      "sequence": 23,
+      "role": "ai",
+      "client_event_id": "5eed0004-0000-4000-8000-00000000001e",
+      "created_at": "2026-10-11T16:25:00.281Z"
+    },
+    {
+      "interview_id": "bb5c6e0e-46f6-4bbf-8922-10e33c86b654",
+      "sequence": 24,
+      "role": "user",
+      "client_event_id": "5eed0004-0000-4000-8000-000000000021",
+      "created_at": "2026-10-11T16:25:06.265Z"
+    },
+    {
+      "interview_id": "d5379613-b46a-4b92-a020-0c46be109a6a",
+      "sequence": 1,
+      "role": "ai",
+      "client_event_id": "5eed0008-0000-4000-8000-000000000000",
+      "created_at": "2026-10-11T16:22:52.378Z"
+    },
+    {
+      "interview_id": "d5379613-b46a-4b92-a020-0c46be109a6a",
+      "sequence": 2,
+      "role": "user",
+      "client_event_id": "5eed0008-0000-4000-8000-000000000001",
+      "created_at": "2026-10-11T16:22:58.402Z"
+    },
+    {
+      "interview_id": "d5379613-b46a-4b92-a020-0c46be109a6a",
+      "sequence": 3,
+      "role": "ai",
+      "client_event_id": "5eed0008-0000-4000-8000-000000000002",
+      "created_at": "2026-10-11T16:23:04.377Z"
+    },
+    {
+      "interview_id": "d5379613-b46a-4b92-a020-0c46be109a6a",
+      "sequence": 4,
+      "role": "user",
+      "client_event_id": "5eed0008-0000-4000-8000-000000000005",
+      "created_at": "2026-10-11T16:23:10.742Z"
+    },
+    {
+      "interview_id": "d5379613-b46a-4b92-a020-0c46be109a6a",
+      "sequence": 5,
+      "role": "ai",
+      "client_event_id": "5eed0008-0000-4000-8000-000000000006",
+      "created_at": "2026-10-11T16:23:16.387Z"
+    },
+    {
+      "interview_id": "d5379613-b46a-4b92-a020-0c46be109a6a",
+      "sequence": 6,
+      "role": "user",
+      "client_event_id": "5eed0008-0000-4000-8000-000000000007",
+      "created_at": "2026-10-11T16:23:22.384Z"
+    },
+    {
+      "interview_id": "d5379613-b46a-4b92-a020-0c46be109a6a",
+      "sequence": 7,
+      "role": "ai",
+      "client_event_id": "5eed0008-0000-4000-8000-000000000008",
+      "created_at": "2026-10-11T16:23:28.399Z"
+    },
+    {
+      "interview_id": "d5379613-b46a-4b92-a020-0c46be109a6a",
+      "sequence": 8,
+      "role": "user",
+      "client_event_id": "5eed0008-0000-4000-8000-000000000009",
+      "created_at": "2026-10-11T16:23:34.374Z"
+    },
+    {
+      "interview_id": "d5379613-b46a-4b92-a020-0c46be109a6a",
+      "sequence": 9,
+      "role": "ai",
+      "client_event_id": "5eed0008-0000-4000-8000-00000000000c",
+      "created_at": "2026-10-11T16:23:40.383Z"
+    },
+    {
+      "interview_id": "d5379613-b46a-4b92-a020-0c46be109a6a",
+      "sequence": 10,
+      "role": "user",
+      "client_event_id": "5eed0008-0000-4000-8000-00000000000d",
+      "created_at": "2026-10-11T16:23:46.373Z"
+    },
+    {
+      "interview_id": "d5379613-b46a-4b92-a020-0c46be109a6a",
+      "sequence": 11,
+      "role": "ai",
+      "client_event_id": "5eed0008-0000-4000-8000-00000000000e",
+      "created_at": "2026-10-11T16:23:52.374Z"
+    },
+    {
+      "interview_id": "d5379613-b46a-4b92-a020-0c46be109a6a",
+      "sequence": 12,
+      "role": "user",
+      "client_event_id": "5eed0008-0000-4000-8000-00000000000f",
+      "created_at": "2026-10-11T16:23:58.379Z"
+    },
+    {
+      "interview_id": "d5379613-b46a-4b92-a020-0c46be109a6a",
+      "sequence": 13,
+      "role": "ai",
+      "client_event_id": "5eed0008-0000-4000-8000-000000000010",
+      "created_at": "2026-10-11T16:24:04.411Z"
+    },
+    {
+      "interview_id": "d5379613-b46a-4b92-a020-0c46be109a6a",
+      "sequence": 14,
+      "role": "user",
+      "client_event_id": "5eed0008-0000-4000-8000-000000000013",
+      "created_at": "2026-10-11T16:24:10.554Z"
+    },
+    {
+      "interview_id": "d5379613-b46a-4b92-a020-0c46be109a6a",
+      "sequence": 15,
+      "role": "ai",
+      "client_event_id": "5eed0008-0000-4000-8000-000000000014",
+      "created_at": "2026-10-11T16:24:16.371Z"
+    },
+    {
+      "interview_id": "d5379613-b46a-4b92-a020-0c46be109a6a",
+      "sequence": 16,
+      "role": "user",
+      "client_event_id": "5eed0008-0000-4000-8000-000000000015",
+      "created_at": "2026-10-11T16:24:22.384Z"
+    },
+    {
+      "interview_id": "d5379613-b46a-4b92-a020-0c46be109a6a",
+      "sequence": 17,
+      "role": "ai",
+      "client_event_id": "5eed0008-0000-4000-8000-000000000016",
+      "created_at": "2026-10-11T16:24:28.372Z"
+    },
+    {
+      "interview_id": "d5379613-b46a-4b92-a020-0c46be109a6a",
+      "sequence": 18,
+      "role": "user",
+      "client_event_id": "5eed0008-0000-4000-8000-000000000017",
+      "created_at": "2026-10-11T16:24:34.377Z"
+    },
+    {
+      "interview_id": "d5379613-b46a-4b92-a020-0c46be109a6a",
+      "sequence": 19,
+      "role": "ai",
+      "client_event_id": "5eed0008-0000-4000-8000-00000000001a",
+      "created_at": "2026-10-11T16:24:40.372Z"
+    },
+    {
+      "interview_id": "d5379613-b46a-4b92-a020-0c46be109a6a",
+      "sequence": 20,
+      "role": "user",
+      "client_event_id": "5eed0008-0000-4000-8000-00000000001b",
+      "created_at": "2026-10-11T16:24:46.380Z"
+    },
+    {
+      "interview_id": "d5379613-b46a-4b92-a020-0c46be109a6a",
+      "sequence": 21,
+      "role": "ai",
+      "client_event_id": "5eed0008-0000-4000-8000-00000000001c",
+      "created_at": "2026-10-11T16:24:52.379Z"
+    },
+    {
+      "interview_id": "d5379613-b46a-4b92-a020-0c46be109a6a",
+      "sequence": 22,
+      "role": "user",
+      "client_event_id": "5eed0008-0000-4000-8000-00000000001d",
+      "created_at": "2026-10-11T16:24:58.381Z"
+    },
+    {
+      "interview_id": "d5379613-b46a-4b92-a020-0c46be109a6a",
+      "sequence": 23,
+      "role": "ai",
+      "client_event_id": "5eed0008-0000-4000-8000-00000000001e",
+      "created_at": "2026-10-11T16:25:04.387Z"
+    },
+    {
+      "interview_id": "d5379613-b46a-4b92-a020-0c46be109a6a",
+      "sequence": 24,
+      "role": "user",
+      "client_event_id": "5eed0008-0000-4000-8000-000000000021",
+      "created_at": "2026-10-11T16:25:11.759Z"
+    },
+    {
+      "interview_id": "e33d7017-ac36-4183-99c7-3638bd553c1c",
+      "sequence": 1,
+      "role": "ai",
+      "client_event_id": "5eed0003-0000-4000-8000-000000000000",
+      "created_at": "2026-10-11T16:22:49.697Z"
+    },
+    {
+      "interview_id": "e33d7017-ac36-4183-99c7-3638bd553c1c",
+      "sequence": 2,
+      "role": "user",
+      "client_event_id": "5eed0003-0000-4000-8000-000000000001",
+      "created_at": "2026-10-11T16:22:55.691Z"
+    },
+    {
+      "interview_id": "e33d7017-ac36-4183-99c7-3638bd553c1c",
+      "sequence": 3,
+      "role": "ai",
+      "client_event_id": "5eed0003-0000-4000-8000-000000000002",
+      "created_at": "2026-10-11T16:23:01.687Z"
+    },
+    {
+      "interview_id": "e33d7017-ac36-4183-99c7-3638bd553c1c",
+      "sequence": 4,
+      "role": "user",
+      "client_event_id": "5eed0003-0000-4000-8000-000000000005",
+      "created_at": "2026-10-11T16:23:10.171Z"
+    },
+    {
+      "interview_id": "e33d7017-ac36-4183-99c7-3638bd553c1c",
+      "sequence": 5,
+      "role": "ai",
+      "client_event_id": "5eed0003-0000-4000-8000-000000000006",
+      "created_at": "2026-10-11T16:23:13.702Z"
+    },
+    {
+      "interview_id": "e33d7017-ac36-4183-99c7-3638bd553c1c",
+      "sequence": 6,
+      "role": "user",
+      "client_event_id": "5eed0003-0000-4000-8000-000000000007",
+      "created_at": "2026-10-11T16:23:19.708Z"
+    },
+    {
+      "interview_id": "e33d7017-ac36-4183-99c7-3638bd553c1c",
+      "sequence": 7,
+      "role": "ai",
+      "client_event_id": "5eed0003-0000-4000-8000-000000000008",
+      "created_at": "2026-10-11T16:23:25.681Z"
+    },
+    {
+      "interview_id": "e33d7017-ac36-4183-99c7-3638bd553c1c",
+      "sequence": 8,
+      "role": "user",
+      "client_event_id": "5eed0003-0000-4000-8000-000000000009",
+      "created_at": "2026-10-11T16:23:31.685Z"
+    },
+    {
+      "interview_id": "e33d7017-ac36-4183-99c7-3638bd553c1c",
+      "sequence": 9,
+      "role": "ai",
+      "client_event_id": "5eed0003-0000-4000-8000-00000000000c",
+      "created_at": "2026-10-11T16:23:37.679Z"
+    },
+    {
+      "interview_id": "e33d7017-ac36-4183-99c7-3638bd553c1c",
+      "sequence": 10,
+      "role": "user",
+      "client_event_id": "5eed0003-0000-4000-8000-00000000000d",
+      "created_at": "2026-10-11T16:23:43.683Z"
+    },
+    {
+      "interview_id": "e33d7017-ac36-4183-99c7-3638bd553c1c",
+      "sequence": 11,
+      "role": "ai",
+      "client_event_id": "5eed0003-0000-4000-8000-00000000000e",
+      "created_at": "2026-10-11T16:23:49.679Z"
+    },
+    {
+      "interview_id": "e33d7017-ac36-4183-99c7-3638bd553c1c",
+      "sequence": 12,
+      "role": "user",
+      "client_event_id": "5eed0003-0000-4000-8000-00000000000f",
+      "created_at": "2026-10-11T16:23:55.683Z"
+    },
+    {
+      "interview_id": "e33d7017-ac36-4183-99c7-3638bd553c1c",
+      "sequence": 13,
+      "role": "ai",
+      "client_event_id": "5eed0003-0000-4000-8000-000000000010",
+      "created_at": "2026-10-11T16:24:01.685Z"
+    },
+    {
+      "interview_id": "e33d7017-ac36-4183-99c7-3638bd553c1c",
+      "sequence": 14,
+      "role": "user",
+      "client_event_id": "5eed0003-0000-4000-8000-000000000013",
+      "created_at": "2026-10-11T16:24:10.178Z"
+    },
+    {
+      "interview_id": "e33d7017-ac36-4183-99c7-3638bd553c1c",
+      "sequence": 15,
+      "role": "ai",
+      "client_event_id": "5eed0003-0000-4000-8000-000000000014",
+      "created_at": "2026-10-11T16:24:13.680Z"
+    },
+    {
+      "interview_id": "e33d7017-ac36-4183-99c7-3638bd553c1c",
+      "sequence": 16,
+      "role": "user",
+      "client_event_id": "5eed0003-0000-4000-8000-000000000015",
+      "created_at": "2026-10-11T16:24:19.712Z"
+    },
+    {
+      "interview_id": "e33d7017-ac36-4183-99c7-3638bd553c1c",
+      "sequence": 17,
+      "role": "ai",
+      "client_event_id": "5eed0003-0000-4000-8000-000000000016",
+      "created_at": "2026-10-11T16:24:25.684Z"
+    },
+    {
+      "interview_id": "e33d7017-ac36-4183-99c7-3638bd553c1c",
+      "sequence": 18,
+      "role": "user",
+      "client_event_id": "5eed0003-0000-4000-8000-000000000017",
+      "created_at": "2026-10-11T16:24:31.686Z"
+    },
+    {
+      "interview_id": "e33d7017-ac36-4183-99c7-3638bd553c1c",
+      "sequence": 19,
+      "role": "ai",
+      "client_event_id": "5eed0003-0000-4000-8000-00000000001a",
+      "created_at": "2026-10-11T16:24:37.684Z"
+    },
+    {
+      "interview_id": "e33d7017-ac36-4183-99c7-3638bd553c1c",
+      "sequence": 20,
+      "role": "user",
+      "client_event_id": "5eed0003-0000-4000-8000-00000000001b",
+      "created_at": "2026-10-11T16:24:43.682Z"
+    },
+    {
+      "interview_id": "e33d7017-ac36-4183-99c7-3638bd553c1c",
+      "sequence": 21,
+      "role": "ai",
+      "client_event_id": "5eed0003-0000-4000-8000-00000000001c",
+      "created_at": "2026-10-11T16:24:49.681Z"
+    },
+    {
+      "interview_id": "e33d7017-ac36-4183-99c7-3638bd553c1c",
+      "sequence": 22,
+      "role": "user",
+      "client_event_id": "5eed0003-0000-4000-8000-00000000001d",
+      "created_at": "2026-10-11T16:24:55.680Z"
+    },
+    {
+      "interview_id": "e33d7017-ac36-4183-99c7-3638bd553c1c",
+      "sequence": 23,
+      "role": "ai",
+      "client_event_id": "5eed0003-0000-4000-8000-00000000001e",
+      "created_at": "2026-10-11T16:25:01.681Z"
+    },
+    {
+      "interview_id": "e33d7017-ac36-4183-99c7-3638bd553c1c",
+      "sequence": 24,
+      "role": "user",
+      "client_event_id": "5eed0003-0000-4000-8000-000000000021",
+      "created_at": "2026-10-11T16:25:11.479Z"
+    },
+    {
+      "interview_id": "f71a78a2-e7ef-47b6-a8eb-6c6ca83c10d1",
+      "sequence": 1,
+      "role": "ai",
+      "client_event_id": "5eed0002-0000-4000-8000-000000000000",
+      "created_at": "2026-10-11T16:22:51.420Z"
+    },
+    {
+      "interview_id": "f71a78a2-e7ef-47b6-a8eb-6c6ca83c10d1",
+      "sequence": 2,
+      "role": "user",
+      "client_event_id": "5eed0002-0000-4000-8000-000000000001",
+      "created_at": "2026-10-11T16:22:57.411Z"
+    },
+    {
+      "interview_id": "f71a78a2-e7ef-47b6-a8eb-6c6ca83c10d1",
+      "sequence": 3,
+      "role": "ai",
+      "client_event_id": "5eed0002-0000-4000-8000-000000000002",
+      "created_at": "2026-10-11T16:23:03.407Z"
+    },
+    {
+      "interview_id": "f71a78a2-e7ef-47b6-a8eb-6c6ca83c10d1",
+      "sequence": 4,
+      "role": "user",
+      "client_event_id": "5eed0002-0000-4000-8000-000000000005",
+      "created_at": "2026-10-11T16:23:10.672Z"
+    },
+    {
+      "interview_id": "f71a78a2-e7ef-47b6-a8eb-6c6ca83c10d1",
+      "sequence": 5,
+      "role": "ai",
+      "client_event_id": "5eed0002-0000-4000-8000-000000000006",
+      "created_at": "2026-10-11T16:23:15.410Z"
+    },
+    {
+      "interview_id": "f71a78a2-e7ef-47b6-a8eb-6c6ca83c10d1",
+      "sequence": 6,
+      "role": "user",
+      "client_event_id": "5eed0002-0000-4000-8000-000000000007",
+      "created_at": "2026-10-11T16:23:21.418Z"
+    },
+    {
+      "interview_id": "f71a78a2-e7ef-47b6-a8eb-6c6ca83c10d1",
+      "sequence": 7,
+      "role": "ai",
+      "client_event_id": "5eed0002-0000-4000-8000-000000000008",
+      "created_at": "2026-10-11T16:23:27.416Z"
+    },
+    {
+      "interview_id": "f71a78a2-e7ef-47b6-a8eb-6c6ca83c10d1",
+      "sequence": 8,
+      "role": "user",
+      "client_event_id": "5eed0002-0000-4000-8000-000000000009",
+      "created_at": "2026-10-11T16:23:33.414Z"
+    },
+    {
+      "interview_id": "f71a78a2-e7ef-47b6-a8eb-6c6ca83c10d1",
+      "sequence": 9,
+      "role": "ai",
+      "client_event_id": "5eed0002-0000-4000-8000-00000000000c",
+      "created_at": "2026-10-11T16:23:39.418Z"
+    },
+    {
+      "interview_id": "f71a78a2-e7ef-47b6-a8eb-6c6ca83c10d1",
+      "sequence": 10,
+      "role": "user",
+      "client_event_id": "5eed0002-0000-4000-8000-00000000000d",
+      "created_at": "2026-10-11T16:23:45.415Z"
+    },
+    {
+      "interview_id": "f71a78a2-e7ef-47b6-a8eb-6c6ca83c10d1",
+      "sequence": 11,
+      "role": "ai",
+      "client_event_id": "5eed0002-0000-4000-8000-00000000000e",
+      "created_at": "2026-10-11T16:23:51.415Z"
+    },
+    {
+      "interview_id": "f71a78a2-e7ef-47b6-a8eb-6c6ca83c10d1",
+      "sequence": 12,
+      "role": "user",
+      "client_event_id": "5eed0002-0000-4000-8000-00000000000f",
+      "created_at": "2026-10-11T16:23:57.413Z"
+    },
+    {
+      "interview_id": "f71a78a2-e7ef-47b6-a8eb-6c6ca83c10d1",
+      "sequence": 13,
+      "role": "ai",
+      "client_event_id": "5eed0002-0000-4000-8000-000000000010",
+      "created_at": "2026-10-11T16:24:03.412Z"
+    },
+    {
+      "interview_id": "f71a78a2-e7ef-47b6-a8eb-6c6ca83c10d1",
+      "sequence": 14,
+      "role": "user",
+      "client_event_id": "5eed0002-0000-4000-8000-000000000013",
+      "created_at": "2026-10-11T16:24:10.322Z"
+    },
+    {
+      "interview_id": "f71a78a2-e7ef-47b6-a8eb-6c6ca83c10d1",
+      "sequence": 15,
+      "role": "ai",
+      "client_event_id": "5eed0002-0000-4000-8000-000000000014",
+      "created_at": "2026-10-11T16:24:15.422Z"
+    },
+    {
+      "interview_id": "f71a78a2-e7ef-47b6-a8eb-6c6ca83c10d1",
+      "sequence": 16,
+      "role": "user",
+      "client_event_id": "5eed0002-0000-4000-8000-000000000015",
+      "created_at": "2026-10-11T16:24:21.413Z"
+    },
+    {
+      "interview_id": "f71a78a2-e7ef-47b6-a8eb-6c6ca83c10d1",
+      "sequence": 17,
+      "role": "ai",
+      "client_event_id": "5eed0002-0000-4000-8000-000000000016",
+      "created_at": "2026-10-11T16:24:27.415Z"
+    },
+    {
+      "interview_id": "f71a78a2-e7ef-47b6-a8eb-6c6ca83c10d1",
+      "sequence": 18,
+      "role": "user",
+      "client_event_id": "5eed0002-0000-4000-8000-000000000017",
+      "created_at": "2026-10-11T16:24:33.411Z"
+    },
+    {
+      "interview_id": "f71a78a2-e7ef-47b6-a8eb-6c6ca83c10d1",
+      "sequence": 19,
+      "role": "ai",
+      "client_event_id": "5eed0002-0000-4000-8000-00000000001a",
+      "created_at": "2026-10-11T16:24:39.418Z"
+    },
+    {
+      "interview_id": "f71a78a2-e7ef-47b6-a8eb-6c6ca83c10d1",
+      "sequence": 20,
+      "role": "user",
+      "client_event_id": "5eed0002-0000-4000-8000-00000000001b",
+      "created_at": "2026-10-11T16:24:45.409Z"
+    },
+    {
+      "interview_id": "f71a78a2-e7ef-47b6-a8eb-6c6ca83c10d1",
+      "sequence": 21,
+      "role": "ai",
+      "client_event_id": "5eed0002-0000-4000-8000-00000000001c",
+      "created_at": "2026-10-11T16:24:51.412Z"
+    },
+    {
+      "interview_id": "f71a78a2-e7ef-47b6-a8eb-6c6ca83c10d1",
+      "sequence": 22,
+      "role": "user",
+      "client_event_id": "5eed0002-0000-4000-8000-00000000001d",
+      "created_at": "2026-10-11T16:24:57.427Z"
+    },
+    {
+      "interview_id": "f71a78a2-e7ef-47b6-a8eb-6c6ca83c10d1",
+      "sequence": 23,
+      "role": "ai",
+      "client_event_id": "5eed0002-0000-4000-8000-00000000001e",
+      "created_at": "2026-10-11T16:25:03.412Z"
+    },
+    {
+      "interview_id": "f71a78a2-e7ef-47b6-a8eb-6c6ca83c10d1",
+      "sequence": 24,
+      "role": "user",
+      "client_event_id": "5eed0002-0000-4000-8000-000000000021",
+      "created_at": "2026-10-11T16:25:11.663Z"
+    }
+  ],
+  "reports": [
+    {
+      "interview_id": "bb5c6e0e-46f6-4bbf-8922-10e33c86b654",
+      "generated_at": "2026-10-11T16:25:20.284Z"
+    },
+    {
+      "interview_id": "e33d7017-ac36-4183-99c7-3638bd553c1c",
+      "generated_at": "2026-10-11T16:25:21.624Z"
+    },
+    {
+      "interview_id": "8024125e-e8cb-4d01-9bea-8aac1a9d18cc",
+      "generated_at": "2026-10-11T16:25:21.999Z"
+    },
+    {
+      "interview_id": "686dcaf8-d2a7-4286-9db3-2e53f6c44f44",
+      "generated_at": "2026-10-11T16:25:22.532Z"
+    },
+    {
+      "interview_id": "ab8332c4-75f8-45a3-94fb-d660bd5ee0a8",
+      "generated_at": "2026-10-11T16:25:23.009Z"
+    },
+    {
+      "interview_id": "f71a78a2-e7ef-47b6-a8eb-6c6ca83c10d1",
+      "generated_at": "2026-10-11T16:25:23.351Z"
+    },
+    {
+      "interview_id": "1a1e551c-8aa8-436a-ad8d-2ed9c8da866c",
+      "generated_at": "2026-10-11T16:25:24.047Z"
+    },
+    {
+      "interview_id": "d5379613-b46a-4b92-a020-0c46be109a6a",
+      "generated_at": "2026-10-11T16:25:24.311Z"
+    },
+    {
+      "interview_id": "5711f883-51b6-4f45-b10f-25e44de23828",
+      "generated_at": "2026-10-11T16:25:24.810Z"
+    },
+    {
+      "interview_id": "a8547f63-53d9-421a-a30f-5f6eed110a10",
+      "generated_at": "2026-10-11T16:25:25.258Z"
+    }
+  ]
+}

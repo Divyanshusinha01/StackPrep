@@ -663,8 +663,20 @@ export function createInterviewsHandler({
       },
       log: (entry) => console.log(JSON.stringify({ fn: FN, interview_id: interview.id, tool: call.tool, ...entry })),
     };
-    const outcome = await runTool(call.tool, call.args, toolCtx);
+    const startedAt = Date.now();
+    const metrics = { interviewId: interview.id, tool: call.tool };
+    const outcome = await runTool(call.tool, call.args, toolCtx).catch(async (err) => {
+      await store.recordToolMetrics({ ...metrics, durationMs: Date.now() - startedAt, outcome: "internal" });
+      throw err;
+    });
+    const durationMs = Date.now() - startedAt;
     const output = toolCallResponseSchema.parse(outcome.output);
+    await store.recordToolMetrics({
+      ...metrics,
+      durationMs,
+      outcome: output.ok ? "ok" : output.error.code,
+      ...(outcome.vectorFill ? { vectorFill: outcome.vectorFill } : {}),
+    });
     if (existing || outcome.record === false) {
       return toolResponse(output);
     }

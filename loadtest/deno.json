@@ -1,0 +1,13 @@
+{
+  "imports": {
+    "@std/path": "jsr:@std/path@^1",
+    "postgres": "npm:postgres@^3.4.7"
+  },
+  "tasks": {
+    "build-k6": "deno run --allow-run --allow-read --allow-write build-k6.ts",
+    "schedule": "deno run --allow-read --allow-write gen-schedule.ts",
+    "baseline": "deno run --allow-all run.ts --transport sse --out results/sse-baseline",
+    "baseline-uncapped": "deno run --allow-all run.ts --transport sse --out results/sse-baseline-uncapped --edge-cpu-limit-ms 600000,1200000",
+    "summarize": "deno run --allow-read --allow-write summarize.ts"
+  }
+}

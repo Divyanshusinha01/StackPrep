@@ -1,3 +1,4 @@
+export * from "./admin.ts";
 export * from "./ai-usage.ts";
 export * from "./auth.ts";
 export type * from "./database.types.ts";

@@ -1,0 +1,576 @@
+CPU time soft limit reached: isolate: 1cc5212f-bece-4f67-a7aa-01bbd1b6a61b
+CPU time hard limit reached: isolate: 1cc5212f-bece-4f67-a7aa-01bbd1b6a61b
+CPU time soft limit reached: isolate: 3d7fbcce-fd02-405f-9ae5-8edae66238ce
+CPU time soft limit reached: isolate: 0788c8bb-8002-45ca-aa32-2047701d3eb5
+CPU time soft limit reached: isolate: 3182996e-4a9d-441b-a419-1778a41bb303
+CPU time soft limit reached: isolate: a7217818-9823-4979-99ae-76489af515a5
+CPU time hard limit reached: isolate: 3d7fbcce-fd02-405f-9ae5-8edae66238ce
+CPU time hard limit reached: isolate: 0788c8bb-8002-45ca-aa32-2047701d3eb5
+CPU time soft limit reached: isolate: 48ca4954-a461-4dc3-aa80-2a7071a4e1aa
+CPU time soft limit reached: isolate: 7fe15647-5ccf-40e2-906b-6aa137cff0c5
+CPU time hard limit reached: isolate: 3182996e-4a9d-441b-a419-1778a41bb303
+CPU time soft limit reached: isolate: 4f14649c-79f4-46ca-a849-c350e5e11902
+CPU time soft limit reached: isolate: 98849361-a238-46d7-82ce-20070aa9b24d
+user worker failed to respond: request cannot be handled because the worker has already retired
+user worker failed to respond: request cannot be handled because the worker has already retired
+[functions] worker error WorkerAlreadyRetired: request cannot be handled because the worker has already retired
+  name: [32m"WorkerAlreadyRetired"[39m
+[functions] worker error WorkerAlreadyRetired: request cannot be handled because the worker has already retired
+  name: [32m"WorkerAlreadyRetired"[39m
+CPU time hard limit reached: isolate: 48ca4954-a461-4dc3-aa80-2a7071a4e1aa
+CPU time hard limit reached: isolate: 7fe15647-5ccf-40e2-906b-6aa137cff0c5
+CPU time soft limit reached: isolate: 35cf8594-e080-4a3b-b0da-796a4ac9278d
+CPU time soft limit reached: isolate: 21878df0-2e8c-44c6-bcb6-825555abb9d6
+CPU time hard limit reached: isolate: a7217818-9823-4979-99ae-76489af515a5
+CPU time soft limit reached: isolate: 0032573e-3135-40ea-95e6-09eb78cb64b0
+CPU time soft limit reached: isolate: 86045063-8681-49a6-8dda-2c605788eebb
+CPU time soft limit reached: isolate: f57a6717-952f-4ebe-8bd4-eb47845e8123
+CPU time soft limit reached: isolate: 2494e7bc-be73-40cf-a98c-dac6f1dc73f2
+CPU time soft limit reached: isolate: 1c2a9e4b-fe06-45cb-b1ce-75c5f3755a99
+CPU time hard limit reached: isolate: 4f14649c-79f4-46ca-a849-c350e5e11902
+CPU time soft limit reached: isolate: 929592ec-e294-4d02-9e3f-460f0b3b45fc
+CPU time soft limit reached: isolate: 27265236-595a-4b2d-8eca-fd9f11df44b0
+CPU time hard limit reached: isolate: 98849361-a238-46d7-82ce-20070aa9b24d
+CPU time soft limit reached: isolate: fe9744c2-6290-436d-9ed9-5ea68c9572f2
+user worker failed to respond: request cannot be handled because the worker has already retired
+user worker failed to respond: request cannot be handled because the worker has already retired
+[functions] worker error WorkerAlreadyRetired: request cannot be handled because the worker has already retired
+  name: [32m"WorkerAlreadyRetired"[39m
+[functions] worker error WorkerAlreadyRetired: request cannot be handled because the worker has already retired
+  name: [32m"WorkerAlreadyRetired"[39m
+CPU time soft limit reached: isolate: 234de232-47df-47df-b4ce-89aa57ed874d
+CPU time soft limit reached: isolate: 1009c31f-7ba4-4d6a-b980-7413b2038f76
+CPU time soft limit reached: isolate: 4c001e2a-6291-4b2e-998f-6c787142e53a
+CPU time soft limit reached: isolate: b47549a5-0a38-43de-a8a4-d6ab28c78a59
+CPU time soft limit reached: isolate: 4fd98b6e-95c1-4100-b575-dfe5b25d415f
+user worker failed to respond: request cannot be handled because the worker has already retired
+[functions] worker error WorkerAlreadyRetired: request cannot be handled because the worker has already retired
+  name: [32m"WorkerAlreadyRetired"[39m
+CPU time soft limit reached: isolate: 3a0d8789-b784-48f9-b6bc-63301e08401b
+CPU time soft limit reached: isolate: 9265fd86-5e96-42f0-937a-afadbe2341c0
+CPU time soft limit reached: isolate: 4f5d07a9-b9e2-48c2-a032-72fdc50221d0
+wall clock duration warning: isolate: 118e46b7-f2df-4cbf-b445-04ec40904e5c
+CPU time soft limit reached: isolate: 56dfe95a-8feb-4ec5-acdb-84df024ed935
+CPU time soft limit reached: isolate: 4ba5cef2-9aec-4e85-8497-a13f42533151
+CPU time soft limit reached: isolate: f3c224f1-7232-4d8c-8b9e-d7041794e32c
+CPU time soft limit reached: isolate: 215a5492-02dc-402e-bc7f-da5bc6b6b7e6
+CPU time soft limit reached: isolate: 66e036f4-e217-47f4-9e23-7004cf571bdc
+CPU time soft limit reached: isolate: bb7bc3e4-7bb7-4bae-ba94-d0bb8101f809
+CPU time soft limit reached: isolate: f1736451-a433-4f73-b2d9-4fffd08428e8
+CPU time soft limit reached: isolate: 7159f91e-f7bd-47aa-8697-53373653dd74
+CPU time soft limit reached: isolate: a81a71bc-ede6-4b62-9b5f-602c8b088e58
+CPU time soft limit reached: isolate: e1687551-1d13-42a2-8f9f-5f75eaec77af
+CPU time soft limit reached: isolate: f00ae150-1af2-488f-b2d8-c49b46dc048d
+user worker failed to respond: request cannot be handled because the worker has already retired
+[functions] worker error WorkerAlreadyRetired: request cannot be handled because the worker has already retired
+  name: [32m"WorkerAlreadyRetired"[39m
+user worker failed to respond: request cannot be handled because the worker has already retired
+[functions] worker error WorkerAlreadyRetired: request cannot be handled because the worker has already retired
+  name: [32m"WorkerAlreadyRetired"[39m
+CPU time soft limit reached: isolate: 55448534-4f09-4a6f-afdd-3f3e3910a7c1
+CPU time soft limit reached: isolate: d184d303-966c-4194-bc61-f7527248fd04
+CPU time soft limit reached: isolate: a5b39076-4e71-4fe5-b1f3-9b4ae418f166
+CPU time soft limit reached: isolate: ed23784d-d99c-418b-bcd7-62790cb9887e
+CPU time soft limit reached: isolate: c686a64e-3c19-4b80-8ee4-0e87f518cd72
+CPU time soft limit reached: isolate: 372fbc57-b11c-48d2-ad5e-badcdff1b98c
+CPU time soft limit reached: isolate: c03287f4-f8a5-41b4-b7ff-05d119c7e925
+[Error] {"event":"github_request_failed","fn":"interviews","code":"internal_error"}
+[Error] {"event":"github_request_failed","fn":"interviews","code":"internal_error"}
+[Error] {"event":"github_request_failed","fn":"interviews","code":"internal_error"}
+[Error] {"event":"github_request_failed","fn":"interviews","code":"internal_error"}
+failed to send request to user worker: request has been cancelled by supervisor
+failed to send request to user worker: request has been cancelled by supervisor
+failed to send request to user worker: request has been cancelled by supervisor
+failed to send request to user worker: request has been cancelled by supervisor
+failed to send request to user worker: request has been cancelled by supervisor
+failed to send request to user worker: request has been cancelled by supervisor
+failed to send request to user worker: request has been cancelled by supervisor
+failed to send request to user worker: request has been cancelled by supervisor
+failed to send request to user worker: request has been cancelled by supervisor
+failed to send request to user worker: request has been cancelled by supervisor
+failed to send request to user worker: request has been cancelled by supervisor
+failed to send request to user worker: request has been cancelled by supervisor
+failed to send request to user worker: request has been cancelled by supervisor
+failed to send request to user worker: request has been cancelled by supervisor
+failed to send request to user worker: request has been cancelled by supervisor
+failed to send request to user worker: request has been cancelled by supervisor
+failed to send request to user worker: request has been cancelled by supervisor
+failed to send request to user worker: request has been cancelled by supervisor
+failed to send request to user worker: request has been cancelled by supervisor
+user worker failed to respond: request has been cancelled by supervisor
+user worker failed to respond: request has been cancelled by supervisor
+user worker failed to respond: request has been cancelled by supervisor
+user worker failed to respond: request has been cancelled by supervisor
+user worker failed to respond: request has been cancelled by supervisor
+user worker failed to respond: request has been cancelled by supervisor
+user worker failed to respond: request has been cancelled by supervisor
+user worker failed to respond: request has been cancelled by supervisor
+user worker failed to respond: request has been cancelled by supervisor
+user worker failed to respond: request has been cancelled by supervisor
+user worker failed to respond: request has been cancelled by supervisor
+user worker failed to respond: request has been cancelled by supervisor
+user worker failed to respond: request has been cancelled by supervisor
+user worker failed to respond: request has been cancelled by supervisor
+user worker failed to respond: request has been cancelled by supervisor
+user worker failed to respond: request has been cancelled by supervisor
+user worker failed to respond: request has been cancelled by supervisor
+user worker failed to respond: request has been cancelled by supervisor
+user worker failed to respond: request has been cancelled by supervisor
+[functions] worker error WorkerRequestCancelled: request has been cancelled by supervisor
+  name: [32m"WorkerRequestCancelled"[39m
+[functions] worker error WorkerRequestCancelled: request has been cancelled by supervisor
+  name: [32m"WorkerRequestCancelled"[39m
+[functions] worker error WorkerRequestCancelled: request has been cancelled by supervisor
+  name: [32m"WorkerRequestCancelled"[39m
+[functions] worker error WorkerRequestCancelled: request has been cancelled by supervisor
+  name: [32m"WorkerRequestCancelled"[39m
+[functions] worker error WorkerRequestCancelled: request has been cancelled by supervisor
+  name: [32m"WorkerRequestCancelled"[39m
+[functions] worker error WorkerRequestCancelled: request has been cancelled by supervisor
+  name: [32m"WorkerRequestCancelled"[39m
+[functions] worker error WorkerRequestCancelled: request has been cancelled by supervisor
+  name: [32m"WorkerRequestCancelled"[39m
+[functions] worker error WorkerRequestCancelled: request has been cancelled by supervisor
+  name: [32m"WorkerRequestCancelled"[39m
+[functions] worker error WorkerRequestCancelled: request has been cancelled by supervisor
+  name: [32m"WorkerRequestCancelled"[39m
+[functions] worker error WorkerRequestCancelled: request has been cancelled by supervisor
+  name: [32m"WorkerRequestCancelled"[39m
+[functions] worker error WorkerRequestCancelled: request has been cancelled by supervisor
+  name: [32m"WorkerRequestCancelled"[39m
+[functions] worker error WorkerRequestCancelled: request has been cancelled by supervisor
+  name: [32m"WorkerRequestCancelled"[39m
+[functions] worker error WorkerRequestCancelled: request has been cancelled by supervisor
+  name: [32m"WorkerRequestCancelled"[39m
+[functions] worker error WorkerRequestCancelled: request has been cancelled by supervisor
+  name: [32m"WorkerRequestCancelled"[39m
+[functions] worker error WorkerRequestCancelled: request has been cancelled by supervisor
+  name: [32m"WorkerRequestCancelled"[39m
+[functions] worker error WorkerRequestCancelled: request has been cancelled by supervisor
+  name: [32m"WorkerRequestCancelled"[39m
+[functions] worker error WorkerRequestCancelled: request has been cancelled by supervisor
+  name: [32m"WorkerRequestCancelled"[39m
+[functions] worker error WorkerRequestCancelled: request has been cancelled by supervisor
+  name: [32m"WorkerRequestCancelled"[39m
+[functions] worker error WorkerRequestCancelled: request has been cancelled by supervisor
+  name: [32m"WorkerRequestCancelled"[39m
+TypeError: error reading a body from connection: unexpected EOF during chunk size line
+client connection error (hyper::Error(User(Body), hyper::Error(Body, hyper::Error(Body, Custom { kind: UnexpectedEof, error: "unexpected EOF during chunk size line" }))))
+TypeError: error reading a body from connection: unexpected EOF during chunk size line
+TypeError: error reading a body from connection: unexpected EOF during chunk size line
+TypeError: error reading a body from connection: unexpected EOF during chunk size line
+TypeError: error reading a body from connection: unexpected EOF during chunk size line
+TypeError: error reading a body from connection: unexpected EOF during chunk size line
+TypeError: error reading a body from connection: unexpected EOF during chunk size line
+TypeError: error reading a body from connection: unexpected EOF during chunk size line
+TypeError: error reading a body from connection: unexpected EOF during chunk size line
+TypeError: error reading a body from connection: unexpected EOF during chunk size line
+TypeError: error reading a body from connection: unexpected EOF during chunk size line
+TypeError: error reading a body from connection: unexpected EOF during chunk size line
+TypeError: error reading a body from connection: unexpected EOF during chunk size line
+TypeError: error reading a body from connection: unexpected EOF during chunk size line
+TypeError: error reading a body from connection: unexpected EOF during chunk size line
+TypeError: error reading a body from connection: unexpected EOF during chunk size line
+TypeError: error reading a body from connection: unexpected EOF during chunk size line
+TypeError: error reading a body from connection: unexpected EOF during chunk size line
+TypeError: error reading a body from connection: unexpected EOF during chunk size line
+TypeError: error reading a body from connection: unexpected EOF during chunk size line
+TypeError: error reading a body from connection: unexpected EOF during chunk size line
+TypeError: error reading a body from connection: unexpected EOF during chunk size line
+TypeError: error reading a body from connection: unexpected EOF during chunk size line
+TypeError: error reading a body from connection: unexpected EOF during chunk size line
+TypeError: error reading a body from connection: unexpected EOF during chunk size line
+TypeError: error reading a body from connection: unexpected EOF during chunk size line
+TypeError: error reading a body from connection: unexpected EOF during chunk size line
+TypeError: error reading a body from connection: unexpected EOF during chunk size line
+TypeError: error reading a body from connection: unexpected EOF during chunk size line
+TypeError: error reading a body from connection: unexpected EOF during chunk size line
+TypeError: error reading a body from connection: unexpected EOF during chunk size line
+client connection error (hyper::Error(User(Body), hyper::Error(Body, hyper::Error(Body, Custom { kind: UnexpectedEof, error: "unexpected EOF during chunk size line" }))))
+client connection error (hyper::Error(User(Body), hyper::Error(Body, hyper::Error(Body, Custom { kind: UnexpectedEof, error: "unexpected EOF during chunk size line" }))))
+client connection error (hyper::Error(User(Body), hyper::Error(Body, hyper::Error(Body, Custom { kind: UnexpectedEof, error: "unexpected EOF during chunk size line" }))))
+client connection error (hyper::Error(User(Body), hyper::Error(Body, hyper::Error(Body, Custom { kind: UnexpectedEof, error: "unexpected EOF during chunk size line" }))))
+client connection error (hyper::Error(User(Body), hyper::Error(Body, hyper::Error(Body, Custom { kind: UnexpectedEof, error: "unexpected EOF during chunk size line" }))))
+client connection error (hyper::Error(User(Body), hyper::Error(Body, hyper::Error(Body, Custom { kind: UnexpectedEof, error: "unexpected EOF during chunk size line" }))))
+client connection error (hyper::Error(User(Body), hyper::Error(Body, hyper::Error(Body, Custom { kind: UnexpectedEof, error: "unexpected EOF during chunk size line" }))))
+client connection error (hyper::Error(User(Body), hyper::Error(Body, hyper::Error(Body, Custom { kind: UnexpectedEof, error: "unexpected EOF during chunk size line" }))))
+client connection error (hyper::Error(User(Body), hyper::Error(Body, hyper::Error(Body, Custom { kind: UnexpectedEof, error: "unexpected EOF during chunk size line" }))))
+client connection error (hyper::Error(User(Body), hyper::Error(Body, hyper::Error(Body, Custom { kind: UnexpectedEof, error: "unexpected EOF during chunk size line" }))))
+client connection error (hyper::Error(User(Body), hyper::Error(Body, hyper::Error(Body, Custom { kind: UnexpectedEof, error: "unexpected EOF during chunk size line" }))))
+client connection error (hyper::Error(User(Body), hyper::Error(Body, hyper::Error(Body, Custom { kind: UnexpectedEof, error: "unexpected EOF during chunk size line" }))))
+client connection error (hyper::Error(User(Body), hyper::Error(Body, hyper::Error(Body, Custom { kind: UnexpectedEof, error: "unexpected EOF during chunk size line" }))))
+client connection error (hyper::Error(User(Body), hyper::Error(Body, hyper::Error(Body, Custom { kind: UnexpectedEof, error: "unexpected EOF during chunk size line" }))))
+client connection error (hyper::Error(User(Body), hyper::Error(Body, hyper::Error(Body, Custom { kind: UnexpectedEof, error: "unexpected EOF during chunk size line" }))))
+client connection error (hyper::Error(User(Body), hyper::Error(Body, hyper::Error(Body, Custom { kind: UnexpectedEof, error: "unexpected EOF during chunk size line" }))))
+client connection error (hyper::Error(User(Body), hyper::Error(Body, hyper::Error(Body, Custom { kind: UnexpectedEof, error: "unexpected EOF during chunk size line" }))))
+client connection error (hyper::Error(User(Body), hyper::Error(Body, hyper::Error(Body, Custom { kind: UnexpectedEof, error: "unexpected EOF during chunk size line" }))))
+client connection error (hyper::Error(User(Body), hyper::Error(Body, hyper::Error(Body, Custom { kind: UnexpectedEof, error: "unexpected EOF during chunk size line" }))))
+client connection error (hyper::Error(User(Body), hyper::Error(Body, hyper::Error(Body, Custom { kind: UnexpectedEof, error: "unexpected EOF during chunk size line" }))))
+client connection error (hyper::Error(User(Body), hyper::Error(Body, hyper::Error(Body, Custom { kind: UnexpectedEof, error: "unexpected EOF during chunk size line" }))))
+client connection error (hyper::Error(User(Body), hyper::Error(Body, hyper::Error(Body, Custom { kind: UnexpectedEof, error: "unexpected EOF during chunk size line" }))))
+client connection error (hyper::Error(User(Body), hyper::Error(Body, hyper::Error(Body, Custom { kind: UnexpectedEof, error: "unexpected EOF during chunk size line" }))))
+client connection error (hyper::Error(User(Body), hyper::Error(Body, hyper::Error(Body, Custom { kind: UnexpectedEof, error: "unexpected EOF during chunk size line" }))))
+client connection error (hyper::Error(User(Body), hyper::Error(Body, hyper::Error(Body, Custom { kind: UnexpectedEof, error: "unexpected EOF during chunk size line" }))))
+client connection error (hyper::Error(User(Body), hyper::Error(Body, hyper::Error(Body, Custom { kind: UnexpectedEof, error: "unexpected EOF during chunk size line" }))))
+client connection error (hyper::Error(User(Body), hyper::Error(Body, hyper::Error(Body, Custom { kind: UnexpectedEof, error: "unexpected EOF during chunk size line" }))))
+client connection error (hyper::Error(User(Body), hyper::Error(Body, hyper::Error(Body, Custom { kind: UnexpectedEof, error: "unexpected EOF during chunk size line" }))))
+client connection error (hyper::Error(User(Body), hyper::Error(Body, hyper::Error(Body, Custom { kind: UnexpectedEof, error: "unexpected EOF during chunk size line" }))))
+client connection error (hyper::Error(User(Body), hyper::Error(Body, hyper::Error(Body, Custom { kind: UnexpectedEof, error: "unexpected EOF during chunk size line" }))))
+[functions] worker error InvalidWorkerCreation: worker did not respond in time
+[functions] worker error InvalidWorkerCreation: worker did not respond in time
+[functions] worker error InvalidWorkerCreation: worker did not respond in time
+[functions] worker error InvalidWorkerCreation: worker did not respond in time
+[functions] worker error InvalidWorkerCreation: worker did not respond in time
+[functions] worker error InvalidWorkerCreation: worker did not respond in time
+[functions] worker error InvalidWorkerCreation: worker did not respond in time
+[functions] worker error InvalidWorkerCreation: worker did not respond in time
+[functions] worker error InvalidWorkerCreation: worker did not respond in time
+[functions] worker error InvalidWorkerCreation: worker did not respond in time
+[functions] worker error InvalidWorkerCreation: worker did not respond in time
+[functions] worker error InvalidWorkerCreation: worker did not respond in time
+[functions] worker error InvalidWorkerCreation: worker did not respond in time
+[functions] worker error InvalidWorkerCreation: worker did not respond in time
+[functions] worker error InvalidWorkerCreation: worker did not respond in time
+[functions] worker error InvalidWorkerCreation: worker did not respond in time
+[functions] worker error InvalidWorkerCreation: worker did not respond in time
+[functions] worker error InvalidWorkerCreation: worker did not respond in time
+[functions] worker error InvalidWorkerCreation: worker did not respond in time
+[functions] worker error InvalidWorkerCreation: worker did not respond in time
+[functions] worker error InvalidWorkerCreation: worker did not respond in time
+[functions] worker error InvalidWorkerCreation: worker did not respond in time
+[functions] worker error InvalidWorkerCreation: worker did not respond in time
+[functions] worker error InvalidWorkerCreation: worker did not respond in time
+[functions] worker error InvalidWorkerCreation: worker did not respond in time
+[functions] worker error InvalidWorkerCreation: worker did not respond in time
+[functions] worker error InvalidWorkerCreation: worker did not respond in time
+[functions] worker error InvalidWorkerCreation: worker did not respond in time
+[functions] worker error InvalidWorkerCreation: worker did not respond in time
+[functions] worker error InvalidWorkerCreation: worker did not respond in time
+[functions] worker error InvalidWorkerCreation: worker did not respond in time
+[functions] worker error InvalidWorkerCreation: worker did not respond in time
+[functions] worker error InvalidWorkerCreation: worker did not respond in time
+[functions] worker error InvalidWorkerCreation: worker did not respond in time
+[functions] worker error InvalidWorkerCreation: worker did not respond in time
+[functions] worker error InvalidWorkerCreation: worker did not respond in time
+[functions] worker error InvalidWorkerCreation: worker did not respond in time
+[functions] worker error InvalidWorkerCreation: worker did not respond in time
+[functions] worker error InvalidWorkerCreation: worker did not respond in time
+[functions] worker error InvalidWorkerCreation: worker did not respond in time
+[functions] worker error InvalidWorkerCreation: worker did not respond in time
+[functions] worker error InvalidWorkerCreation: worker did not respond in time
+[functions] worker error InvalidWorkerCreation: worker did not respond in time
+[functions] worker error InvalidWorkerCreation: worker did not respond in time
+[functions] worker error InvalidWorkerCreation: worker did not respond in time
+[functions] worker error InvalidWorkerCreation: worker did not respond in time
+[functions] worker error InvalidWorkerCreation: worker did not respond in time
+[functions] worker error InvalidWorkerCreation: worker did not respond in time
+[functions] worker error InvalidWorkerCreation: worker did not respond in time
+[functions] worker error InvalidWorkerCreation: worker did not respond in time
+[functions] worker error InvalidWorkerCreation: worker did not respond in time
+[functions] worker error InvalidWorkerCreation: worker did not respond in time
+[functions] worker error InvalidWorkerCreation: worker did not respond in time
+[functions] worker error InvalidWorkerCreation: worker did not respond in time
+[functions] worker error InvalidWorkerCreation: worker did not respond in time
+[functions] worker error InvalidWorkerCreation: worker did not respond in time
+[functions] worker error InvalidWorkerCreation: worker did not respond in time
+[functions] worker error InvalidWorkerCreation: worker did not respond in time
+[functions] worker error InvalidWorkerCreation: worker did not respond in time
+[functions] worker error InvalidWorkerCreation: worker did not respond in time
+[functions] worker error InvalidWorkerCreation: worker did not respond in time
+[functions] worker error InvalidWorkerCreation: worker did not respond in time
+[functions] worker error InvalidWorkerCreation: worker did not respond in time
+[functions] worker error InvalidWorkerCreation: worker did not respond in time
+[functions] worker error InvalidWorkerCreation: worker did not respond in time
+[functions] worker error InvalidWorkerCreation: worker did not respond in time
+[functions] worker error InvalidWorkerCreation: worker did not respond in time
+[functions] worker error InvalidWorkerCreation: worker did not respond in time
+[functions] worker error InvalidWorkerCreation: worker did not respond in time
+[functions] worker error InvalidWorkerCreation: worker did not respond in time
+[functions] worker error InvalidWorkerCreation: worker did not respond in time
+[functions] worker error InvalidWorkerCreation: worker did not respond in time
+[functions] worker error InvalidWorkerCreation: worker did not respond in time
+[functions] worker error InvalidWorkerCreation: worker did not respond in time
+[functions] worker error InvalidWorkerCreation: worker did not respond in time
+[functions] worker error InvalidWorkerCreation: worker did not respond in time
+[functions] worker error InvalidWorkerCreation: worker did not respond in time
+[functions] worker error InvalidWorkerCreation: worker did not respond in time
+[functions] worker error InvalidWorkerCreation: worker did not respond in time
+[functions] worker error InvalidWorkerCreation: worker did not respond in time
+[functions] worker error InvalidWorkerCreation: worker did not respond in time
+[functions] worker error InvalidWorkerCreation: worker did not respond in time
+[functions] worker error InvalidWorkerCreation: worker did not respond in time
+[functions] worker error InvalidWorkerCreation: worker did not respond in time
+[functions] worker error InvalidWorkerCreation: worker did not respond in time
+[functions] worker error InvalidWorkerCreation: worker did not respond in time
+[functions] worker error InvalidWorkerCreation: worker did not respond in time
+[functions] worker error InvalidWorkerCreation: worker did not respond in time
+[functions] worker error InvalidWorkerCreation: worker did not respond in time
+[functions] worker error InvalidWorkerCreation: worker did not respond in time
+[functions] worker error InvalidWorkerCreation: worker did not respond in time
+[functions] worker error InvalidWorkerCreation: worker did not respond in time
+[functions] worker error InvalidWorkerCreation: worker did not respond in time
+[functions] worker error InvalidWorkerCreation: worker did not respond in time
+[functions] worker error InvalidWorkerCreation: worker did not respond in time
+[functions] worker error InvalidWorkerCreation: worker did not respond in time
+[functions] worker error InvalidWorkerCreation: worker did not respond in time
+[functions] worker error InvalidWorkerCreation: worker did not respond in time
+[functions] worker error InvalidWorkerCreation: worker did not respond in time
+[functions] worker error InvalidWorkerCreation: worker did not respond in time
+[functions] worker error InvalidWorkerCreation: worker did not respond in time
+[functions] worker error InvalidWorkerCreation: worker did not respond in time
+[functions] worker error InvalidWorkerCreation: worker did not respond in time
+[functions] worker error InvalidWorkerCreation: worker did not respond in time
+[functions] worker error InvalidWorkerCreation: worker did not respond in time
+[functions] worker error InvalidWorkerCreation: worker did not respond in time
+[functions] worker error InvalidWorkerCreation: worker did not respond in time
+[functions] worker error InvalidWorkerCreation: worker did not respond in time
+[functions] worker error InvalidWorkerCreation: worker did not respond in time
+[functions] worker error InvalidWorkerCreation: worker did not respond in time
+[functions] worker error InvalidWorkerCreation: worker did not respond in time
+[functions] worker error InvalidWorkerCreation: worker did not respond in time
+[functions] worker error InvalidWorkerCreation: worker did not respond in time
+[functions] worker error InvalidWorkerCreation: worker did not respond in time
+[functions] worker error InvalidWorkerCreation: worker did not respond in time
+[functions] worker error InvalidWorkerCreation: worker did not respond in time
+[functions] worker error InvalidWorkerCreation: worker did not respond in time
+[functions] worker error InvalidWorkerCreation: worker did not respond in time
+[functions] worker error InvalidWorkerCreation: worker did not respond in time
+[functions] worker error InvalidWorkerCreation: worker did not respond in time
+[functions] worker error InvalidWorkerCreation: worker did not respond in time
+[functions] worker error InvalidWorkerCreation: worker did not respond in time
+[functions] worker error InvalidWorkerCreation: worker did not respond in time
+[functions] worker error InvalidWorkerCreation: worker did not respond in time
+[functions] worker error InvalidWorkerCreation: worker did not respond in time
+[functions] worker error InvalidWorkerCreation: worker did not respond in time
+[functions] worker error InvalidWorkerCreation: worker did not respond in time
+[functions] worker error InvalidWorkerCreation: worker did not respond in time
+[functions] worker error InvalidWorkerCreation: worker did not respond in time
+[functions] worker error InvalidWorkerCreation: worker did not respond in time
+[functions] worker error InvalidWorkerCreation: worker did not respond in time
+[functions] worker error InvalidWorkerCreation: worker did not respond in time
+[functions] worker error InvalidWorkerCreation: worker did not respond in time
+[functions] worker error InvalidWorkerCreation: worker did not respond in time
+[functions] worker error InvalidWorkerCreation: worker did not respond in time
+[functions] worker error InvalidWorkerCreation: worker did not respond in time
+[functions] worker error InvalidWorkerCreation: worker did not respond in time
+[functions] worker error InvalidWorkerCreation: worker did not respond in time
+[Error] {"event":"ai_usage_record_failed","task":"voice","source":"duration_estimate","model":"gpt-realtime-2.1-mini","interview_id":"66dff1c4-b256-4048-9946-1ff0d0c52bfa","reason":"TypeError: error sending request from 172.18.0.11:55738 for http://kong:8000/rest/v1/ai_usage?on_conflict=idempotency_key&select=id (172.18.0.9:8000): client error (SendRequest): connection closed before message completed"}
+[functions] worker error InvalidWorkerCreation: worker did not respond in time
+[functions] worker error InvalidWorkerCreation: worker did not respond in time
+[functions] worker error InvalidWorkerCreation: worker did not respond in time
+[functions] worker error InvalidWorkerCreation: worker did not respond in time
+[functions] worker error InvalidWorkerCreation: worker did not respond in time
+[functions] worker error InvalidWorkerCreation: worker did not respond in time
+[functions] worker error InvalidWorkerCreation: worker did not respond in time
+[functions] worker error InvalidWorkerCreation: worker did not respond in time
+[functions] worker error InvalidWorkerCreation: worker did not respond in time
+[functions] worker error InvalidWorkerCreation: worker did not respond in time
+[functions] worker error InvalidWorkerCreation: worker did not respond in time
+[functions] worker error InvalidWorkerCreation: worker did not respond in time
+[functions] worker error InvalidWorkerCreation: worker did not respond in time
+[Error] {"event":"github_request_failed","fn":"interviews","code":"internal_error"}
+[Error] {"event":"interview_stream_failed","fn":"interviews","code":"internal_error","interview_id":"4e7fe2a1-e1e1-4ba0-876f-97249e299743"}
+[Error] {"event":"interview_stream_failed","fn":"interviews","code":"internal_error","interview_id":"539fe8d8-422b-42d3-a3f4-bf556f556a7a"}
+[functions] worker error InvalidWorkerCreation: worker did not respond in time
+[Error] {"event":"interview_stream_failed","fn":"interviews","code":"internal_error","interview_id":"741847ed-ecb3-478a-b03a-7631ef3d6ae3"}
+[Error] {"event":"interview_stream_failed","fn":"interviews","code":"internal_error","interview_id":"d8dc6dfd-37d9-4e1b-86bf-2abde23e7771"}
+[Error] {"event":"interview_stream_failed","fn":"interviews","code":"internal_error","interview_id":"3b1dbd4e-16eb-49d4-9b21-5789f9137aa1"}
+[functions] worker error InvalidWorkerCreation: worker did not respond in time
+[functions] worker error InvalidWorkerCreation: worker did not respond in time
+[functions] worker error InvalidWorkerCreation: worker did not respond in time
+[functions] worker error InvalidWorkerCreation: worker did not respond in time
+[functions] worker error InvalidWorkerCreation: worker did not respond in time
+[functions] worker error InvalidWorkerCreation: worker did not respond in time
+[functions] worker error InvalidWorkerCreation: worker did not respond in time
+[functions] worker error InvalidWorkerCreation: worker did not respond in time
+[functions] worker error InvalidWorkerCreation: worker did not respond in time
+[functions] worker error InvalidWorkerCreation: worker did not respond in time
+[functions] worker error InvalidWorkerCreation: worker did not respond in time
+[functions] worker error InvalidWorkerCreation: worker did not respond in time
+[functions] worker error InvalidWorkerCreation: worker did not respond in time
+[functions] worker error InvalidWorkerCreation: worker did not respond in time
+[functions] worker error InvalidWorkerCreation: worker did not respond in time
+[functions] worker error InvalidWorkerCreation: worker did not respond in time
+[functions] worker error InvalidWorkerCreation: worker did not respond in time
+[functions] worker error InvalidWorkerCreation: worker did not respond in time
+[functions] worker error InvalidWorkerCreation: worker did not respond in time
+[functions] worker error InvalidWorkerCreation: worker did not respond in time
+[functions] worker error InvalidWorkerCreation: worker did not respond in time
+[functions] worker error InvalidWorkerCreation: worker did not respond in time
+[functions] worker error InvalidWorkerCreation: worker did not respond in time
+[functions] worker error InvalidWorkerCreation: worker did not respond in time
+[functions] worker error InvalidWorkerCreation: worker did not respond in time
+[functions] worker error InvalidWorkerCreation: worker did not respond in time
+[functions] worker error InvalidWorkerCreation: worker did not respond in time
+[functions] worker error InvalidWorkerCreation: worker did not respond in time
+[functions] worker error InvalidWorkerCreation: worker did not respond in time
+[functions] worker error InvalidWorkerCreation: worker did not respond in time
+[functions] worker error InvalidWorkerCreation: worker did not respond in time
+[functions] worker error InvalidWorkerCreation: worker did not respond in time
+[functions] worker error InvalidWorkerCreation: worker did not respond in time
+[functions] worker error InvalidWorkerCreation: worker did not respond in time
+[functions] worker error InvalidWorkerCreation: worker did not respond in time
+[functions] worker error InvalidWorkerCreation: worker did not respond in time
+[functions] worker error InvalidWorkerCreation: worker did not respond in time
+[functions] worker error InvalidWorkerCreation: worker did not respond in time
+[functions] worker error InvalidWorkerCreation: worker did not respond in time
+[functions] worker error InvalidWorkerCreation: worker did not respond in time
+[functions] worker error InvalidWorkerCreation: worker did not respond in time
+[functions] worker error InvalidWorkerCreation: worker did not respond in time
+[functions] worker error InvalidWorkerCreation: worker did not respond in time
+[functions] worker error InvalidWorkerCreation: worker did not respond in time
+[functions] worker error InvalidWorkerCreation: worker did not respond in time
+[functions] worker error InvalidWorkerCreation: worker did not respond in time
+[functions] worker error InvalidWorkerCreation: worker did not respond in time
+[functions] worker error InvalidWorkerCreation: worker did not respond in time
+[functions] worker error InvalidWorkerCreation: worker did not respond in time
+[functions] worker error InvalidWorkerCreation: worker did not respond in time
+[functions] worker error InvalidWorkerCreation: worker did not respond in time
+[functions] worker error InvalidWorkerCreation: worker did not respond in time
+[functions] worker error InvalidWorkerCreation: worker did not respond in time
+[functions] worker error InvalidWorkerCreation: worker did not respond in time
+[functions] worker error InvalidWorkerCreation: worker did not respond in time
+[functions] worker error InvalidWorkerCreation: worker did not respond in time
+[functions] worker error InvalidWorkerCreation: worker did not respond in time
+[functions] worker error InvalidWorkerCreation: worker did not respond in time
+[functions] worker error InvalidWorkerCreation: worker did not respond in time
+[functions] worker error InvalidWorkerCreation: worker did not respond in time
+[functions] worker error InvalidWorkerCreation: worker did not respond in time
+[functions] worker error InvalidWorkerCreation: worker did not respond in time
+[functions] worker error InvalidWorkerCreation: worker did not respond in time
+[functions] worker error InvalidWorkerCreation: worker did not respond in time
+TypeError: error reading a body from connection: unexpected EOF during chunk size line
+TypeError: error reading a body from connection: unexpected EOF during chunk size line
+client connection error (hyper::Error(User(Body), hyper::Error(Body, hyper::Error(Body, Custom { kind: UnexpectedEof, error: "unexpected EOF during chunk size line" }))))
+client connection error (hyper::Error(User(Body), hyper::Error(Body, hyper::Error(Body, Custom { kind: UnexpectedEof, error: "unexpected EOF during chunk size line" }))))
+TypeError: error reading a body from connection: unexpected EOF during chunk size line
+TypeError: error reading a body from connection: unexpected EOF during chunk size line
+TypeError: error reading a body from connection: unexpected EOF during chunk size line
+TypeError: error reading a body from connection: unexpected EOF during chunk size line
+TypeError: error reading a body from connection: unexpected EOF during chunk size line
+TypeError: error reading a body from connection: unexpected EOF during chunk size line
+TypeError: error reading a body from connection: unexpected EOF during chunk size line
+TypeError: error reading a body from connection: unexpected EOF during chunk size line
+TypeError: error reading a body from connection: unexpected EOF during chunk size line
+TypeError: error reading a body from connection: unexpected EOF during chunk size line
+TypeError: error reading a body from connection: unexpected EOF during chunk size line
+TypeError: error reading a body from connection: unexpected EOF during chunk size line
+client connection error (hyper::Error(User(Body), hyper::Error(Body, hyper::Error(Body, Custom { kind: UnexpectedEof, error: "unexpected EOF during chunk size line" }))))
+client connection error (hyper::Error(User(Body), hyper::Error(Body, hyper::Error(Body, Custom { kind: UnexpectedEof, error: "unexpected EOF during chunk size line" }))))
+client connection error (hyper::Error(User(Body), hyper::Error(Body, hyper::Error(Body, Custom { kind: UnexpectedEof, error: "unexpected EOF during chunk size line" }))))
+client connection error (hyper::Error(User(Body), hyper::Error(Body, hyper::Error(Body, Custom { kind: UnexpectedEof, error: "unexpected EOF during chunk size line" }))))
+client connection error (hyper::Error(User(Body), hyper::Error(Body, hyper::Error(Body, Custom { kind: UnexpectedEof, error: "unexpected EOF during chunk size line" }))))
+client connection error (hyper::Error(User(Body), hyper::Error(Body, hyper::Error(Body, Custom { kind: UnexpectedEof, error: "unexpected EOF during chunk size line" }))))
+client connection error (hyper::Error(User(Body), hyper::Error(Body, hyper::Error(Body, Custom { kind: UnexpectedEof, error: "unexpected EOF during chunk size line" }))))
+client connection error (hyper::Error(User(Body), hyper::Error(Body, hyper::Error(Body, Custom { kind: UnexpectedEof, error: "unexpected EOF during chunk size line" }))))
+client connection error (hyper::Error(User(Body), hyper::Error(Body, hyper::Error(Body, Custom { kind: UnexpectedEof, error: "unexpected EOF during chunk size line" }))))
+client connection error (hyper::Error(User(Body), hyper::Error(Body, hyper::Error(Body, Custom { kind: UnexpectedEof, error: "unexpected EOF during chunk size line" }))))
+client connection error (hyper::Error(User(Body), hyper::Error(Body, hyper::Error(Body, Custom { kind: UnexpectedEof, error: "unexpected EOF during chunk size line" }))))
+client connection error (hyper::Error(User(Body), hyper::Error(Body, hyper::Error(Body, Custom { kind: UnexpectedEof, error: "unexpected EOF during chunk size line" }))))
+TypeError: error reading a body from connection: unexpected EOF during chunk size line
+TypeError: error reading a body from connection: unexpected EOF during chunk size line
+TypeError: error reading a body from connection: unexpected EOF during chunk size line
+TypeError: error reading a body from connection: unexpected EOF during chunk size line
+TypeError: error reading a body from connection: unexpected EOF during chunk size line
+TypeError: error reading a body from connection: unexpected EOF during chunk size line
+TypeError: error reading a body from connection: unexpected EOF during chunk size line
+TypeError: error reading a body from connection: unexpected EOF during chunk size line
+TypeError: error reading a body from connection: unexpected EOF during chunk size line
+TypeError: error reading a body from connection: unexpected EOF during chunk size line
+TypeError: error reading a body from connection: unexpected EOF during chunk size line
+client connection error (hyper::Error(User(Body), hyper::Error(Body, hyper::Error(Body, Custom { kind: UnexpectedEof, error: "unexpected EOF during chunk size line" }))))
+client connection error (hyper::Error(User(Body), hyper::Error(Body, hyper::Error(Body, Custom { kind: UnexpectedEof, error: "unexpected EOF during chunk size line" }))))
+client connection error (hyper::Error(User(Body), hyper::Error(Body, hyper::Error(Body, Custom { kind: UnexpectedEof, error: "unexpected EOF during chunk size line" }))))
+client connection error (hyper::Error(User(Body), hyper::Error(Body, hyper::Error(Body, Custom { kind: UnexpectedEof, error: "unexpected EOF during chunk size line" }))))
+client connection error (hyper::Error(User(Body), hyper::Error(Body, hyper::Error(Body, Custom { kind: UnexpectedEof, error: "unexpected EOF during chunk size line" }))))
+client connection error (hyper::Error(User(Body), hyper::Error(Body, hyper::Error(Body, Custom { kind: UnexpectedEof, error: "unexpected EOF during chunk size line" }))))
+client connection error (hyper::Error(User(Body), hyper::Error(Body, hyper::Error(Body, Custom { kind: UnexpectedEof, error: "unexpected EOF during chunk size line" }))))
+client connection error (hyper::Error(User(Body), hyper::Error(Body, hyper::Error(Body, Custom { kind: UnexpectedEof, error: "unexpected EOF during chunk size line" }))))
+client connection error (hyper::Error(User(Body), hyper::Error(Body, hyper::Error(Body, Custom { kind: UnexpectedEof, error: "unexpected EOF during chunk size line" }))))
+client connection error (hyper::Error(User(Body), hyper::Error(Body, hyper::Error(Body, Custom { kind: UnexpectedEof, error: "unexpected EOF during chunk size line" }))))
+client connection error (hyper::Error(User(Body), hyper::Error(Body, hyper::Error(Body, Custom { kind: UnexpectedEof, error: "unexpected EOF during chunk size line" }))))
+[functions] worker error InvalidWorkerCreation: worker did not respond in time
+[functions] worker error InvalidWorkerCreation: worker did not respond in time
+[functions] worker error InvalidWorkerCreation: worker did not respond in time
+[functions] worker error InvalidWorkerCreation: worker did not respond in time
+[functions] worker error InvalidWorkerCreation: worker did not respond in time
+[functions] worker error InvalidWorkerCreation: worker did not respond in time
+[functions] worker error InvalidWorkerCreation: worker did not respond in time
+[functions] worker error InvalidWorkerCreation: worker did not respond in time
+[functions] worker error InvalidWorkerCreation: worker did not respond in time
+[functions] worker error InvalidWorkerCreation: worker did not respond in time
+[functions] worker error InvalidWorkerCreation: worker did not respond in time
+[functions] worker error InvalidWorkerCreation: worker did not respond in time
+[functions] worker error InvalidWorkerCreation: worker did not respond in time
+[functions] worker error InvalidWorkerCreation: worker did not respond in time
+[functions] worker error InvalidWorkerCreation: worker did not respond in time
+[functions] worker error InvalidWorkerCreation: worker did not respond in time
+[functions] worker error InvalidWorkerCreation: worker did not respond in time
+[functions] worker error InvalidWorkerCreation: worker did not respond in time
+[functions] worker error InvalidWorkerCreation: worker did not respond in time
+[functions] worker error InvalidWorkerCreation: worker did not respond in time
+[functions] worker error InvalidWorkerCreation: worker did not respond in time
+[functions] worker error InvalidWorkerCreation: worker did not respond in time
+[functions] worker error InvalidWorkerCreation: worker did not respond in time
+[functions] worker error InvalidWorkerCreation: worker did not respond in time
+[functions] worker error InvalidWorkerCreation: worker did not respond in time
+[functions] worker error InvalidWorkerCreation: worker did not respond in time
+[functions] worker error InvalidWorkerCreation: worker did not respond in time
+[functions] worker error InvalidWorkerCreation: worker did not respond in time
+[functions] worker error InvalidWorkerCreation: worker did not respond in time
+[functions] worker error InvalidWorkerCreation: worker did not respond in time
+[functions] worker error InvalidWorkerCreation: worker did not respond in time
+[functions] worker error InvalidWorkerCreation: worker did not respond in time
+[functions] worker error InvalidWorkerCreation: worker did not respond in time
+[functions] worker error InvalidWorkerCreation: worker did not respond in time
+[functions] worker error InvalidWorkerCreation: worker did not respond in time
+[functions] worker error InvalidWorkerCreation: worker did not respond in time
+[functions] worker error InvalidWorkerCreation: worker did not respond in time
+[functions] worker error InvalidWorkerCreation: worker did not respond in time
+[functions] worker error InvalidWorkerCreation: worker did not respond in time
+[functions] worker error InvalidWorkerCreation: worker did not respond in time
+[functions] worker error InvalidWorkerCreation: worker did not respond in time
+[functions] worker error InvalidWorkerCreation: worker did not respond in time
+[functions] worker error InvalidWorkerCreation: worker did not respond in time
+[functions] worker error InvalidWorkerCreation: worker did not respond in time
+[functions] worker error InvalidWorkerCreation: worker did not respond in time
+[functions] worker error InvalidWorkerCreation: worker did not respond in time
+[functions] worker error InvalidWorkerCreation: worker did not respond in time
+[functions] worker error InvalidWorkerCreation: worker did not respond in time
+[functions] worker error InvalidWorkerCreation: worker did not respond in time
+[functions] worker error InvalidWorkerCreation: worker did not respond in time
+[functions] worker error InvalidWorkerCreation: worker did not respond in time
+[functions] worker error InvalidWorkerCreation: worker did not respond in time
+[functions] worker error InvalidWorkerCreation: worker did not respond in time
+[functions] worker error InvalidWorkerCreation: worker did not respond in time
+[functions] worker error InvalidWorkerCreation: worker did not respond in time
+[functions] worker error InvalidWorkerCreation: worker did not respond in time
+[functions] worker error InvalidWorkerCreation: worker did not respond in time
+[functions] worker error InvalidWorkerCreation: worker did not respond in time
+[functions] worker error InvalidWorkerCreation: worker did not respond in time
+[functions] worker error InvalidWorkerCreation: worker did not respond in time
+[functions] worker error InvalidWorkerCreation: worker did not respond in time
+[functions] worker error InvalidWorkerCreation: worker did not respond in time
+[functions] worker error InvalidWorkerCreation: worker did not respond in time
+[functions] worker error InvalidWorkerCreation: worker did not respond in time
+[functions] worker error InvalidWorkerCreation: worker did not respond in time
+[functions] worker error InvalidWorkerCreation: worker did not respond in time
+[functions] worker error InvalidWorkerCreation: worker did not respond in time
+[functions] worker error InvalidWorkerCreation: worker did not respond in time
+[functions] worker error InvalidWorkerCreation: worker did not respond in time
+[functions] worker error InvalidWorkerCreation: worker did not respond in time
+[functions] worker error InvalidWorkerCreation: worker did not respond in time
+[functions] worker error InvalidWorkerCreation: worker did not respond in time
+[functions] worker error InvalidWorkerCreation: worker did not respond in time
+[functions] worker error InvalidWorkerCreation: worker did not respond in time
+[functions] worker error InvalidWorkerCreation: worker did not respond in time
+[functions] worker error InvalidWorkerCreation: worker did not respond in time
+[functions] worker error InvalidWorkerCreation: worker did not respond in time
+[functions] worker error InvalidWorkerCreation: worker did not respond in time
+[functions] worker error InvalidWorkerCreation: worker did not respond in time
+[functions] worker error InvalidWorkerCreation: worker did not respond in time
+TypeError: error reading a body from connection: unexpected EOF during chunk size line
+TypeError: error reading a body from connection: unexpected EOF during chunk size line
+TypeError: error reading a body from connection: unexpected EOF during chunk size line
+client connection error (hyper::Error(User(Body), hyper::Error(Body, hyper::Error(Body, Custom { kind: UnexpectedEof, error: "unexpected EOF during chunk size line" }))))
+client connection error (hyper::Error(User(Body), hyper::Error(Body, hyper::Error(Body, Custom { kind: UnexpectedEof, error: "unexpected EOF during chunk size line" }))))

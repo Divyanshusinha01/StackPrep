@@ -1,0 +1,228 @@
+{
+  "count": 200,
+  "window": {
+    "startAt": 1791740814032,
+    "endAt": 1791740934032
+  },
+  "clockOffsetMs": 0.3,
+  "frameDelayMs": {
+    "count": 6,
+    "p50": 5234.8,
+    "p95": 20742.6,
+    "p99": 21624.8,
+    "max": 21845.3
+  },
+  "connectedFrameDelayMs": {
+    "count": 0,
+    "p50": null,
+    "p95": null,
+    "p99": null,
+    "max": null
+  },
+  "reconnectGapFrameDelayMs": {
+    "count": 6,
+    "p50": 5234.8,
+    "p95": 20742.6,
+    "p99": 21624.8,
+    "max": 21845.3
+  },
+  "completedStatusDelayMs": {
+    "count": 0,
+    "p50": null,
+    "p95": null,
+    "p99": null,
+    "max": null
+  },
+  "reportReadyDelayMs": {
+    "count": 0,
+    "p50": null,
+    "p95": null,
+    "p99": null,
+    "max": null
+  },
+  "timeToFirstFrameMs": {
+    "count": 7,
+    "p50": 11331,
+    "p95": 17100.5,
+    "p99": 17447.3,
+    "max": 17534
+  },
+  "timeToOpenMs": {
+    "count": 289,
+    "p50": 10043,
+    "p95": 32262.2,
+    "p99": 32534.6,
+    "max": 32594
+  },
+  "frames": {
+    "expected": 1139,
+    "receivedUnique": 55,
+    "dropped": 1084,
+    "duplicates": 0,
+    "unexpected": 0,
+    "malformed": 0,
+    "readersWithoutReport": 200
+  },
+  "connections": {
+    "attempts": 503,
+    "byStatus": {
+      "0": 214,
+      "200": 21,
+      "401": 40,
+      "500": 56,
+      "503": 172
+    },
+    "failed": 482,
+    "premature": 13,
+    "streamErrors": 8,
+    "lifetimeReconnects": 8,
+    "fallbacks": 147,
+    "sampleErrors": [
+      "unknown event:   \"message\":\"An unexpected error occurred\"\n",
+      "unexpected EOF"
+    ]
+  },
+  "writes": {
+    "scheduled": 7200,
+    "logged": 5742,
+    "failed": 4507,
+    "missing": 1458,
+    "byStatus": {
+      "0": 1977,
+      "200": 46,
+      "201": 1148,
+      "204": 41,
+      "401": 838,
+      "500": 205,
+      "502": 149,
+      "503": 1334,
+      "546": 4
+    },
+    "latencyMs": {
+      "count": 5742,
+      "p50": 4178.5,
+      "p95": 21538,
+      "p99": 31376.2,
+      "max": 50879
+    },
+    "slipMs": {
+      "count": 5742,
+      "p50": 35925.5,
+      "p95": 102126.5,
+      "p99": 120461.2,
+      "max": 158670
+    }
+  },
+  "errorRate": 0.83967,
+  "edgeFunctionErrors": 3273,
+  "edgeWorkerLimitEvents": 196,
+  "edgeRuntimeCrash": "exit 137 (OOM-killed)",
+  "db": {
+    "statementsByCategory": {
+      "other": {
+        "callsPerSec": 38.6,
+        "meanMs": 0.797
+      },
+      "interview_lookup": {
+        "callsPerSec": 5.7,
+        "meanMs": 0.509
+      },
+      "event_write": {
+        "callsPerSec": 5.5,
+        "meanMs": 7.061
+      },
+      "stream_poll": {
+        "callsPerSec": 5.1,
+        "meanMs": 0.624
+      }
+    },
+    "activeConnections": {
+      "count": 58,
+      "p50": 0,
+      "p95": 5,
+      "p99": 7.6,
+      "max": 11
+    },
+    "totalConnections": {
+      "count": 58,
+      "p50": 22,
+      "p95": 28,
+      "p99": 30,
+      "max": 30
+    }
+  },
+  "resources": {
+    "supabase_db_stackprep": {
+      "cpuPct": {
+        "count": 58,
+        "p50": 38.4,
+        "p95": 218.2,
+        "p99": 227.6,
+        "max": 230.6
+      },
+      "cpuShareOfLimitP50": 0.192,
+      "memMiBMax": 191
+    },
+    "supabase_edge_runtime_stackprep": {
+      "cpuPct": {
+        "count": 58,
+        "p50": 50.4,
+        "p95": 204.1,
+        "p99": 211.7,
+        "max": 214.3
+      },
+      "cpuShareOfLimitP50": 0.252,
+      "memMiBMax": 2451
+    },
+    "supabase_realtime_stackprep": {
+      "cpuPct": {
+        "count": 58,
+        "p50": 0.6,
+        "p95": 10.6,
+        "p99": 16.7,
+        "max": 17.5
+      },
+      "cpuShareOfLimitP50": 0.006,
+      "memMiBMax": 208
+    },
+    "supabase_auth_stackprep": {
+      "cpuPct": {
+        "count": 58,
+        "p50": 9.9,
+        "p95": 56.8,
+        "p99": 62.6,
+        "max": 67.6
+      },
+      "cpuShareOfLimitP50": 0.099,
+      "memMiBMax": 29
+    },
+    "supabase_rest_stackprep": {
+      "cpuPct": {
+        "count": 58,
+        "p50": 2.4,
+        "p95": 41.3,
+        "p99": 96.9,
+        "max": 98.9
+      },
+      "cpuShareOfLimitP50": 0.024,
+      "memMiBMax": 125
+    },
+    "supabase_kong_stackprep": {
+      "cpuPct": {
+        "count": 58,
+        "p50": 6.6,
+        "p95": 25.4,
+        "p99": 31,
+        "max": 31.2
+      },
+      "cpuShareOfLimitP50": 0.066,
+      "memMiBMax": 185
+    }
+  },
+  "saturatedContainers": [],
+  "breaches": [
+    "no frames delivered in the measurement window",
+    "error rate 83.97% > 1%",
+    "edge runtime exited mid-run: exit 137 (OOM-killed)"
+  ]
+}

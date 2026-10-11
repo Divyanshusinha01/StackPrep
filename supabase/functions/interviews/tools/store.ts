@@ -2,7 +2,16 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { createAiUsageRecorder } from "../../_shared/ai-usage.ts";
 import { createCodeIndexReader } from "../../_shared/code-index/reader.ts";
 import { type InterviewStateRpcClient, updateInterviewState } from "../../_shared/interview-state.ts";
-import type { MemoryEntry, MemoryMatch, ToolCallRecordResult, ToolStore, TranscriptMessage } from "./types.ts";
+import { reportUnexpected } from "../../_shared/sentry.ts";
+import type {
+  MemoryEntry,
+  MemoryMatch,
+  ToolCallRecordResult,
+  ToolMetricsEntry,
+  ToolMetricsRecorder,
+  ToolStore,
+  TranscriptMessage,
+} from "./types.ts";
 
 const MAX_MEMORY_ROWS = 200;
 const MAX_EVIDENCE_PATHS = 50;
@@ -21,6 +30,39 @@ interface AccessRow {
   } | null;
 }
 
+export function toolMetricsRow(entry: ToolMetricsEntry) {
+  return {
+    interview_id: entry.interviewId,
+    tool: entry.tool,
+    duration_ms: Math.max(0, Math.round(entry.durationMs)),
+    outcome: entry.outcome,
+    vector_ms: entry.vectorFill ? Math.max(0, Math.round(entry.vectorFill.elapsedMs)) : null,
+    vector_fallback_reason: entry.vectorFill?.fallbackReason ?? null,
+  };
+}
+
+/** Inserts one `tool_call_metrics` row. Failures are logged, never thrown. */
+export async function recordToolMetrics(db: SupabaseClient, entry: ToolMetricsEntry): Promise<void> {
+  try {
+    const { error } = await db.from("tool_call_metrics").insert(toolMetricsRow(entry));
+    if (error) {
+      throw new Error(error.message);
+    }
+  } catch (err) {
+    console.error(JSON.stringify({
+      event: "tool_metrics_record_failed",
+      tool: entry.tool,
+      interview_id: entry.interviewId,
+      reason: err instanceof Error ? err.message : "unknown",
+    }));
+    reportUnexpected(err, { event: "tool_metrics_record_failed", code: "internal_error", interview_id: entry.interviewId });
+  }
+}
+
+export function createToolMetricsRecorder(db: SupabaseClient): ToolMetricsRecorder {
+  return { recordToolMetrics: (entry) => recordToolMetrics(db, entry) };
+}
+
 export function createToolStore(serviceClient: SupabaseClient): ToolStore {
   const toolCalls = (interviewId: string) =>
     serviceClient.from("interview_events").select("payload").eq("interview_id", interviewId).eq("event_type", "tool_call");
@@ -28,6 +70,7 @@ export function createToolStore(serviceClient: SupabaseClient): ToolStore {
 
   return {
     ...createAiUsageRecorder(serviceClient),
+    ...createToolMetricsRecorder(serviceClient),
     searchCodeSymbols: (workspaceId, commitSha, terms, limit, signal) =>
       codeIndex.searchSymbols(workspaceId, commitSha, terms, limit, signal),
     listFileSymbols: (workspaceId, commitSha, path) => codeIndex.fileSymbols(workspaceId, commitSha, path),

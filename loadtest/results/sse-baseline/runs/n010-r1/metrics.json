@@ -1,0 +1,213 @@
+{
+  "count": 10,
+  "window": {
+    "startAt": 1791735797898,
+    "endAt": 1791735917898
+  },
+  "clockOffsetMs": -1.7,
+  "frameDelayMs": {
+    "count": 47,
+    "p50": 706.3,
+    "p95": 1486.6,
+    "p99": 1517,
+    "max": 1519.3
+  },
+  "connectedFrameDelayMs": {
+    "count": 5,
+    "p50": 706.3,
+    "p95": 792.5,
+    "p99": 801.9,
+    "max": 804.3
+  },
+  "reconnectGapFrameDelayMs": {
+    "count": 42,
+    "p50": 711.8,
+    "p95": 1496.4,
+    "p99": 1517.3,
+    "max": 1519.3
+  },
+  "completedStatusDelayMs": {
+    "count": 0,
+    "p50": null,
+    "p95": null,
+    "p99": null,
+    "max": null
+  },
+  "reportReadyDelayMs": {
+    "count": 0,
+    "p50": null,
+    "p95": null,
+    "p99": null,
+    "max": null
+  },
+  "timeToFirstFrameMs": {
+    "count": 1,
+    "p50": 88,
+    "p95": 88,
+    "p99": 88,
+    "max": 88
+  },
+  "timeToOpenMs": {
+    "count": 1,
+    "p50": 87,
+    "p95": 87,
+    "p99": 87,
+    "max": 87
+  },
+  "frames": {
+    "expected": 270,
+    "receivedUnique": 107,
+    "dropped": 163,
+    "duplicates": 0,
+    "unexpected": 0,
+    "malformed": 0,
+    "readersWithoutReport": 10
+  },
+  "connections": {
+    "attempts": 1,
+    "byStatus": {
+      "200": 1
+    },
+    "failed": 0,
+    "premature": 0,
+    "streamErrors": 1,
+    "lifetimeReconnects": 1,
+    "fallbacks": 0,
+    "sampleErrors": [
+      "unexpected EOF"
+    ]
+  },
+  "writes": {
+    "scheduled": 360,
+    "logged": 360,
+    "failed": 0,
+    "missing": 0,
+    "byStatus": {
+      "200": 10,
+      "201": 340,
+      "204": 10
+    },
+    "latencyMs": {
+      "count": 360,
+      "p50": 95,
+      "p95": 3474,
+      "p99": 4259.8,
+      "max": 4708
+    },
+    "slipMs": {
+      "count": 360,
+      "p50": 1,
+      "p95": 2026.1,
+      "p99": 3015.1,
+      "max": 3708
+    }
+  },
+  "errorRate": 0.00277,
+  "edgeFunctionErrors": 20,
+  "edgeWorkerLimitEvents": 7,
+  "edgeRuntimeCrash": null,
+  "db": {
+    "statementsByCategory": {
+      "other": {
+        "callsPerSec": 18.8,
+        "meanMs": 0.1
+      },
+      "interview_lookup": {
+        "callsPerSec": 2.3,
+        "meanMs": 0.106
+      },
+      "stream_poll": {
+        "callsPerSec": 5.4,
+        "meanMs": 0.096
+      },
+      "event_write": {
+        "callsPerSec": 2.3,
+        "meanMs": 1.258
+      }
+    },
+    "activeConnections": {
+      "count": 59,
+      "p50": 0,
+      "p95": 0,
+      "p99": 0.4,
+      "max": 1
+    },
+    "totalConnections": {
+      "count": 59,
+      "p50": 19,
+      "p95": 19,
+      "p99": 20,
+      "max": 20
+    }
+  },
+  "resources": {
+    "supabase_db_stackprep": {
+      "cpuPct": {
+        "count": 59,
+        "p50": 13.5,
+        "p95": 45.1,
+        "p99": 57.9,
+        "max": 58.3
+      },
+      "cpuShareOfLimitP50": 0.068,
+      "memMiBMax": 153
+    },
+    "supabase_edge_runtime_stackprep": {
+      "cpuPct": {
+        "count": 59,
+        "p50": 6,
+        "p95": 144.1,
+        "p99": 199.2,
+        "max": 200
+      },
+      "cpuShareOfLimitP50": 0.03,
+      "memMiBMax": 1069
+    },
+    "supabase_realtime_stackprep": {
+      "cpuPct": {
+        "count": 59,
+        "p50": 0.5,
+        "p95": 8.9,
+        "p99": 10.1,
+        "max": 11.1
+      },
+      "cpuShareOfLimitP50": 0.005,
+      "memMiBMax": 208
+    },
+    "supabase_auth_stackprep": {
+      "cpuPct": {
+        "count": 59,
+        "p50": 4.8,
+        "p95": 17.4,
+        "p99": 22.2,
+        "max": 22.7
+      },
+      "cpuShareOfLimitP50": 0.048,
+      "memMiBMax": 15
+    },
+    "supabase_rest_stackprep": {
+      "cpuPct": {
+        "count": 59,
+        "p50": 1.3,
+        "p95": 6.9,
+        "p99": 9.9,
+        "max": 10.4
+      },
+      "cpuShareOfLimitP50": 0.013,
+      "memMiBMax": 96
+    },
+    "supabase_kong_stackprep": {
+      "cpuPct": {
+        "count": 59,
+        "p50": 1.7,
+        "p95": 23.8,
+        "p99": 28.2,
+        "max": 30.4
+      },
+      "cpuShareOfLimitP50": 0.017,
+      "memMiBMax": 142
+    }
+  },
+  "saturatedContainers": [],
+  "breaches": []
+}

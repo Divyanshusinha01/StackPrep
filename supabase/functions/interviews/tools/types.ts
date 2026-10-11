@@ -90,11 +90,33 @@ export interface TranscriptMessage {
   content: string;
 }
 
+export type VectorFallbackReason = "deadline" | "embed_error" | "rpc_error" | "no_results" | "disabled";
+
+/** The search_repository vector fill: total time, and why it fell back to keyword hits, if it did. */
+export interface VectorFillTiming {
+  elapsedMs: number;
+  fallbackReason: VectorFallbackReason | null;
+}
+
+/** One `tool_call_metrics` row; `outcome` is `ok` or the tool error code of the response. */
+export interface ToolMetricsEntry {
+  interviewId: string;
+  tool: RealtimeToolName;
+  durationMs: number;
+  outcome: "ok" | ToolErrorCode;
+  vectorFill?: VectorFillTiming;
+}
+
+/** Tool latency persistence. Never throws, so a metrics failure cannot break the tool call. */
+export interface ToolMetricsRecorder {
+  recordToolMetrics(entry: ToolMetricsEntry): Promise<void>;
+}
+
 /**
  * Service-role persistence for tool calls. Every call is keyed by an interview (or its workspace)
  * the caller has already been shown to own through the RLS reader.
  */
-export interface ToolStore extends AiUsageRecorder {
+export interface ToolStore extends AiUsageRecorder, ToolMetricsRecorder {
   findToolCall(interviewId: string, callId: string): Promise<StoredToolCall | null>;
   recordToolCall(record: ToolCallRecord): Promise<ToolCallRecordResult>;
   countToolCallsSince(interviewId: string, tools: RealtimeToolName[], since: Date): Promise<number>;
@@ -162,6 +184,8 @@ export interface ToolOutcome {
   record?: boolean;
   /** Runs once, only when this call's record was newly created. */
   afterRecord?: () => Promise<void>;
+  /** Set by search_repository when the vector fill ran (or was skipped as disabled). */
+  vectorFill?: VectorFillTiming;
 }
 
 export function toolError(code: ToolErrorCode, guidance?: string): ToolError {

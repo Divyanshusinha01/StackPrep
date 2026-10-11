@@ -1,0 +1,38 @@
+{
+  "seed": 20261011,
+  "stages": [10, 25, 50, 100, 200],
+  "extensionStages": [300, 400],
+  "runsPerStage": 3,
+  "timing": {
+    "startDelayMs": 8000,
+    "connectRampMs": 10000,
+    "warmupMs": 30000,
+    "holdMs": 120000,
+    "reportAfterCompleteMs": 2000,
+    "drainMs": 20000
+  },
+  "workload": {
+    "turnIntervalMs": 6000,
+    "voiceEventIntervalMs": 30000,
+    "turnContentChars": 400
+  },
+  "bottleneck": {
+    "p95FrameDelayMs": 3000,
+    "errorRate": 0.01,
+    "cpuSaturationShare": 0.9
+  },
+  "containers": {
+    "supabase_db_stackprep": { "cpus": 2, "memory": "2g" },
+    "supabase_edge_runtime_stackprep": { "cpus": 2, "memory": "3g" },
+    "supabase_realtime_stackprep": { "cpus": 1, "memory": "512m" },
+    "supabase_auth_stackprep": { "cpus": 1, "memory": "256m" },
+    "supabase_rest_stackprep": { "cpus": 1, "memory": "256m" },
+    "supabase_kong_stackprep": { "cpus": 1, "memory": "512m" }
+  },
+  "pins": {
+    "supabaseCli": "2.119.0",
+    "k6": "v2.2.0",
+    "xk6Sse": "github.com/phymbert/xk6-sse@v0.2.0",
+    "xk6Image": "grafana/xk6@sha256:2bf2f319554253656a00fa9224bc7b40bc401e45b9f04041074d62e39561c084"
+  }
+}

@@ -34,6 +34,10 @@ supabase/.temp
 # eval run output (baselines and pins live under evals/projects and are committed)
 evals/results/
 
+# load test: custom k6 build and per-run scratch (fixtures with tokens, smoke runs)
+loadtest/bin/
+loadtest/.tmp/
+
 # typescript
 *.tsbuildinfo
 next-env.d.ts

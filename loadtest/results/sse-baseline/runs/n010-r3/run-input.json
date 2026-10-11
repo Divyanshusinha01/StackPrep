@@ -1,0 +1,36 @@
+{
+  "count": 10,
+  "startAt": 1791736428990,
+  "warmupMs": 30000,
+  "holdMs": 120000,
+  "streamLifetimeMs": 140000,
+  "interviewIds": [
+    "9902d658-5ca3-4727-bfa0-46498913dd09",
+    "eed63ef7-5ac5-4797-b67c-90d19ba245c2",
+    "442f4e54-9f16-4f01-b69b-559b7c63d65c",
+    "77705ad3-a007-44d0-abc9-0b8921e9e672",
+    "f7621fc6-6349-4dcb-abc3-0be6c91babc9",
+    "90c54eae-1f36-48e4-8d69-55cb4a256176",
+    "f0fbb661-b385-40dc-917c-f4ee7de3ec58",
+    "619962db-6039-40d5-98d3-12cc29064b52",
+    "445fdb9d-69c9-42c8-a16c-b1602870b5bc",
+    "03020f74-ba3f-44b3-93d9-4e2de6647963"
+  ],
+  "scheduledWritesPerInterview": 36,
+  "containerCpus": {
+    "supabase_db_stackprep": 2,
+    "supabase_edge_runtime_stackprep": 2,
+    "supabase_realtime_stackprep": 1,
+    "supabase_auth_stackprep": 1,
+    "supabase_rest_stackprep": 1,
+    "supabase_kong_stackprep": 1
+  },
+  "edgeErrorLines": 20,
+  "edgeWorkerLimitLines": 7,
+  "edgeRuntimeCrash": null,
+  "thresholds": {
+    "p95FrameDelayMs": 3000,
+    "errorRate": 0.01,
+    "cpuSaturationShare": 0.9
+  }
+}
