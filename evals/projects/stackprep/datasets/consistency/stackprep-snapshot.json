@@ -1,0 +1,20 @@
+{
+  "format": 1,
+  "corpus": "stackprep-snapshot",
+  "guidelines": [
+    "Each transcript is one turn of a session in datasets/sessions/stackprep-snapshot.json: the conversation up to and including that answer, the evidence examined so far, and the hand-written interview state. Every sample starts from a fresh store, so the K samples of a transcript send identical requests.",
+    "expected is the human judgement of the answer against the pinned snapshot: strong (accurate and specific), weak (contradicts the code or is unsupported), mixed (partly right or openly unsure). It feeds only the strong-above-weak sanity check, never the variability metrics.",
+    "Labels were set from the session descriptions and the snapshot code, before any evaluation output was seen."
+  ],
+  "transcripts": [
+    { "session": "sp1-reports", "turn": 1, "expected": "strong", "why": "Accurate description of groundReport." },
+    { "session": "sp1-reports", "turn": 2, "expected": "weak", "why": "Claims buildReportInput passes discrepancy_detail; it passes only the boolean." },
+    { "session": "sp1-reports", "turn": 3, "expected": "strong", "why": "Accurate description of classifyReportError." },
+    { "session": "sp2-evaluation", "turn": 1, "expected": "strong", "why": "Accurate list of the fenced evaluation prompt blocks." },
+    { "session": "sp2-evaluation", "turn": 2, "expected": "weak", "why": "Claims a keyword heuristic fallback that does not exist; the tool returns a failure." },
+    { "session": "sp2-evaluation", "turn": 3, "expected": "strong", "why": "Accurate account of the focus rules and scrubbing." },
+    { "session": "sp3-planning", "turn": 1, "expected": "strong", "why": "Accurate description of normalizePlan." },
+    { "session": "sp3-planning", "turn": 2, "expected": "weak", "why": "Claims planner memory is unbounded; buildPlanningInput applies budgets." },
+    { "session": "sp3-planning", "turn": 3, "expected": "strong", "why": "Accurate description of priorGuidance." }
+  ]
+}

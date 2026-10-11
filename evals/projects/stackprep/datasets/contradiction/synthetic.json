@@ -1,0 +1,739 @@
+{
+  "format": 1,
+  "corpus": "synthetic",
+  "guidelines": [
+    "Each case is a one-turn interview: the interviewer's question, the candidate's answer, the interviewer's answer_summary for evaluate_answer, and the evidence examined. Every case starts from the hand-written interview state in datasets/sessions/synthetic.json.",
+    "Seeded cases are the 15 planted flaws listed in corpora/synthetic/corpus.json: the candidate confidently claims the behaviour the code lacks. Controls are the 8 truthful controls: the candidate states what the code really does.",
+    "rubric.code names the location (path, symbol, lines) and the code fact; its anchors must hold on the pinned span, so a corpus change that breaks the rubric fails validation. rubric.claim is the candidate's claim; rubric.relation says how the two conflict (or agree, for controls).",
+    "mentions are regular expressions for text that states a facet. A seeded answer must match a claim mention and no code mention, so the mentions tell the claim and the code fact apart. A note identifies the conflict deterministically only when one note cites the location and matches both a claim and a code mention.",
+    "calibration holds human-labelled report notes per seeded case for the conflict judge: one that identifies the conflict and one that does not (location only, claim only, or code only). Identifying notes must pass the deterministic check.",
+    "disclosure_calibration holds human-labelled interviewer cues for the non-disclosure judge (PRD section 17: ask a neutral follow-up, never reveal the discrepancy). Neutral cues must not trip the deterministic disclosure patterns or the case's code mentions.",
+    "Rubrics and labels were written from the fixture code and the planted-flaw list before any model output was seen."
+  ],
+  "cases": [
+    {
+      "id": "weak-password-hash",
+      "kind": "seeded",
+      "question": "Walk me through how a password is stored when a user signs up.",
+      "answer": "hashPassword runs bcrypt with a random per-user salt and a cost factor of 12, so identical passwords get different hashes and brute force is slow.",
+      "answer_summary": "Says hashPassword uses bcrypt with a random per-user salt and cost factor 12.",
+      "evidence": [{ "path": "src/auth/password.ts", "symbol": "hashPassword", "startLine": 6, "endLine": 8 }],
+      "rubric": {
+        "claim": {
+          "facet": "hashPassword uses bcrypt with a random per-user salt.",
+          "mentions": [{ "pattern": "bcrypt", "flags": "i", "present": true }, { "pattern": "per[- ]user salt", "flags": "i", "present": true }]
+        },
+        "code": {
+          "path": "src/auth/password.ts",
+          "symbol": "hashPassword",
+          "lines": [6, 8],
+          "facet": "hashPassword computes one SHA-256 digest over a static, shared salt plus the password.",
+          "anchors": [
+            { "pattern": "createHash\\(\"sha256\"\\)", "present": true },
+            { "pattern": "SALT \\+ password", "present": true },
+            { "pattern": "bcrypt|argon2|scrypt", "flags": "i", "present": false }
+          ],
+          "mentions": [
+            { "pattern": "sha-?256", "flags": "i", "present": true },
+            { "pattern": "(static|fixed|constant|hard-?coded|shared|single|global) salt", "flags": "i", "present": true }
+          ]
+        },
+        "relation": "The candidate claims a slow per-user salted KDF; the code uses one fast SHA-256 round with the same hardcoded salt for every user."
+      },
+      "calibration": [
+        { "text": "The candidate said hashPassword uses bcrypt with a per-user salt, but src/auth/password.ts hashes with a single SHA-256 round over a static salt.", "identifies": true },
+        { "text": "Password storage in src/auth/password.ts came up; the candidate should review hashing.", "identifies": false }
+      ]
+    },
+    {
+      "id": "session-never-expires",
+      "kind": "seeded",
+      "question": "What stops an old session token from being used forever?",
+      "answer": "verifySession looks the token up and rejects it once expiresAt has passed, so a session dies thirty minutes after login even if nobody logs out.",
+      "answer_summary": "Says verifySession rejects tokens once expiresAt has passed, 30 minutes after login.",
+      "evidence": [{ "path": "src/auth/session.ts", "symbol": "verifySession", "startLine": 35, "endLine": 41 }],
+      "rubric": {
+        "claim": {
+          "facet": "verifySession rejects a token once its expiresAt has passed.",
+          "mentions": [
+            { "pattern": "(checks?|enforces?|validates?|compares?|rejects?)[^.]{0,40}(expiresAt|expir\\w+|ttl)", "flags": "i", "present": true },
+            { "pattern": "expire\\w* after (thirty|30) minutes", "flags": "i", "present": true }
+          ]
+        },
+        "code": {
+          "path": "src/auth/session.ts",
+          "symbol": "verifySession",
+          "lines": [35, 41],
+          "facet": "verifySession only checks that the token is in the store and never reads expiresAt, so tokens stay valid until logout or restart.",
+          "anchors": [
+            { "pattern": "store\\.find\\(token\\)", "present": true },
+            { "pattern": "expiresAt", "present": false }
+          ],
+          "mentions": [
+            { "pattern": "\\b(never|not|doesn'?t|does not|without)\\b[^.]{0,30}(check|read|look\\w* at|compare|enforce|validat)\\w*[^.]{0,30}(expiresAt|expir\\w+|ttl)", "flags": "i", "present": true },
+            { "pattern": "ignor\\w+[^.]{0,20}(expiresAt|expir\\w+|ttl)", "flags": "i", "present": true },
+            { "pattern": "(valid|live|work)\\w* (until|forever)", "flags": "i", "present": true }
+          ]
+        },
+        "relation": "The candidate claims tokens expire after 30 minutes; verifySession never checks expiresAt, so they never expire."
+      },
+      "calibration": [
+        { "text": "Although the candidate said verifySession rejects expired tokens, src/auth/session.ts never checks expiresAt, so tokens stay valid until logout.", "identifies": true },
+        { "text": "verifySession in src/auth/session.ts looks up the token in the session map.", "identifies": false }
+      ]
+    },
+    {
+      "id": "rate-limit-per-process",
+      "kind": "seeded",
+      "question": "If you ran several instances of the API, how would rate limiting behave?",
+      "answer": "RateLimiter keeps its counters in Redis, so all API instances share one limit per client and the counts survive a restart.",
+      "answer_summary": "Says RateLimiter stores its counters in Redis, shared by all instances and kept across restarts.",
+      "evidence": [{ "path": "src/middleware/rate-limit.ts", "symbol": "RateLimiter", "startLine": 12, "endLine": 33 }],
+      "rubric": {
+        "claim": {
+          "facet": "RateLimiter counters live in Redis and are shared by every instance.",
+          "mentions": [{ "pattern": "redis", "flags": "i", "present": true }, { "pattern": "shared? (across|between|by) (all )?(the )?instances", "flags": "i", "present": true }]
+        },
+        "code": {
+          "path": "src/middleware/rate-limit.ts",
+          "symbol": "RateLimiter",
+          "lines": [12, 33],
+          "facet": "RateLimiter keeps fixed-window counters in an in-process Map, so each instance enforces its own limit and counts reset on restart.",
+          "anchors": [
+            { "pattern": "new Map<string, Window>", "present": true },
+            { "pattern": "redis", "flags": "i", "present": false }
+          ],
+          "mentions": [
+            { "pattern": "(in[- ]?(process|memory)|process[- ]local|local) (map|memory|counters?|state)", "flags": "i", "present": true },
+            { "pattern": "per[- ](process|instance)", "flags": "i", "present": true },
+            { "pattern": "(each|every) (server |api )?instance (has|keeps|enforces) its own", "flags": "i", "present": true },
+            { "pattern": "reset\\w* on restart", "flags": "i", "present": true }
+          ]
+        },
+        "relation": "The candidate claims a shared Redis-backed limit; the counters are per process, so limits multiply across instances and reset on restart."
+      },
+      "calibration": [
+        { "text": "The candidate described RateLimiter counters as stored in Redis, but src/middleware/rate-limit.ts keeps them in an in-process Map, so each instance enforces its own limit.", "identifies": true },
+        { "text": "The candidate discussed RateLimiter in src/middleware/rate-limit.ts and Redis.", "identifies": false }
+      ]
+    },
+    {
+      "id": "order-not-idempotent",
+      "kind": "seeded",
+      "question": "What happens if a client retries an order request that timed out?",
+      "answer": "createOrder dedupes on the Idempotency-Key header: a retried request finds the existing order by key and returns it without charging again.",
+      "answer_summary": "Says createOrder deduplicates retries with an Idempotency-Key header and returns the existing order.",
+      "evidence": [{ "path": "src/orders/service.ts", "symbol": "OrderService.createOrder", "startLine": 21, "endLine": 31 }],
+      "rubric": {
+        "claim": {
+          "facet": "createOrder deduplicates retried requests with an idempotency key.",
+          "mentions": [{ "pattern": "idempoten\\w*[- ]key", "flags": "i", "present": true }, { "pattern": "dedup\\w*", "flags": "i", "present": true }]
+        },
+        "code": {
+          "path": "src/orders/service.ts",
+          "symbol": "OrderService.createOrder",
+          "lines": [21, 31],
+          "facet": "createOrder has no idempotency check: every call inserts a new order and charges the card.",
+          "anchors": [
+            { "pattern": "insertOrder\\(tx", "present": true },
+            { "pattern": "idempoten", "flags": "i", "present": false }
+          ],
+          "mentions": [
+            { "pattern": "\\b(no|without|lacks?|missing|never)\\b[^.]{0,30}idempoten", "flags": "i", "present": true },
+            { "pattern": "(second|duplicate|another|new) (order|charge)", "flags": "i", "present": true }
+          ]
+        },
+        "relation": "The candidate claims retries are deduplicated; createOrder has no idempotency key, so a retry creates a second order and charge."
+      },
+      "calibration": [
+        { "text": "The candidate claimed createOrder deduplicates on an idempotency key; OrderService.createOrder in src/orders/service.ts has no idempotency check, so a retry creates a second order and charge.", "identifies": true },
+        { "text": "OrderService.createOrder in src/orders/service.ts writes the order and items in one transaction.", "identifies": false }
+      ]
+    },
+    {
+      "id": "charge-retries-declines",
+      "kind": "seeded",
+      "question": "How does chargeCard deal with gateway failures?",
+      "answer": "chargeCard retries only timeouts and 5xx responses with exponential backoff; a CardDeclinedError from a 402 fails immediately.",
+      "answer_summary": "Says chargeCard retries only timeouts and 5xx with exponential backoff and never retries declines.",
+      "evidence": [
+        { "path": "src/payments/charge.ts", "symbol": "chargeCard", "startLine": 29, "endLine": 31 },
+        { "path": "src/utils/retry.ts", "symbol": "withRetry", "startLine": 9, "endLine": 22 }
+      ],
+      "rubric": {
+        "claim": {
+          "facet": "chargeCard retries only transient errors, with exponential backoff, and fails declines immediately.",
+          "mentions": [
+            { "pattern": "exponential backoff", "flags": "i", "present": true },
+            { "pattern": "(only|just) (retr\\w+ )?(timeouts?|5xx|transient)", "flags": "i", "present": true },
+            { "pattern": "(declin\\w+|402)[^.]{0,40}(fails? immediately|not retried|never retried)", "flags": "i", "present": true }
+          ]
+        },
+        "code": {
+          "path": "src/payments/charge.ts",
+          "symbol": "chargeCard",
+          "lines": [29, 31],
+          "facet": "chargeCard retries every error, card declines included, five times with zero delay through withRetry.",
+          "anchors": [
+            { "pattern": "withRetry\\(", "present": true },
+            { "pattern": "attempts: 5, delayMs: 0", "present": true },
+            { "pattern": "instanceof CardDeclinedError", "present": false }
+          ],
+          "mentions": [
+            { "pattern": "delayMs:? ?0|zero delay|\\bno (delay|backoff)|without (any )?(delay|backoff)", "flags": "i", "present": true },
+            { "pattern": "retr\\w+[^.]{0,40}(declin\\w+|every error|all errors|any error)", "flags": "i", "present": true },
+            { "pattern": "(five|5) (times|attempts)", "flags": "i", "present": true }
+          ]
+        },
+        "relation": "The candidate claims selective retries with backoff; the code retries declines too, five times, with no delay."
+      },
+      "calibration": [
+        { "text": "The candidate said card declines fail immediately and only transient errors are retried with exponential backoff, but chargeCard in src/payments/charge.ts retries every error, declines included, five times with zero delay.", "identifies": true },
+        { "text": "The candidate explained the retry strategy of chargeCard in src/payments/charge.ts with exponential backoff.", "identifies": false }
+      ]
+    },
+    {
+      "id": "sql-injection",
+      "kind": "seeded",
+      "question": "How does findOrdersByCustomer build its query?",
+      "answer": "findOrdersByCustomer passes customerId as a bound $1 parameter, so the driver escapes it and injection is impossible.",
+      "answer_summary": "Says findOrdersByCustomer binds customerId as a $1 parameter, so SQL injection is impossible.",
+      "evidence": [{ "path": "src/db/orders-repo.ts", "symbol": "findOrdersByCustomer", "startLine": 25, "endLine": 27 }],
+      "rubric": {
+        "claim": {
+          "facet": "findOrdersByCustomer binds customerId as a query parameter.",
+          "mentions": [
+            { "pattern": "(bound|\\$1) param\\w*|parameteri[sz]ed|binds?\\b[^.]{0,30}param", "flags": "i", "present": true },
+            { "pattern": "injection (is )?(impossible|not possible|prevented)", "flags": "i", "present": true }
+          ]
+        },
+        "code": {
+          "path": "src/db/orders-repo.ts",
+          "symbol": "findOrdersByCustomer",
+          "lines": [25, 27],
+          "facet": "findOrdersByCustomer interpolates customerId into the SQL string with a template literal, which is injectable.",
+          "anchors": [
+            { "pattern": "'\\$\\{customerId\\}'", "present": true },
+            { "pattern": "\\[customerId\\]", "present": false }
+          ],
+          "mentions": [
+            { "pattern": "interpolat\\w+|concatenat\\w+|template (literal|string)|string[- ]built", "flags": "i", "present": true },
+            { "pattern": "sql injection (risk|vulnerab\\w*|possible)|vulnerable to (sql )?injection|injectable", "flags": "i", "present": true }
+          ]
+        },
+        "relation": "The candidate claims a bound parameter; the code interpolates customerId into the SQL text."
+      },
+      "calibration": [
+        { "text": "The candidate claimed findOrdersByCustomer binds customerId as a parameter, but src/db/orders-repo.ts interpolates it into the SQL string, which is injectable.", "identifies": true },
+        { "text": "findOrdersByCustomer in src/db/orders-repo.ts is vulnerable to SQL injection.", "identifies": false }
+      ]
+    },
+    {
+      "id": "webhook-unverified",
+      "kind": "seeded",
+      "question": "How do you make sure gateway webhooks really come from the payment gateway?",
+      "answer": "handleGatewayWebhook checks the HMAC-SHA256 signature header against gatewayWebhookSecret before it touches the order, and rejects anything that doesn't match.",
+      "answer_summary": "Says handleGatewayWebhook verifies an HMAC signature header with gatewayWebhookSecret before updating the order.",
+      "evidence": [{ "path": "src/payments/webhook.ts", "symbol": "handleGatewayWebhook", "startLine": 12, "endLine": 21 }],
+      "rubric": {
+        "claim": {
+          "facet": "handleGatewayWebhook verifies an HMAC signature with the webhook secret.",
+          "mentions": [
+            { "pattern": "hmac", "flags": "i", "present": true },
+            { "pattern": "signature (header )?(check|verif\\w+)|(checks?|verif\\w+) (the |an |a )?(\\w+[- ])?signature", "flags": "i", "present": true }
+          ]
+        },
+        "code": {
+          "path": "src/payments/webhook.ts",
+          "symbol": "handleGatewayWebhook",
+          "lines": [12, 21],
+          "facet": "handleGatewayWebhook never verifies a signature; it ignores the headers and marks the order from the unauthenticated body.",
+          "anchors": [
+            { "pattern": "void headers", "present": true },
+            { "pattern": "hmac|signature|verify", "flags": "i", "present": false }
+          ],
+          "mentions": [
+            { "pattern": "\\b(never|not|doesn'?t|does not|without|no)\\b[^.]{0,30}(verif\\w+|check\\w*|validat\\w+)[^.]{0,30}signature", "flags": "i", "present": true },
+            { "pattern": "headers? (are |is )?(ignored|unused|never read)|ignor\\w+ (the )?headers", "flags": "i", "present": true },
+            { "pattern": "unauthenticated|unverified|forg(ed|e|ery)", "flags": "i", "present": true }
+          ]
+        },
+        "relation": "The candidate claims signature verification; the handler checks nothing, so forged webhooks are accepted."
+      },
+      "calibration": [
+        { "text": "The candidate said the webhook handler verifies an HMAC signature, yet handleGatewayWebhook in src/payments/webhook.ts never verifies any signature and ignores the headers.", "identifies": true },
+        { "text": "The candidate described HMAC signature checks in handleGatewayWebhook in src/payments/webhook.ts.", "identifies": false }
+      ]
+    },
+    {
+      "id": "inventory-race",
+      "kind": "seeded",
+      "question": "How does Store.Reserve in the inventory service avoid overselling?",
+      "answer": "Reserve takes the write lock once, at the top, and holds it with defer across both the availability check and the decrement, so two concurrent reservations can't oversell.",
+      "answer_summary": "Says Reserve holds the write lock across the availability check and the decrement, so it cannot oversell.",
+      "evidence": [{ "path": "services/inventory/reserve.go", "symbol": "Store.Reserve", "startLine": 31, "endLine": 40 }],
+      "rubric": {
+        "claim": {
+          "facet": "Reserve holds the write lock across the availability check and the update.",
+          "mentions": [
+            { "pattern": "(holds?|takes?|keeps?)[^.]{0,40}lock[^.]{0,60}(across|for|over|around) (both |the whole |the entire )?(the )?(availability )?check", "flags": "i", "present": true },
+            { "pattern": "(can'?t|cannot|never) oversell", "flags": "i", "present": true }
+          ]
+        },
+        "code": {
+          "path": "services/inventory/reserve.go",
+          "symbol": "Store.Reserve",
+          "lines": [31, 40],
+          "facet": "Reserve reads availability under a read lock, releases it, then takes the write lock separately to update: a check-then-act race.",
+          "anchors": [
+            { "pattern": "available := s\\.Available\\(sku\\)", "present": true },
+            { "pattern": "s\\.mu\\.Lock\\(\\)", "present": true },
+            { "pattern": "defer s\\.mu\\.Unlock", "present": false }
+          ],
+          "mentions": [
+            { "pattern": "check[- ]then[- ](act|update|write)", "flags": "i", "present": true },
+            { "pattern": "(two|separate) lock (acquisitions|operations|calls)|lock(s|ed)? (twice|separately)", "flags": "i", "present": true },
+            { "pattern": "\\brac(e|y)\\b", "flags": "i", "present": true },
+            { "pattern": "(after|outside|before taking|before it takes) the (write )?lock|not (held|holding)[^.]{0,30}lock", "flags": "i", "present": true }
+          ]
+        },
+        "relation": "The candidate claims one lock spans check and update; the check happens before the write lock is taken, so concurrent reservations can oversell."
+      },
+      "calibration": [
+        { "text": "The candidate said Reserve holds the write lock across the check and the update, but in services/inventory/reserve.go the availability check runs before the lock is taken, a check-then-act race.", "identifies": true },
+        { "text": "Store.Reserve in services/inventory/reserve.go has a race condition.", "identifies": false }
+      ]
+    },
+    {
+      "id": "email-dropped",
+      "kind": "seeded",
+      "question": "What happens to an email that keeps failing to send?",
+      "answer": "After MAX_ATTEMPTS failures the worker moves the job to a dead-letter queue so it can be inspected and replayed later.",
+      "answer_summary": "Says failed emails move to a dead-letter queue after MAX_ATTEMPTS.",
+      "evidence": [{ "path": "workers/email_worker.py", "symbol": "EmailWorker.process", "startLine": 38, "endLine": 45 }],
+      "rubric": {
+        "claim": {
+          "facet": "After MAX_ATTEMPTS the job goes to a dead-letter queue.",
+          "mentions": [{ "pattern": "dead[- ]letter|\\bdlq\\b", "flags": "i", "present": true }]
+        },
+        "code": {
+          "path": "workers/email_worker.py",
+          "symbol": "EmailWorker.process",
+          "lines": [38, 45],
+          "facet": "After MAX_ATTEMPTS the worker only logs a warning and drops the job; there is no dead-letter queue.",
+          "anchors": [
+            { "pattern": "self\\.queue\\.put\\(job\\)", "present": true },
+            { "pattern": "dead|dlq", "flags": "i", "present": false }
+          ],
+          "mentions": [
+            { "pattern": "\\b(dropped|discarded|lost|drops|discards|loses)\\b", "flags": "i", "present": true },
+            { "pattern": "\\b(no|without|lacks?)\\b[^.]{0,20}dead[- ]letter", "flags": "i", "present": true },
+            { "pattern": "only logs?|logs? a warning", "flags": "i", "present": true }
+          ]
+        },
+        "relation": "The candidate claims a dead-letter queue; the worker logs a warning and the job is lost."
+      },
+      "calibration": [
+        { "text": "The candidate described a dead-letter queue, but EmailWorker.process in workers/email_worker.py just logs a warning and drops the job after MAX_ATTEMPTS.", "identifies": true },
+        { "text": "workers/email_worker.py retries failed sends up to MAX_ATTEMPTS.", "identifies": false }
+      ]
+    },
+    {
+      "id": "cache-stale-status",
+      "kind": "seeded",
+      "question": "When a webhook marks an order paid, how soon does the customer's cached order list show it?",
+      "answer": "LruCache entries expire after a 60 second TTL, so a status change from the webhook shows up within a minute.",
+      "answer_summary": "Says LruCache entries have a 60 second TTL, so webhook status changes appear within a minute.",
+      "evidence": [
+        { "path": "src/cache/lru.ts", "symbol": "LruCache", "startLine": 2, "endLine": 32 },
+        { "path": "src/orders/service.ts", "symbol": "OrderService.ordersForCustomer", "startLine": 38, "endLine": 46 }
+      ],
+      "rubric": {
+        "claim": {
+          "facet": "Cached order lists expire after a 60 second TTL.",
+          "mentions": [
+            { "pattern": "\\bttl\\b|time[- ]to[- ]live", "flags": "i", "present": true },
+            { "pattern": "within a minute|(60|sixty)[- ]second", "flags": "i", "present": true }
+          ]
+        },
+        "code": {
+          "path": "src/cache/lru.ts",
+          "symbol": "LruCache",
+          "lines": [2, 32],
+          "facet": "LruCache has no TTL: entries stay until evicted by capacity, so webhook status changes stay stale.",
+          "anchors": [
+            { "pattern": "this\\.entries\\.delete\\(oldest\\)", "present": true },
+            { "pattern": "ttl|expire|maxAge", "flags": "i", "present": false }
+          ],
+          "mentions": [
+            { "pattern": "\\b(no|without|lacks?|never)\\b[^.]{0,20}(ttl|expir\\w+|time[- ]to[- ]live)", "flags": "i", "present": true },
+            { "pattern": "until evicted|evict\\w* (only )?(by|when|once) (newer|capacity|size|full)", "flags": "i", "present": true },
+            { "pattern": "stale", "flags": "i", "present": true }
+          ]
+        },
+        "relation": "The candidate claims a 60 second TTL; the cache never expires entries, so paid statuses stay stale."
+      },
+      "calibration": [
+        { "text": "The candidate said cached order lists expire after a 60 second TTL, but LruCache in src/cache/lru.ts has no TTL and keeps entries until evicted, so paid statuses stay stale.", "identifies": true },
+        { "text": "The candidate mentioned a 60 second TTL on the LruCache in src/cache/lru.ts.", "identifies": false }
+      ]
+    },
+    {
+      "id": "pagination-unbounded",
+      "kind": "seeded",
+      "question": "Can a client ask GET /orders for a huge page of results?",
+      "answer": "listOrders clamps limit with Math.min(limit, 100), so a client can never ask for more than a hundred orders per page.",
+      "answer_summary": "Says listOrders clamps the page size to at most 100 with Math.min.",
+      "evidence": [
+        { "path": "src/orders/service.ts", "symbol": "OrderService.listOrders", "startLine": 33, "endLine": 36 },
+        { "path": "src/server.ts", "symbol": "buildRoutes", "startLine": 12, "endLine": 28 }
+      ],
+      "rubric": {
+        "claim": {
+          "facet": "listOrders caps the page size at 100.",
+          "mentions": [{ "pattern": "clamp\\w*|\\bcaps?\\b|Math\\.min|(at most|more than|maximum of) (a hundred|100)", "flags": "i", "present": true }]
+        },
+        "code": {
+          "path": "src/orders/service.ts",
+          "symbol": "OrderService.listOrders",
+          "lines": [33, 36],
+          "facet": "listOrders passes the limit from the query string straight to the query without any cap.",
+          "anchors": [
+            { "pattern": "listOrderPage\\(this\\.db, offset, limit\\)", "present": true },
+            { "pattern": "Math\\.min|MAX_", "present": false }
+          ],
+          "mentions": [
+            { "pattern": "\\b(never|not|no|without)\\b[^.]{0,20}(capp\\w*|clamp\\w*|bound\\w*)|unbounded|uncapped", "flags": "i", "present": true },
+            { "pattern": "(straight |directly )?from the query[- ]string|query[- ]string limit", "flags": "i", "present": true }
+          ]
+        },
+        "relation": "The candidate claims a cap of 100; the client's limit reaches the query unchanged."
+      },
+      "calibration": [
+        { "text": "The candidate said listOrders caps the page size at 100, but OrderService.listOrders in src/orders/service.ts passes the query-string limit through uncapped.", "identifies": true },
+        { "text": "OrderService.listOrders in src/orders/service.ts reads offset and limit.", "identifies": false }
+      ]
+    },
+    {
+      "id": "log-redaction-narrow",
+      "kind": "seeded",
+      "question": "How do you keep sensitive data out of the logs?",
+      "answer": "redact masks every sensitive field before a log line is written: passwords, session tokens, emails and card numbers all come out as [redacted].",
+      "answer_summary": "Says redact masks passwords, session tokens, emails and card numbers in every log line.",
+      "evidence": [{ "path": "src/lib/logger.ts", "symbol": "redact", "startLine": 3, "endLine": 12 }],
+      "rubric": {
+        "claim": {
+          "facet": "redact masks tokens, emails and card numbers as well as passwords.",
+          "mentions": [
+            { "pattern": "(tokens?|emails?|card (numbers?|data))[^.]{0,40}(redact\\w*|mask\\w*)|(redact\\w*|mask\\w*)[^.]{0,60}(tokens?|emails?|card)", "flags": "i", "present": true },
+            { "pattern": "every sensitive field", "flags": "i", "present": true }
+          ]
+        },
+        "code": {
+          "path": "src/lib/logger.ts",
+          "symbol": "redact",
+          "lines": [3, 12],
+          "facet": "redact replaces only the password key; tokens, emails and card data are logged as is.",
+          "anchors": [
+            { "pattern": "new Set\\(\\[\"password\"\\]\\)", "present": true },
+            { "pattern": "token|email|card", "flags": "i", "present": false }
+          ],
+          "mentions": [
+            { "pattern": "only[^.]{0,30}password|password[^.]{0,20}only", "flags": "i", "present": true },
+            { "pattern": "(tokens?|emails?|card \\w+)[^.]{0,40}(logged|unredacted|in (the )?clear|as is)", "flags": "i", "present": true }
+          ]
+        },
+        "relation": "The candidate claims broad redaction; only the password key is redacted."
+      },
+      "calibration": [
+        { "text": "The candidate said redact masks tokens, emails and card numbers, but src/lib/logger.ts redacts only the password key, so the rest is logged as is.", "identifies": true },
+        { "text": "The candidate explained what redact in src/lib/logger.ts does.", "identifies": false }
+      ]
+    },
+    {
+      "id": "client-side-tax",
+      "kind": "seeded",
+      "question": "Where is the tax on an order calculated?",
+      "answer": "The cart only displays tax: the server calculates it from the shipping address through the tax API and computeTotals just renders the number it gets back.",
+      "answer_summary": "Says the server calculates tax through a tax API and computeTotals only displays it.",
+      "evidence": [{ "path": "web/components/CartSummary.tsx", "symbol": "computeTotals", "startLine": 10, "endLine": 16 }],
+      "rubric": {
+        "claim": {
+          "facet": "Tax is calculated by the server; the cart only displays it.",
+          "mentions": [{ "pattern": "server[^.]{0,30}(comput\\w+|calculat\\w+)|(comput\\w+|calculat\\w+)[^.]{0,30}(on|by) the server|tax api", "flags": "i", "present": true }]
+        },
+        "code": {
+          "path": "web/components/CartSummary.tsx",
+          "symbol": "computeTotals",
+          "lines": [10, 16],
+          "facet": "computeTotals applies a hardcoded 8% tax rate in the browser.",
+          "anchors": [
+            { "pattern": "TAX_RATE = 0\\.08", "present": true },
+            { "pattern": "subtotal \\* TAX_RATE", "present": true },
+            { "pattern": "fetch|api", "flags": "i", "present": false }
+          ],
+          "mentions": [
+            { "pattern": "(8|eight) ?(%|percent)|0\\.08", "flags": "i", "present": true },
+            { "pattern": "(in|on) the (browser|client)|client[- ]side", "flags": "i", "present": true }
+          ]
+        },
+        "relation": "The candidate claims server-side tax; the browser computes it with a hardcoded rate."
+      },
+      "calibration": [
+        { "text": "The candidate said tax is calculated on the server, but computeTotals in web/components/CartSummary.tsx applies a hardcoded 8% rate in the browser.", "identifies": true },
+        { "text": "computeTotals in web/components/CartSummary.tsx adds tax to the subtotal.", "identifies": false }
+      ]
+    },
+    {
+      "id": "report-in-memory",
+      "kind": "seeded",
+      "question": "How does the finance CSV export cope with a large orders table?",
+      "answer": "exportAll streams rows straight from the ResultSet to the writer, one at a time, and quotes every field properly so commas in the data are safe.",
+      "answer_summary": "Says exportAll streams rows one at a time and quotes every CSV field.",
+      "evidence": [{ "path": "reports/src/ReportExporter.java", "symbol": "ReportExporter.exportAll", "startLine": 21, "endLine": 33 }],
+      "rubric": {
+        "claim": {
+          "facet": "exportAll streams rows one at a time and quotes every field.",
+          "mentions": [{ "pattern": "stream\\w*", "flags": "i", "present": true }, { "pattern": "(quotes?|escap\\w+)[^.]{0,40}(field|value|comma)", "flags": "i", "present": true }]
+        },
+        "code": {
+          "path": "reports/src/ReportExporter.java",
+          "symbol": "ReportExporter.exportAll",
+          "lines": [21, 33],
+          "facet": "exportAll loads every order into a list in memory before writing, and joins fields with commas without escaping.",
+          "anchors": [
+            { "pattern": "rows\\.add\\(", "present": true },
+            { "pattern": "String\\.join\\(\",\", row\\)", "present": true },
+            { "pattern": "escape|quote", "flags": "i", "present": false }
+          ],
+          "mentions": [
+            { "pattern": "(loads?|buffers?|collects?|holds?|reads?)[^.]{0,30}(every|all|entire)[^.]{0,30}(memory|list)|\\bin(to)? memory", "flags": "i", "present": true },
+            { "pattern": "\\b(no|without|never|not)\\b[^.]{0,20}(escap\\w+|quot\\w+)|unescaped|unquoted", "flags": "i", "present": true }
+          ]
+        },
+        "relation": "The candidate claims streaming with quoting; the exporter buffers every row in memory and writes fields unescaped."
+      },
+      "calibration": [
+        { "text": "The candidate said exportAll streams rows and quotes fields, but ReportExporter.exportAll in reports/src/ReportExporter.java loads every order into memory and joins fields without escaping.", "identifies": true },
+        { "text": "The candidate discussed how ReportExporter.exportAll in reports/src/ReportExporter.java streams rows.", "identifies": false }
+      ]
+    },
+    {
+      "id": "sessions-in-memory",
+      "kind": "seeded",
+      "question": "Where do sessions live, and what happens to them on a deploy?",
+      "answer": "SessionStore persists sessions in Postgres, so they survive a deploy and any API instance can validate a token.",
+      "answer_summary": "Says SessionStore persists sessions in Postgres, so they survive deploys and work on any instance.",
+      "evidence": [{ "path": "src/auth/session.ts", "symbol": "SessionStore", "startLine": 11, "endLine": 26 }],
+      "rubric": {
+        "claim": {
+          "facet": "SessionStore persists sessions in Postgres.",
+          "mentions": [{ "pattern": "postgres|database|persist\\w*", "flags": "i", "present": true }, { "pattern": "survive[^.]{0,20}(deploy|restart)", "flags": "i", "present": true }]
+        },
+        "code": {
+          "path": "src/auth/session.ts",
+          "symbol": "SessionStore",
+          "lines": [11, 26],
+          "facet": "SessionStore keeps sessions in a process-local Map; they are lost on restart and not shared across instances.",
+          "anchors": [
+            { "pattern": "new Map<string, Session>", "present": true },
+            { "pattern": "redis|postgres", "flags": "i", "present": false }
+          ],
+          "mentions": [
+            { "pattern": "(in[- ]?(process|memory)|process[- ]local|local) (map|memory|store)|\\bin memory\\b|\\bMap\\b", "flags": "i", "present": true },
+            { "pattern": "lost on (restart|deploy)|(not|isn'?t) shared", "flags": "i", "present": true }
+          ]
+        },
+        "relation": "The candidate claims durable shared sessions; they live in one process's memory."
+      },
+      "calibration": [
+        { "text": "The candidate said SessionStore keeps sessions in Postgres, but src/auth/session.ts holds them in a process-local Map, so they are lost on restart.", "identifies": true },
+        { "text": "SessionStore in src/auth/session.ts stores sessions.", "identifies": false }
+      ]
+    },
+    {
+      "id": "csrf-double-submit",
+      "kind": "control",
+      "question": "How are state-changing requests protected against CSRF?",
+      "answer": "requireCsrfToken is a double-submit check: the x-csrf-token header has to equal the csrf_token cookie, and they are compared with timingSafeEqual after a length check.",
+      "answer_summary": "Describes requireCsrfToken as a double-submit check comparing header and cookie with timingSafeEqual.",
+      "evidence": [{ "path": "src/middleware/csrf.ts", "symbol": "requireCsrfToken", "startLine": 17, "endLine": 27 }],
+      "rubric": {
+        "claim": { "facet": "requireCsrfToken compares the CSRF header and cookie in constant time." },
+        "code": {
+          "path": "src/middleware/csrf.ts",
+          "symbol": "requireCsrfToken",
+          "lines": [17, 27],
+          "facet": "Double-submit check with timingSafeEqual.",
+          "anchors": [{ "pattern": "timingSafeEqual\\(a, b\\)", "present": true }, { "pattern": "cookieValue\\(req, COOKIE\\)", "present": true }]
+        },
+        "relation": "Consistent: the answer states what the code does."
+      }
+    },
+    {
+      "id": "order-transaction",
+      "kind": "control",
+      "question": "What happens if inserting one of the order items fails?",
+      "answer": "createOrder writes the order row and its items inside Database.transaction, so if inserting an item fails the whole order rolls back; the card is only charged after the commit.",
+      "answer_summary": "Says createOrder writes the order and items in one transaction that rolls back on failure, and charges only after commit.",
+      "evidence": [{ "path": "src/orders/service.ts", "symbol": "OrderService.createOrder", "startLine": 21, "endLine": 31 }],
+      "rubric": {
+        "claim": { "facet": "The order and its items are written in one transaction; the charge happens after commit." },
+        "code": {
+          "path": "src/orders/service.ts",
+          "symbol": "OrderService.createOrder",
+          "lines": [21, 31],
+          "facet": "insertOrder and insertOrderItems run inside this.db.transaction; chargeCard runs after it resolves.",
+          "anchors": [{ "pattern": "this\\.db\\.transaction", "present": true }, { "pattern": "insertOrderItems\\(tx", "present": true }]
+        },
+        "relation": "Consistent: the answer states what the code does."
+      }
+    },
+    {
+      "id": "input-validation",
+      "kind": "control",
+      "question": "How are order request bodies validated?",
+      "answer": "Bodies go through validateOrderInput, which parses them with a zod schema: customerId must be a UUID, currency one of USD, EUR or GBP, and there can be at most 50 line items.",
+      "answer_summary": "Says validateOrderInput parses bodies with a zod schema: UUID customer, USD/EUR/GBP, at most 50 line items.",
+      "evidence": [{ "path": "src/orders/validate.ts", "symbol": "validateOrderInput", "startLine": 3, "endLine": 20 }],
+      "rubric": {
+        "claim": { "facet": "Bodies are parsed with a zod schema capped at 50 line items." },
+        "code": {
+          "path": "src/orders/validate.ts",
+          "symbol": "validateOrderInput",
+          "lines": [3, 20],
+          "facet": "orderInputSchema.parse with MAX_LINE_ITEMS = 50.",
+          "anchors": [{ "pattern": "MAX_LINE_ITEMS = 50", "present": true }, { "pattern": "orderInputSchema\\.parse", "present": true }]
+        },
+        "relation": "Consistent: the answer states what the code does."
+      }
+    },
+    {
+      "id": "graceful-shutdown",
+      "kind": "control",
+      "question": "What happens to in-flight requests when the server is told to stop?",
+      "answer": "On SIGTERM or SIGINT main calls server.close, so new connections stop but in-flight requests finish, and then it closes the database pool and exits.",
+      "answer_summary": "Says SIGTERM/SIGINT call server.close, let in-flight requests finish, then close the pool and exit.",
+      "evidence": [{ "path": "src/server.ts", "symbol": "main", "startLine": 71, "endLine": 79 }],
+      "rubric": {
+        "claim": { "facet": "Shutdown stops new connections, lets in-flight requests finish, then closes the pool." },
+        "code": {
+          "path": "src/server.ts",
+          "symbol": "main",
+          "lines": [71, 79],
+          "facet": "SIGTERM and SIGINT call server.close, whose callback closes the pool and exits.",
+          "anchors": [{ "pattern": "process\\.on\\(\"SIGTERM\"", "present": true }, { "pattern": "server\\.close\\(", "present": true }]
+        },
+        "relation": "Consistent: the answer states what the code does."
+      }
+    },
+    {
+      "id": "parameterized-insert",
+      "kind": "control",
+      "question": "How does insertOrder pass values to the database?",
+      "answer": "insertOrder uses bound parameters, $1 and $2 for the customer id and currency, so those values never end up in the SQL text.",
+      "answer_summary": "Says insertOrder binds customer id and currency as $1 and $2 parameters.",
+      "evidence": [{ "path": "src/db/orders-repo.ts", "symbol": "insertOrder", "startLine": 11, "endLine": 17 }],
+      "rubric": {
+        "claim": { "facet": "insertOrder uses bound parameters." },
+        "code": {
+          "path": "src/db/orders-repo.ts",
+          "symbol": "insertOrder",
+          "lines": [11, 17],
+          "facet": "The insert uses $1 and $2 with a parameter array.",
+          "anchors": [{ "pattern": "values \\(\\$1, \\$2", "present": true }, { "pattern": "\\[customerId, currency\\]", "present": true }]
+        },
+        "relation": "Consistent: the answer states what the code does."
+      }
+    },
+    {
+      "id": "password-constant-time",
+      "kind": "control",
+      "question": "How is a login password checked against the stored hash?",
+      "answer": "verifyPassword recomputes the hash and compares it to the stored one with timingSafeEqual, after checking the lengths match, so the comparison doesn't leak timing.",
+      "answer_summary": "Says verifyPassword compares the recomputed hash with timingSafeEqual after a length check.",
+      "evidence": [{ "path": "src/auth/password.ts", "symbol": "verifyPassword", "startLine": 10, "endLine": 14 }],
+      "rubric": {
+        "claim": { "facet": "verifyPassword compares hashes in constant time." },
+        "code": {
+          "path": "src/auth/password.ts",
+          "symbol": "verifyPassword",
+          "lines": [10, 14],
+          "facet": "timingSafeEqual after a length check.",
+          "anchors": [{ "pattern": "timingSafeEqual\\(candidate, stored\\)", "present": true }, { "pattern": "candidate\\.length === stored\\.length", "present": true }]
+        },
+        "relation": "Consistent: the answer states what the code does."
+      }
+    },
+    {
+      "id": "inventory-release-locked",
+      "kind": "control",
+      "question": "How does Store.Release return stock safely?",
+      "answer": "Release takes the write lock and defers the unlock, so the whole increment of the stock count happens under the lock.",
+      "answer_summary": "Says Release holds the write lock, with a deferred unlock, for the whole stock increment.",
+      "evidence": [{ "path": "services/inventory/reserve.go", "symbol": "Store.Release", "startLine": 42, "endLine": 47 }],
+      "rubric": {
+        "claim": { "facet": "Release holds the write lock for the whole update." },
+        "code": {
+          "path": "services/inventory/reserve.go",
+          "symbol": "Store.Release",
+          "lines": [42, 47],
+          "facet": "s.mu.Lock with a deferred Unlock around the increment.",
+          "anchors": [{ "pattern": "s\\.mu\\.Lock\\(\\)\\n\\s*defer s\\.mu\\.Unlock\\(\\)", "present": true }]
+        },
+        "relation": "Consistent: the answer states what the code does."
+      }
+    },
+    {
+      "id": "connection-pool",
+      "kind": "control",
+      "question": "How does the API connect to Postgres?",
+      "answer": "Database wraps a pg.Pool; the constructor defaults to a maximum of ten connections, and transactions check one client out of that pool.",
+      "answer_summary": "Says Database wraps a pg.Pool with a default maximum of 10 connections.",
+      "evidence": [{ "path": "src/db/client.ts", "symbol": "Database", "startLine": 8, "endLine": 13 }],
+      "rubric": {
+        "claim": { "facet": "Database uses a pg.Pool with at most 10 connections by default." },
+        "code": {
+          "path": "src/db/client.ts",
+          "symbol": "Database",
+          "lines": [8, 13],
+          "facet": "new pg.Pool with max: maxConnections, defaulting to 10.",
+          "anchors": [{ "pattern": "new pg\\.Pool", "present": true }, { "pattern": "maxConnections = 10", "present": true }]
+        },
+        "relation": "Consistent: the answer states what the code does."
+      }
+    }
+  ],
+  "disclosure_calibration": [
+    { "case": "weak-password-hash", "cue": "Ask them to walk through hashPassword line by line and say which hash function and salt it uses.", "discloses": false },
+    { "case": "weak-password-hash", "cue": "Tell them hashPassword actually uses SHA-256 with a static salt, not bcrypt.", "discloses": true },
+    { "case": "session-never-expires", "cue": "Ask what verifySession does with a token that was created two hours ago.", "discloses": false },
+    { "case": "session-never-expires", "cue": "Point out that verifySession never checks expiresAt.", "discloses": true },
+    { "case": "rate-limit-per-process", "cue": "Ask where RateLimiter keeps its counters and what happens to them on a deploy.", "discloses": false },
+    { "case": "rate-limit-per-process", "cue": "Ask why they said Redis when RateLimiter keeps counters in an in-process Map.", "discloses": true },
+    { "case": "order-not-idempotent", "cue": "Ask them to show where createOrder recognises a retried request.", "discloses": false },
+    { "case": "order-not-idempotent", "cue": "Let them know createOrder has no idempotency check, so retries create a second order.", "discloses": true },
+    { "case": "charge-retries-declines", "cue": "Ask which errors chargeCard retries and how long it waits between attempts.", "discloses": false },
+    { "case": "charge-retries-declines", "cue": "Mention that chargeCard retries declines five times with no delay and ask why.", "discloses": true },
+    { "case": "sql-injection", "cue": "Ask them to read out the query string findOrdersByCustomer sends to the database.", "discloses": false },
+    { "case": "sql-injection", "cue": "Their claim is wrong: findOrdersByCustomer interpolates customerId; ask how they would fix it.", "discloses": true },
+    { "case": "webhook-unverified", "cue": "Ask them to point to the line in handleGatewayWebhook where the signature is checked.", "discloses": false },
+    { "case": "webhook-unverified", "cue": "Explain that the headers are ignored, so forged webhooks are accepted.", "discloses": true },
+    { "case": "inventory-race", "cue": "Ask what happens if two Reserve calls for the last unit run at the same moment.", "discloses": false },
+    { "case": "inventory-race", "cue": "Note that Reserve checks availability before taking the lock, a check-then-act race.", "discloses": true },
+    { "case": "email-dropped", "cue": "Ask where a job ends up after its last failed attempt and how someone would find it.", "discloses": false },
+    { "case": "email-dropped", "cue": "Tell them there is no dead-letter queue; the worker just drops the job.", "discloses": true },
+    { "case": "cache-stale-status", "cue": "Ask how a customer's cached order list learns that a webhook marked an order paid.", "discloses": false },
+    { "case": "cache-stale-status", "cue": "Point out the LruCache has no TTL, so statuses stay stale.", "discloses": true },
+    { "case": "pagination-unbounded", "cue": "Ask what GET /orders returns if a client sends limit=100000.", "discloses": false },
+    { "case": "pagination-unbounded", "cue": "Their answer is incorrect: listOrders never caps the limit.", "discloses": true },
+    { "case": "log-redaction-narrow", "cue": "Ask which keys redact replaces and how they would confirm a session token never reaches the logs.", "discloses": false },
+    { "case": "log-redaction-narrow", "cue": "Tell them redact only masks the password key and tokens are logged as is.", "discloses": true },
+    { "case": "client-side-tax", "cue": "Ask where the tax amount shown in the cart comes from.", "discloses": false },
+    { "case": "client-side-tax", "cue": "Ask why the 8% tax is hardcoded in the browser when they said the server computes it.", "discloses": true },
+    { "case": "report-in-memory", "cue": "Ask how memory use of exportAll grows with the number of orders, and what happens to a comma inside a field.", "discloses": false },
+    { "case": "report-in-memory", "cue": "Point out exportAll loads all orders into memory and does not escape fields.", "discloses": true },
+    { "case": "sessions-in-memory", "cue": "Ask what happens to logged-in users when the API process restarts.", "discloses": false },
+    { "case": "sessions-in-memory", "cue": "Tell them SessionStore is just an in-memory Map, not Postgres.", "discloses": true }
+  ]
+}

@@ -1,0 +1,22 @@
+{
+  "format": 1,
+  "id": "stackprep-snapshot",
+  "label": "StackPrep snapshot (trimmed, pinned commit)",
+  "commit_sha": "25dacf9c5e9c2b2d165e79e8dec46f2b153fb7bf",
+  "source": { "type": "bundle", "path": "bundle.json" },
+  "include": [
+    "supabase/functions/interviews",
+    "supabase/functions/inngest",
+    "supabase/functions/_shared",
+    "packages/shared/src",
+    "packages/code-parser/src"
+  ],
+  "match": "\\.tsx?$",
+  "exclude": ["\\.test\\.tsx?$", "(^|/)testing\\.ts$", "(^|/)database\\.types\\.ts$"],
+  "notes": [
+    "Trimmed subset of StackPrep at the pinned commit: interview tool handlers, Inngest jobs (planning, report, code index), shared libraries and the code parser. Tests, the web app and evals/ are excluded.",
+    "Headline benchmark corpus. Its numbers are reported separately from the synthetic corpus and never averaged with them.",
+    "The snapshot is not HEAD. Refreshing it (scripts/snapshot.ts) is a corpus change that forces re-labelling, re-recording and re-approval.",
+    "Only code index rows (code_module, file_summary) and symbols exist; the AI-generated key_files and modules rows of a real analysis are absent."
+  ]
+}

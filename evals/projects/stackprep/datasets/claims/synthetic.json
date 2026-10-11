@@ -1,0 +1,455 @@
+{
+  "format": 1,
+  "corpus": "synthetic",
+  "guidelines": [
+    "A pair is a claim and one citation into the pinned corpus. supported=true only when the cited lines alone show every code fact the claim states.",
+    "Anchors are regular expressions over the cited span: present=true must match, present=false must not (absence anchors for missing guards). The label must agree with its anchors; validation re-checks this on every run.",
+    "Calibration pairs are written by hand from the source, before any judge output was seen. Kinds: supported, supported_absence (a correct claim that something is missing), wrong_claim (real path, false statement), invented_behaviour (real symbol, behaviour it does not have).",
+    "labels holds verdicts for pairs the recorded pipeline produced. Copy key, claim and citation from the support suite's 'pair/' cases; use supported=null when the text states no fact about the code."
+  ],
+  "calibration": [
+    {
+      "id": "pw-sha256-static-salt",
+      "kind": "supported",
+      "claim": "hashPassword runs a single SHA-256 over a static salt concatenated with the password.",
+      "citation": "src/auth/password.ts:6-8",
+      "supported": true,
+      "anchors": [
+        { "pattern": "createHash\\(\"sha256\"\\)", "present": true },
+        { "pattern": "update\\(SALT \\+ password\\)", "present": true }
+      ]
+    },
+    {
+      "id": "pw-bcrypt",
+      "kind": "wrong_claim",
+      "claim": "hashPassword uses bcrypt with a per-user salt.",
+      "citation": "src/auth/password.ts:6-8",
+      "supported": false,
+      "anchors": [{ "pattern": "bcrypt|argon2|scrypt", "flags": "i", "present": true, "note": "a slow KDF would have to appear" }]
+    },
+    {
+      "id": "pw-constant-time",
+      "kind": "supported",
+      "claim": "verifyPassword compares the stored and computed hashes with timingSafeEqual.",
+      "citation": "src/auth/password.ts:10-14",
+      "supported": true,
+      "anchors": [{ "pattern": "timingSafeEqual\\(candidate, stored\\)", "present": true }]
+    },
+    {
+      "id": "pw-lockout",
+      "kind": "invented_behaviour",
+      "claim": "verifyPassword locks the account after five failed attempts.",
+      "citation": "src/auth/password.ts:10-14",
+      "supported": false,
+      "anchors": [{ "pattern": "lock|attempt", "flags": "i", "present": true }]
+    },
+    {
+      "id": "pw-strength",
+      "kind": "supported",
+      "claim": "isStrongPassword requires at least 8 characters with at least one digit and one letter.",
+      "citation": "src/auth/password.ts:16-18",
+      "supported": true,
+      "anchors": [
+        { "pattern": "length >= 8", "present": true },
+        { "pattern": "\\[0-9\\]", "present": true },
+        { "pattern": "\\[A-Za-z\\]", "present": true }
+      ]
+    },
+    {
+      "id": "pw-strength-special",
+      "kind": "wrong_claim",
+      "claim": "isStrongPassword requires a special character and at least 12 characters.",
+      "citation": "src/auth/password.ts:16-18",
+      "supported": false,
+      "anchors": [{ "pattern": "length >= 12", "present": true }]
+    },
+    {
+      "id": "session-expiry-unchecked",
+      "kind": "supported_absence",
+      "claim": "verifySession never checks expiresAt; it returns the user id for any known token.",
+      "citation": "src/auth/session.ts:35-41",
+      "supported": true,
+      "anchors": [
+        { "pattern": "expiresAt", "present": false },
+        { "pattern": "return session\\.userId", "present": true }
+      ]
+    },
+    {
+      "id": "session-expiry-enforced",
+      "kind": "invented_behaviour",
+      "claim": "verifySession rejects sessions whose expiresAt is in the past.",
+      "citation": "src/auth/session.ts:35-41",
+      "supported": false,
+      "anchors": [{ "pattern": "expiresAt", "present": true }]
+    },
+    {
+      "id": "session-map",
+      "kind": "supported",
+      "claim": "SessionStore keeps sessions in a process-local Map keyed by token.",
+      "citation": "src/auth/session.ts:12-26",
+      "supported": true,
+      "anchors": [{ "pattern": "new Map<string, Session>\\(\\)", "present": true }]
+    },
+    {
+      "id": "session-redis",
+      "kind": "wrong_claim",
+      "claim": "SessionStore persists sessions in Redis so they survive restarts.",
+      "citation": "src/auth/session.ts:12-26",
+      "supported": false,
+      "anchors": [{ "pattern": "redis", "flags": "i", "present": true }]
+    },
+    {
+      "id": "session-create",
+      "kind": "supported",
+      "claim": "createSession issues a 32-byte random token that expires SESSION_TTL_MS after creation.",
+      "citation": "src/auth/session.ts:28-32",
+      "supported": true,
+      "anchors": [
+        { "pattern": "randomBytes\\(32\\)", "present": true },
+        { "pattern": "now \\+ SESSION_TTL_MS", "present": true }
+      ]
+    },
+    {
+      "id": "ratelimit-in-memory",
+      "kind": "supported",
+      "claim": "RateLimiter keeps fixed-window counters in an in-memory Map.",
+      "citation": "src/middleware/rate-limit.ts (RateLimiter)",
+      "supported": true,
+      "anchors": [
+        { "pattern": "new Map<string, Window>\\(\\)", "present": true },
+        { "pattern": "WINDOW_MS", "present": true }
+      ]
+    },
+    {
+      "id": "ratelimit-redis",
+      "kind": "wrong_claim",
+      "claim": "RateLimiter uses a sliding window stored in Redis.",
+      "citation": "src/middleware/rate-limit.ts (RateLimiter)",
+      "supported": false,
+      "anchors": [{ "pattern": "redis", "flags": "i", "present": true }]
+    },
+    {
+      "id": "order-transaction",
+      "kind": "supported",
+      "claim": "createOrder writes the order and its items inside one database transaction.",
+      "citation": "src/orders/service.ts (OrderService.createOrder)",
+      "supported": true,
+      "anchors": [
+        { "pattern": "this\\.db\\.transaction", "present": true },
+        { "pattern": "insertOrderItems\\(tx", "present": true }
+      ]
+    },
+    {
+      "id": "order-no-idempotency",
+      "kind": "supported_absence",
+      "claim": "createOrder takes no idempotency key, so a retried request inserts a second order.",
+      "citation": "src/orders/service.ts:21-31",
+      "supported": true,
+      "anchors": [
+        { "pattern": "idempoten", "flags": "i", "present": false },
+        { "pattern": "insertOrder\\(tx", "present": true }
+      ]
+    },
+    {
+      "id": "order-idempotency-key",
+      "kind": "invented_behaviour",
+      "claim": "createOrder deduplicates retried requests with an idempotency key.",
+      "citation": "src/orders/service.ts:21-31",
+      "supported": false,
+      "anchors": [{ "pattern": "idempoten", "flags": "i", "present": true }]
+    },
+    {
+      "id": "order-charge-in-transaction",
+      "kind": "wrong_claim",
+      "claim": "createOrder charges the card inside the transaction, so a failed charge rolls back the order.",
+      "citation": "src/orders/service.ts:21-31",
+      "supported": false,
+      "anchors": [{ "pattern": "transaction\\(async \\(tx\\) => \\{[^}]*chargeCard", "present": true, "note": "the charge would have to sit inside the transaction callback" }]
+    },
+    {
+      "id": "listorders-uncapped",
+      "kind": "supported_absence",
+      "claim": "listOrders passes the caller's limit to the query without capping it.",
+      "citation": "src/orders/service.ts:33-36",
+      "supported": true,
+      "anchors": [
+        { "pattern": "Math\\.min|MAX_", "present": false },
+        { "pattern": "listOrderPage\\(this\\.db, offset, limit\\)", "present": true }
+      ]
+    },
+    {
+      "id": "listorders-capped",
+      "kind": "invented_behaviour",
+      "claim": "listOrders caps the page size at 100 rows.",
+      "citation": "src/orders/service.ts:33-36",
+      "supported": false,
+      "anchors": [{ "pattern": "Math\\.min|\\b100\\b", "present": true }]
+    },
+    {
+      "id": "orders-cache",
+      "kind": "supported",
+      "claim": "ordersForCustomer returns a cached list when one exists and queries the database only on a miss.",
+      "citation": "src/orders/service.ts:38-46",
+      "supported": true,
+      "anchors": [
+        { "pattern": "this\\.customerOrders\\.get\\(customerId\\)", "present": true },
+        { "pattern": "findOrdersByCustomer", "present": true }
+      ]
+    },
+    {
+      "id": "charge-retries",
+      "kind": "supported",
+      "claim": "chargeCard retries the gateway call up to 5 attempts with no delay between them.",
+      "citation": "src/payments/charge.ts:29-31",
+      "supported": true,
+      "anchors": [
+        { "pattern": "attempts: 5", "present": true },
+        { "pattern": "delayMs: 0", "present": true }
+      ]
+    },
+    {
+      "id": "charge-backoff",
+      "kind": "wrong_claim",
+      "claim": "chargeCard waits with exponential backoff between retries.",
+      "citation": "src/payments/charge.ts:29-31",
+      "supported": false,
+      "anchors": [{ "pattern": "backoff|Math\\.pow|\\*\\*", "flags": "i", "present": true }]
+    },
+    {
+      "id": "charge-402",
+      "kind": "supported",
+      "claim": "postCharge throws CardDeclinedError when the gateway answers 402.",
+      "citation": "src/payments/charge.ts:13-26",
+      "supported": true,
+      "anchors": [
+        { "pattern": "res\\.status === 402", "present": true },
+        { "pattern": "new CardDeclinedError", "present": true }
+      ]
+    },
+    {
+      "id": "charge-skips-declines",
+      "kind": "invented_behaviour",
+      "claim": "chargeCard does not retry declined cards.",
+      "citation": "src/payments/charge.ts:29-31",
+      "supported": false,
+      "anchors": [{ "pattern": "CardDeclinedError", "present": true, "note": "skipping declines would have to name the error" }]
+    },
+    {
+      "id": "retry-any-error",
+      "kind": "supported",
+      "claim": "withRetry retries on any thrown error without checking its type.",
+      "citation": "src/utils/retry.ts (withRetry)",
+      "supported": true,
+      "anchors": [
+        { "pattern": "catch \\(err\\)", "present": true },
+        { "pattern": "instanceof", "present": false }
+      ]
+    },
+    {
+      "id": "sql-interpolated",
+      "kind": "supported",
+      "claim": "findOrdersByCustomer interpolates customerId directly into the SQL string.",
+      "citation": "src/db/orders-repo.ts:25-27",
+      "supported": true,
+      "anchors": [{ "pattern": "'\\$\\{customerId\\}'", "present": true }]
+    },
+    {
+      "id": "sql-bound",
+      "kind": "wrong_claim",
+      "claim": "findOrdersByCustomer passes customerId as a bound parameter.",
+      "citation": "src/db/orders-repo.ts:25-27",
+      "supported": false,
+      "anchors": [{ "pattern": "\\[customerId\\]", "present": true }]
+    },
+    {
+      "id": "insert-bound",
+      "kind": "supported",
+      "claim": "insertOrder uses bound parameters for the customer id and currency.",
+      "citation": "src/db/orders-repo.ts (insertOrder)",
+      "supported": true,
+      "anchors": [
+        { "pattern": "values \\(\\$1, \\$2", "present": true },
+        { "pattern": "\\[customerId, currency\\]", "present": true }
+      ]
+    },
+    {
+      "id": "webhook-unverified",
+      "kind": "supported_absence",
+      "claim": "handleGatewayWebhook never verifies a signature; the headers are ignored.",
+      "citation": "src/payments/webhook.ts:12-21",
+      "supported": true,
+      "anchors": [
+        { "pattern": "signature|createHmac|gatewayWebhookSecret", "flags": "i", "present": false },
+        { "pattern": "void headers", "present": true }
+      ]
+    },
+    {
+      "id": "webhook-hmac",
+      "kind": "invented_behaviour",
+      "claim": "handleGatewayWebhook verifies an HMAC signature with gatewayWebhookSecret before updating the order.",
+      "citation": "src/payments/webhook.ts:12-21",
+      "supported": false,
+      "anchors": [{ "pattern": "createHmac|gatewayWebhookSecret", "present": true }]
+    },
+    {
+      "id": "reserve-not-atomic",
+      "kind": "supported",
+      "claim": "Reserve checks availability before it takes the write lock, so the check and the update are not atomic.",
+      "citation": "`Store.Reserve`",
+      "supported": true,
+      "anchors": [
+        { "pattern": "available := s\\.Available\\(sku\\)", "present": true },
+        { "pattern": "error \\{\\s*s\\.mu\\.Lock\\(\\)", "present": false }
+      ]
+    },
+    {
+      "id": "reserve-atomic",
+      "kind": "wrong_claim",
+      "claim": "Reserve holds the write lock across the availability check and the update.",
+      "citation": "services/inventory/reserve.go:31-40",
+      "supported": false,
+      "anchors": [{ "pattern": "error \\{\\s*s\\.mu\\.Lock\\(\\)", "present": true, "note": "the lock would have to be taken first" }]
+    },
+    {
+      "id": "release-locked",
+      "kind": "supported",
+      "claim": "Release holds the write lock for the whole update.",
+      "citation": "services/inventory/reserve.go:43-47",
+      "supported": true,
+      "anchors": [{ "pattern": "s\\.mu\\.Lock\\(\\)\\s*defer s\\.mu\\.Unlock\\(\\)", "present": true }]
+    },
+    {
+      "id": "email-dropped",
+      "kind": "supported_absence",
+      "claim": "After MAX_ATTEMPTS failed sends, process drops the job with only a warning; there is no dead-letter queue.",
+      "citation": "workers/email_worker.py (EmailWorker.process)",
+      "supported": true,
+      "anchors": [
+        { "pattern": "if job\\.attempts < MAX_ATTEMPTS", "present": true },
+        { "pattern": "log\\.warning", "present": true },
+        { "pattern": "dead|dlq", "flags": "i", "present": false }
+      ]
+    },
+    {
+      "id": "email-dlq",
+      "kind": "invented_behaviour",
+      "claim": "EmailWorker.process moves a job to a dead-letter queue after MAX_ATTEMPTS failures.",
+      "citation": "workers/email_worker.py (EmailWorker.process)",
+      "supported": false,
+      "anchors": [{ "pattern": "dead.?letter|dlq", "flags": "i", "present": true }]
+    },
+    {
+      "id": "lru-no-ttl",
+      "kind": "supported_absence",
+      "claim": "LruCache has no TTL; entries stay until newer entries evict them.",
+      "citation": "src/cache/lru.ts:1-32",
+      "supported": true,
+      "anchors": [
+        { "pattern": "ttl|expir|Date\\.now", "flags": "i", "present": false },
+        { "pattern": "this\\.entries\\.size > this\\.capacity", "present": true }
+      ]
+    },
+    {
+      "id": "lru-ttl",
+      "kind": "wrong_claim",
+      "claim": "LruCache expires entries after a configurable TTL.",
+      "citation": "src/cache/lru.ts:1-32",
+      "supported": false,
+      "anchors": [{ "pattern": "ttl|expir", "flags": "i", "present": true }]
+    },
+    {
+      "id": "redact-password-only",
+      "kind": "supported",
+      "claim": "redact masks only the password field.",
+      "citation": "src/lib/logger.ts:3-12",
+      "supported": true,
+      "anchors": [{ "pattern": "new Set\\(\\[\"password\"\\]\\)", "present": true }]
+    },
+    {
+      "id": "redact-broad",
+      "kind": "wrong_claim",
+      "claim": "redact masks tokens, email addresses and card numbers before logging.",
+      "citation": "src/lib/logger.ts:3-12",
+      "supported": false,
+      "anchors": [{ "pattern": "token|email|card", "flags": "i", "present": true }]
+    },
+    {
+      "id": "tax-client",
+      "kind": "supported",
+      "claim": "computeTotals applies a hardcoded 8% tax rate in the browser component.",
+      "citation": "web/components/CartSummary.tsx:10-16",
+      "supported": true,
+      "anchors": [
+        { "pattern": "TAX_RATE = 0\\.08", "present": true },
+        { "pattern": "subtotal \\* TAX_RATE", "present": true }
+      ]
+    },
+    {
+      "id": "tax-server",
+      "kind": "invented_behaviour",
+      "claim": "computeTotals fetches the tax rate from the server.",
+      "citation": "web/components/CartSummary.tsx:10-16",
+      "supported": false,
+      "anchors": [{ "pattern": "fetch\\(", "present": true }]
+    },
+    {
+      "id": "export-in-memory",
+      "kind": "supported",
+      "claim": "exportAll loads every order into a list before writing any CSV.",
+      "citation": "reports/src/ReportExporter.java (ReportExporter.exportAll)",
+      "supported": true,
+      "anchors": [
+        { "pattern": "new ArrayList", "present": true },
+        { "pattern": "rows\\.add", "present": true }
+      ]
+    },
+    {
+      "id": "export-escaped",
+      "kind": "wrong_claim",
+      "claim": "exportAll streams rows to the writer and escapes CSV fields.",
+      "citation": "reports/src/ReportExporter.java (ReportExporter.exportAll)",
+      "supported": false,
+      "anchors": [{ "pattern": "escape|quote|replace\\(", "flags": "i", "present": true }]
+    },
+    {
+      "id": "csrf-constant-time",
+      "kind": "supported",
+      "claim": "requireCsrfToken compares the header and cookie tokens in constant time.",
+      "citation": "src/middleware/csrf.ts (requireCsrfToken)",
+      "supported": true,
+      "anchors": [{ "pattern": "timingSafeEqual\\(a, b\\)", "present": true }]
+    },
+    {
+      "id": "validate-cap",
+      "kind": "supported",
+      "claim": "Order input is validated with a zod schema that allows at most 50 line items.",
+      "citation": "src/orders/validate.ts:1-20",
+      "supported": true,
+      "anchors": [
+        { "pattern": "MAX_LINE_ITEMS = 50", "present": true },
+        { "pattern": "\\.max\\(MAX_LINE_ITEMS\\)", "present": true }
+      ]
+    },
+    {
+      "id": "graceful-shutdown",
+      "kind": "supported",
+      "claim": "On SIGTERM the server stops accepting connections and closes the database pool once in-flight requests finish.",
+      "citation": "src/server.ts:71-79",
+      "supported": true,
+      "anchors": [
+        { "pattern": "server\\.close\\(", "present": true },
+        { "pattern": "db\\.close\\(\\)", "present": true },
+        { "pattern": "SIGTERM", "present": true }
+      ]
+    },
+    {
+      "id": "webhook-csrf",
+      "kind": "wrong_claim",
+      "claim": "Every POST route, including the gateway webhook, must pass the CSRF check.",
+      "citation": "src/server.ts:46-67",
+      "supported": false,
+      "anchors": [{ "pattern": "!key\\.startsWith\\(\"POST /webhooks/\"\\)", "present": false, "note": "webhooks are exempted from the CSRF check" }]
+    }
+  ],
+  "labels": []
+}

@@ -1,0 +1,280 @@
+{
+  "components": {
+    "evaluation": {
+      "model": "gpt-6-luna",
+      "reasoningEffort": "low"
+    },
+    "format": 1,
+    "k": 10,
+    "samples": "fce9ebe611fb7d6c2a03d4b42a2ab94dad9a3a27f02d6286fbc3e27c4b5490a1"
+  },
+  "format": 1,
+  "key": "3344547c8b36c84622fbcf20f039aa13e033bb72194cde9c4613373591c2e524",
+  "output": {
+    "recordedAt": "2026-10-11T08:22:08.228Z",
+    "values": {
+      "discrepancyAgreement": 1,
+      "guidanceAgreement": 0.7916666666666666,
+      "k": 10,
+      "measured": 12,
+      "ratingAgreement": 0.9,
+      "scoreRange": 0.8333333333333334,
+      "scoreStd": 0.3273844127146195,
+      "separation": {
+        "strong": 4.040000000000001,
+        "value": 0.9900000000000007,
+        "weak": 3.0500000000000003
+      },
+      "transcripts": [
+        {
+          "discrepancy": {
+            "mode": false,
+            "share": 1
+          },
+          "expected": "weak",
+          "guidance": {
+            "mode": "follow_up",
+            "share": 0.9
+          },
+          "id": "s1-security/q1",
+          "rating": {
+            "mode": "proficient",
+            "share": 1
+          },
+          "scoreMean": 3.8,
+          "scoreRange": 1,
+          "scoreStd": 0.42163702135578385,
+          "valid": 10
+        },
+        {
+          "discrepancy": {
+            "mode": false,
+            "share": 1
+          },
+          "expected": "mixed",
+          "guidance": {
+            "mode": "clarify",
+            "share": 0.5
+          },
+          "id": "s1-security/q2",
+          "rating": {
+            "mode": "developing",
+            "share": 0.8
+          },
+          "scoreMean": 3,
+          "scoreRange": 2,
+          "scoreStd": 0.4714045207910317,
+          "valid": 10
+        },
+        {
+          "discrepancy": {
+            "mode": false,
+            "share": 1
+          },
+          "expected": "weak",
+          "guidance": {
+            "mode": "follow_up",
+            "share": 1
+          },
+          "id": "s1-security/q3",
+          "rating": {
+            "mode": "proficient",
+            "share": 0.9
+          },
+          "scoreMean": 3.5,
+          "scoreRange": 1,
+          "scoreStd": 0.5270462766947299,
+          "valid": 10
+        },
+        {
+          "discrepancy": {
+            "mode": false,
+            "share": 1
+          },
+          "expected": "strong",
+          "guidance": {
+            "mode": "follow_up",
+            "share": 1
+          },
+          "id": "s2-payments/q1",
+          "rating": {
+            "mode": "proficient",
+            "share": 0.9
+          },
+          "scoreMean": 3.4,
+          "scoreRange": 1,
+          "scoreStd": 0.5163977794943223,
+          "valid": 10
+        },
+        {
+          "discrepancy": {
+            "mode": false,
+            "share": 1
+          },
+          "expected": "strong",
+          "guidance": {
+            "mode": "follow_up",
+            "share": 0.8
+          },
+          "id": "s2-payments/q2",
+          "rating": {
+            "mode": "proficient",
+            "share": 1
+          },
+          "scoreMean": 4,
+          "scoreRange": 0,
+          "scoreStd": 0,
+          "valid": 10
+        },
+        {
+          "discrepancy": {
+            "mode": false,
+            "share": 1
+          },
+          "expected": "strong",
+          "guidance": {
+            "mode": "move_on",
+            "share": 0.9
+          },
+          "id": "s2-payments/q3",
+          "rating": {
+            "mode": "proficient",
+            "share": 0.9
+          },
+          "scoreMean": 4.1,
+          "scoreRange": 1,
+          "scoreStd": 0.3162277660168379,
+          "valid": 10
+        },
+        {
+          "discrepancy": {
+            "mode": false,
+            "share": 1
+          },
+          "expected": "weak",
+          "guidance": {
+            "mode": "follow_up",
+            "share": 1
+          },
+          "id": "s3-data/q1",
+          "rating": {
+            "mode": "developing",
+            "share": 1
+          },
+          "scoreMean": 2,
+          "scoreRange": 0,
+          "scoreStd": 0,
+          "valid": 10
+        },
+        {
+          "discrepancy": {
+            "mode": false,
+            "share": 1
+          },
+          "expected": "weak",
+          "guidance": {
+            "mode": "follow_up",
+            "share": 0.8
+          },
+          "id": "s3-data/q2",
+          "rating": {
+            "mode": "developing",
+            "share": 1
+          },
+          "scoreMean": 2,
+          "scoreRange": 0,
+          "scoreStd": 0,
+          "valid": 10
+        },
+        {
+          "discrepancy": {
+            "mode": false,
+            "share": 1
+          },
+          "expected": "strong",
+          "guidance": {
+            "mode": "follow_up",
+            "share": 0.6
+          },
+          "id": "s3-data/q3",
+          "rating": {
+            "mode": "strong",
+            "share": 0.6
+          },
+          "scoreMean": 4.6,
+          "scoreRange": 1,
+          "scoreStd": 0.5163977794943222,
+          "valid": 10
+        },
+        {
+          "discrepancy": {
+            "mode": false,
+            "share": 1
+          },
+          "expected": "strong",
+          "guidance": {
+            "mode": "move_on",
+            "share": 0.6
+          },
+          "id": "s4-reliability/q1",
+          "rating": {
+            "mode": "proficient",
+            "share": 0.9
+          },
+          "scoreMean": 4.1,
+          "scoreRange": 1,
+          "scoreStd": 0.31622776601683794,
+          "valid": 10
+        },
+        {
+          "discrepancy": {
+            "mode": false,
+            "share": 1
+          },
+          "expected": "weak",
+          "guidance": {
+            "mode": "follow_up",
+            "share": 0.5
+          },
+          "id": "s4-reliability/q2",
+          "rating": {
+            "mode": "proficient",
+            "share": 1
+          },
+          "scoreMean": 3.8,
+          "scoreRange": 1,
+          "scoreStd": 0.42163702135578385,
+          "valid": 10
+        },
+        {
+          "discrepancy": {
+            "mode": false,
+            "share": 1
+          },
+          "expected": "weak",
+          "guidance": {
+            "mode": "follow_up",
+            "share": 0.9
+          },
+          "id": "s4-reliability/q3",
+          "rating": {
+            "mode": "proficient",
+            "share": 0.8
+          },
+          "scoreMean": 3.2,
+          "scoreRange": 1,
+          "scoreStd": 0.4216370213557839,
+          "valid": 10
+        }
+      ],
+      "validRate": 1
+    }
+  },
+  "pins": {
+    "dataset.consistency.synthetic": "74ca38f97602dd8ed0a09ec0e12a99e20bf2404adeb55ceaf59f8accac0f5035",
+    "dataset.sessions.synthetic": "1911adc7586517c5a270008ccc1e6249a231ebbd59ec3198c7fe2a8c13e7bdd2",
+    "synthetic": "c1c26c9b9d6ed1939e39e48e8a5652e0f2dfa8cb1c7a338416ece481fc3ebd01"
+  },
+  "sample": 0,
+  "site": "consistency_summary"
+}

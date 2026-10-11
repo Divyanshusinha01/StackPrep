@@ -1,0 +1,167 @@
+{
+  "format": 1,
+  "corpus": "stackprep-snapshot",
+  "guidelines": [
+    "A pair is a claim and one citation into the pinned snapshot. supported=true only when the cited lines alone show every code fact the claim states.",
+    "Anchors are regular expressions over the cited span: present=true must match, present=false must not (absence anchors). The label must agree with its anchors; validation re-checks this on every run.",
+    "Calibration pairs are written by hand from the snapshot source, before any judge output was seen. Kinds: supported, supported_absence, wrong_claim (real path, false statement), invented_behaviour (real symbol, behaviour it does not have).",
+    "labels holds verdicts for pairs the recorded pipeline produced. Copy key, claim and citation from the support suite's 'pair/' cases; use supported=null when the text states no fact about the code."
+  ],
+  "calibration": [
+    {
+      "id": "ground-filter",
+      "kind": "supported",
+      "claim": "groundReport keeps a repository_evidence entry only when its path was examined, cited by an evaluation, or appears in repository memory.",
+      "citation": "supabase/functions/inngest/report.ts:224-236",
+      "supported": true,
+      "anchors": [{ "pattern": "known\\.has\\(e\\.path\\) \\|\\| memoryText\\.includes\\(e\\.path\\)", "present": true }]
+    },
+    {
+      "id": "ground-narratives",
+      "kind": "wrong_claim",
+      "claim": "groundReport also removes narratives and struggled questions that mention files the interview never touched.",
+      "citation": "supabase/functions/inngest/report.ts:224-236",
+      "supported": false,
+      "anchors": [{ "pattern": "narrative|struggled", "present": true }]
+    },
+    {
+      "id": "report-input-no-detail",
+      "kind": "supported_absence",
+      "claim": "buildReportInput passes each evaluation's discrepancy flag to the report model but not its discrepancy_detail.",
+      "citation": "supabase/functions/inngest/report.ts:166-218",
+      "supported": true,
+      "anchors": [
+        { "pattern": "discrepancy_with_repository: e\\.discrepancy,", "present": true },
+        { "pattern": "discrepancy_detail", "present": false }
+      ]
+    },
+    {
+      "id": "report-input-detail",
+      "kind": "wrong_claim",
+      "claim": "buildReportInput passes discrepancy_detail to the report model so it can quote the contradiction.",
+      "citation": "supabase/functions/inngest/report.ts:166-218",
+      "supported": false,
+      "anchors": [{ "pattern": "discrepancy_detail", "present": true }]
+    },
+    {
+      "id": "report-input-no-score",
+      "kind": "supported_absence",
+      "claim": "buildReportInput gives the report model each evaluation's rating but not its numeric score.",
+      "citation": "supabase/functions/inngest/report.ts:166-218",
+      "supported": true,
+      "anchors": [
+        { "pattern": "rating: e\\.rating", "present": true },
+        { "pattern": "score", "present": false }
+      ]
+    },
+    {
+      "id": "classify-refusal",
+      "kind": "supported",
+      "claim": "classifyReportError makes a model refusal non-retriable but lets other invalid output be retried.",
+      "citation": "supabase/functions/inngest/report.ts:102-119",
+      "supported": true,
+      "anchors": [{ "pattern": "err\\.reason === \"refusal\" \\? nonRetriable\\(\"ai_invalid_output\"\\) : new Error\\(\"ai_invalid_output\"\\)", "present": true }]
+    },
+    {
+      "id": "classify-rate-limit",
+      "kind": "invented_behaviour",
+      "claim": "classifyReportError gives up immediately when the model provider rate-limits the request.",
+      "citation": "supabase/functions/inngest/report.ts:102-119",
+      "supported": false,
+      "anchors": [{ "pattern": "AIRateLimitedError\\) \\{\\s*return nonRetriable", "present": true }]
+    },
+    {
+      "id": "eval-timeout",
+      "kind": "supported",
+      "claim": "evaluateAnswer gives the model 9 seconds per attempt with one retry.",
+      "citation": "supabase/functions/interviews/tools/evaluate-answer.ts:19-21",
+      "supported": true,
+      "anchors": [
+        { "pattern": "AI_TIMEOUT_MS = 9_000", "present": true },
+        { "pattern": "AI_RETRIES = 1", "present": true }
+      ]
+    },
+    {
+      "id": "eval-failure-no-fallback",
+      "kind": "supported_absence",
+      "claim": "When the evaluation model fails, evaluateAnswer logs the error and returns an internal failure without any fallback score.",
+      "citation": "supabase/functions/interviews/tools/evaluate-answer.ts:212-218",
+      "supported": true,
+      "anchors": [
+        { "pattern": "return failed\\(\"internal\", false\\)", "present": true },
+        { "pattern": "heuristic|fallback|score", "flags": "i", "present": false }
+      ]
+    },
+    {
+      "id": "eval-heuristic",
+      "kind": "invented_behaviour",
+      "claim": "evaluateAnswer falls back to a keyword heuristic score when the model times out.",
+      "citation": "supabase/functions/interviews/tools/evaluate-answer.ts:212-218",
+      "supported": false,
+      "anchors": [{ "pattern": "heuristic|fallback", "flags": "i", "present": true }]
+    },
+    {
+      "id": "eval-focus-no-score",
+      "kind": "supported",
+      "claim": "The evaluation system prompt forbids putting a score, rating or judgement of the candidate in focus.",
+      "citation": "supabase/functions/interviews/tools/evaluate-answer.ts:46-65",
+      "supported": true,
+      "anchors": [{ "pattern": "focus is spoken guidance for the interviewer: never include a score, rating, or judgement", "present": true }]
+    },
+    {
+      "id": "normalize-not-started",
+      "kind": "supported",
+      "claim": "normalizePlan resets every coverage area to not_started.",
+      "citation": "supabase/functions/inngest/planning.ts:241-259",
+      "supported": true,
+      "anchors": [{ "pattern": "areas\\.map\\(\\(a\\) => \\(\\{ \\.\\.\\.a, status: \"not_started\" \\}\\)\\)", "present": true }]
+    },
+    {
+      "id": "normalize-drop-phases",
+      "kind": "supported",
+      "claim": "normalizePlan drops phases that are left with no known coverage area.",
+      "citation": "supabase/functions/inngest/planning.ts:241-259",
+      "supported": true,
+      "anchors": [{ "pattern": "\\.filter\\(\\(p\\) => p\\.coverage_area_ids\\.length > 0\\)", "present": true }]
+    },
+    {
+      "id": "normalize-min-areas",
+      "kind": "wrong_claim",
+      "claim": "normalizePlan rejects plans with fewer than five coverage areas.",
+      "citation": "supabase/functions/inngest/planning.ts:241-259",
+      "supported": false,
+      "anchors": [{ "pattern": "length < 5|\\.min\\(5\\)", "present": true }]
+    },
+    {
+      "id": "planning-budget",
+      "kind": "supported",
+      "claim": "buildPlanningInput stops adding memory rows once the MAX_MEMORY_CHARS budget is spent.",
+      "citation": "supabase/functions/inngest/planning.ts:199-235",
+      "supported": true,
+      "anchors": [
+        { "pattern": "MAX_MEMORY_CHARS - MAX_AI_TOTAL_CHARS", "present": true },
+        { "pattern": "if \\(budget <= 0\\)", "present": true }
+      ]
+    },
+    {
+      "id": "planning-unbounded",
+      "kind": "wrong_claim",
+      "claim": "buildPlanningInput sends every repository memory row to the planner without a size limit.",
+      "citation": "supabase/functions/inngest/planning.ts:199-235",
+      "supported": false,
+      "anchors": [{ "pattern": "MAX_MEMORY_CHARS", "present": false, "note": "an unbounded input would not mention the budget" }]
+    },
+    {
+      "id": "prior-guidance",
+      "kind": "supported",
+      "claim": "priorGuidance passes only the interview number, status, coverage statuses and per-category ratings, strengths and gaps of earlier interviews.",
+      "citation": "supabase/functions/inngest/planning.ts:189-197",
+      "supported": true,
+      "anchors": [
+        { "pattern": "coverage: p\\.coverage\\.map\\(\\(\\{ id, name, status \\}\\)", "present": true },
+        { "pattern": "\\{ category, ratings, strengths, gaps \\}", "present": true }
+      ]
+    }
+  ],
+  "labels": []
+}
