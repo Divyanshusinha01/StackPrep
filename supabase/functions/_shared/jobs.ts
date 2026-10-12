@@ -45,6 +45,12 @@ export interface JobEvents {
     /** The `report_generation` jobs row that projects this run's progress. */
     job_id: string;
   };
+  "repository.push.received": {
+    workspace_id: string;
+    installation_id: number;
+    /** `push:<X-GitHub-Delivery>:<workspace_id>` or `reconcile:<workspace_id>:<push_generation>`. */
+    dedupe_key: string;
+  };
 }
 
 export type JobEventName = keyof JobEvents;
@@ -63,14 +69,19 @@ export interface EventSender {
   send(payload: { id?: string; name: string; data: Record<string, unknown> }): Promise<{ ids: string[] }>;
 }
 
+function dedupeKey(payload: JobEvents[JobEventName]): string {
+  return "job_id" in payload ? payload.job_id : payload.dedupe_key;
+}
+
 /**
- * Sends jobs as Inngest events. The event id is derived from the event name and job id, so a
- * re-sent event for the same job is deduplicated by Inngest instead of starting a second run.
+ * Sends jobs as Inngest events. The event id is derived from the event name and the job id (or the
+ * explicit dedupe key of events without a job), so a re-sent event is deduplicated by Inngest
+ * instead of starting a second run.
  */
 export function createInngestJobQueue(sender: EventSender): JobQueue {
   return {
     async enqueue(name, payload) {
-      const { ids } = await sender.send({ id: `${name}:${payload.job_id}`, name, data: { ...payload } });
+      const { ids } = await sender.send({ id: `${name}:${dedupeKey(payload)}`, name, data: { ...payload } });
       return { eventId: ids[0] ?? null };
     },
   };

@@ -123,6 +123,7 @@ Used to:
 - List accessible repositories
 - Read repository metadata
 - Read relevant source files during analysis
+- Deliver `push` webhooks so ready workspaces follow their default branch (see Push sync in [Repository Context](#6-repository-context))
 
 GitHub credentials/tokens are never exposed to the browser.
 
@@ -505,6 +506,19 @@ Embeddings are per memory row, not per AST node or chunk: about seven baseline r
 - **Storage.** Migrations `20261008100000_code_indexing_job_type.sql`, `20261008100100_code_index.sql` and `20261008100200_code_memory.sql` add `code_files`, `code_symbols`, `code_imports` and `code_calls`, owned like `repository_memory` (composite FK to `workspaces`, owner-select RLS, writes only through service-role functions). Source text is never stored: only names, kinds, ranges, specifiers, callee text and a short signature. `replace_code_index` writes one batch; a file whose facts hash and parser version are unchanged is left as is, any other file at the same commit and path is replaced with its facts, so stale facts never survive and other commits are never touched. `complete_code_index` records counts, languages and limits in the commit's metadata-only `code_index` memory row (empty content, never embedded); `prune_code_index` then drops other commits except the workspace target and commits pinned by active interviews.
 - **Memory rows.** `save_code_memory` replaces the commit's code-index rows (`metadata.source = 'code_index'`): one `code_module` row per directory (indexed files, top exported symbols, directories it imports from, external imports) and a symbol-outline `file_summary` row for each of the 40 most relevant files with declarations. Unchanged rows keep their embedding. They enter the existing memory embedding pipeline after the run. Readers that load commit summaries (planning, deep analysis, report, realtime instructions, evaluation) skip `code_index` and `code_module` rows.
 - **Reads.** Security-invoker functions `find_symbol`, `find_importers`, `find_dependencies`, `find_callers` and `search_code_symbols`, all scoped to a workspace and commit. `resolved_path` on imports is a path-only guess for relative specifiers. Results are labeled syntactic (name-based, unresolved) and must not be presented as precise semantics.
+- **Incremental re-indexing.** Before fetching a batch, `load_reusable_code_files` looks up stored facts for each file from any commit of the workspace, on an exact match of path, blob SHA and `PARSER_VERSION`. Rows recorded as `fetch_failed` or `internal_error` are never reused. Hits are rebuilt with `hydratePayload`, which recomputes every import's `resolved_path` against the new commit's tree, so a reused file equals a fresh parse of the same blob (same facts hash). Only the misses are fetched and parsed. Batching and caps are unchanged; the run logs and stores a `reused` count.
+
+**Push sync** keeps a ready workspace on its repository's default branch head. Migration `20261012100000_push_sync.sql` adds the database side.
+
+- **Webhook.** The `github-webhooks` Edge Function (`verify_jwt = false`) verifies `X-Hub-Signature-256` (HMAC-SHA256 of the raw body with `GITHUB_APP_WEBHOOK_SECRET`, compared in constant time) and answers `401` otherwise. `ping` returns `200`, and other events are a `202` no-op. Pushes to tags, other branches or deleted refs are ignored; force pushes are handled like normal pushes.
+- **Generation marker.** For an accepted push, `mark_push_received` increments `workspaces.push_generation` on every ready workspace of that repository whose connection has the installation and is not suspended. Several users can share one repository. Marking happens before any event is sent; if it fails, the webhook returns `500` so GitHub records a failed delivery. A push is pending while `push_generation > synced_generation`, which survives failed enqueues, exhausted retries and Inngest outages.
+- **Events.** The webhook then sends one `repository.push.received` per marked workspace, with the event id derived from `X-GitHub-Delivery` and the workspace id, so redeliveries are deduplicated. An enqueue failure is logged and reported to Sentry, and the response is still `202`.
+- **Sync function.** Function `repository-push-sync` is debounced for 2 minutes per workspace and runs with concurrency 1 per workspace, so a burst of pushes becomes one baseline, one deep analysis and one code index. Each of at most 6 attempts reads `push_generation`, calls `getRepositoryHead` again (so the actual branch head wins, including force-push rewinds), then calls `follow_repository_head` with the observed generation. That function advances `synced_generation` to `greatest(synced, observed)`, so a push marked after the observation stays pending. It moves `target_commit_sha` and queues a `repository_indexing` job when the head is new, or when the head is a target whose last baseline failed (once per new push generation). It returns `up_to_date` for the indexed commit.
+- **Gating.** While any `repository_indexing`, `deep_analysis` or `code_indexing` job is queued or running, `follow_repository_head` changes nothing and returns `analysis_active`, because `request_deep_analysis` and `request_code_index` would otherwise silently skip the new commit. The sync then sleeps (1, 2, 4, 8 and 15 minutes) and tries again. After the last attempt it logs `push_sync_deferred` and leaves the push pending.
+- **Enqueue failure.** If `repository.analysis.requested` cannot be sent, the job is failed through `fail_repository_analysis`, which leaves a ready workspace ready. `reopen_push_sync` then rolls `synced_generation` back only if it still equals the observed generation, so the push is pending again.
+- **Reconciler.** Cron function `repository-push-reconcile` runs every 10 minutes. It calls `list_pending_push_workspaces`, which returns ready workspaces with a pending push, a non-suspended connection and no active analysis job. For each it re-emits `repository.push.received` with event id `reconcile:<workspace_id>:<push_generation>`, so each generation is re-emitted at most once.
+- **Readiness invariant.** Push sync never changes `indexed_commit_sha` or the workspace status. Only `complete_repository_analysis` for the current target moves `indexed_commit_sha`, so a ready workspace stays ready on its last analyzed commit while the new commit is analyzed or after its baseline fails, and `start_interview` keeps pinning that commit until then. Pruning keeps the target, the indexed commit and the commits of active interviews.
+- **Setup.** In the GitHub App settings, set the webhook URL to `{SUPABASE_URL}/functions/v1/github-webhooks`, set the webhook secret to `GITHUB_APP_WEBHOOK_SECRET`, and subscribe to **Push** events.
 
 ```text
 Repository
@@ -518,9 +532,11 @@ Deep analysis + memory embeddings (background)
 Repository Context
     ↓
 Interview
+
+Push to default branch → github-webhooks → push sync → new target commit → baseline analysis → ...
 ```
 
-The interview always references the indexed commit used to create its context.
+The interview always references the indexed commit used to create its context. A followed commit only replaces it once its baseline analysis completes.
 
 ---
 
@@ -558,9 +574,12 @@ POST   /interviews/:id/end
 DELETE /interviews/:id
 GET    /interviews/:id/report
 GET    /admin/metrics?days=N           (allowlisted admins only)
+POST   /github-webhooks                (GitHub App webhooks; signature-verified, no JWT)
 ```
 
 `GET /interviews/:id/events` is the server-to-client event stream (see [Transport](#transport)).
+
+`POST /github-webhooks` is called only by GitHub. It is authenticated by the `X-Hub-Signature-256` HMAC, not a Supabase JWT, and only acts on `push` events (see Push sync in [Repository Context](#6-repository-context)).
 
 `POST /interviews/:id/pause` is the candidate's **Stop interview** (PRD §21), sent only after a UI confirmation. The service-role function `pause_interview` (migration `20261008120000_voluntary_pause.sql`) moves an `in_progress` interview to `paused`, sets `paused_at`, increments `pause_count` (at most 3, otherwise `409 pause_limit_reached`), writes a `pause` event with `{ "reason": "user" }`, and, if a voice segment is open, closes it with a server-side `disconnected` so voice time stops even if the browser never reports its own. It returns `{ status: "paused", pauses_left, resume_by }`; repeating it while paused returns the same deadline. While paused, `POST /realtime/session` returns `409 interview_paused`, and tool calls and integrity frames are refused because they require `in_progress`.
 
@@ -981,13 +1000,15 @@ Use background jobs for:
 
 | Job type              | Trigger                                 | Output                                  |
 | --------------------- | --------------------------------------- | --------------------------------------- |
-| `repository_indexing` | Workspace created / analysis retried    | Baseline repository memory; workspace `ready` |
+| `repository_indexing` | Workspace created / analysis retried / push sync followed a new head | Baseline repository memory; workspace `ready` at the analyzed commit |
 | `deep_analysis`       | Baseline analysis succeeded (best-effort chained step) | `structured.ai` on the commit's `architecture_summary` and `modules` rows, plus a `concepts` row |
 | `code_indexing`       | Baseline analysis succeeded (best-effort chained step) | Commit-pinned `code_files` / `code_symbols` / `code_imports` / `code_calls`, `code_index` and `code_module` memory rows, symbol-outline `file_summary` rows |
 | `interview_planning`  | `POST /workspaces/:id/interviews`       | Coverage map, plan, strategy in `interview_state` |
 | `report_generation`   | Backend marks interview complete        | Interview report                        |
 
 Memory embedding (Inngest event `repository.memory_embedding.requested`, function `memory-embedding`) also runs in the background, but it has no `jobs` row and no job type: it is triggered by best-effort steps after the baseline, after deep analysis and after the code index, keyed by the originating job's id, and its failures only reach logs and Sentry (see [Repository Context](#6-repository-context)).
+
+Push sync also has no job type of its own. Function `repository-push-sync` (event `repository.push.received`, sent by the `github-webhooks` function and by the reconciler) queues an ordinary `repository_indexing` job when the default branch head moved, and the cron function `repository-push-reconcile` (every 10 minutes) re-emits pushes that are still pending. Durable state lives in `workspaces.push_generation` and `workspaces.synced_generation`, not in Inngest (see Push sync in [Repository Context](#6-repository-context)).
 
 ### Implementation — Inngest
 
@@ -1091,7 +1112,7 @@ Each integration has its own Zod schema in `@stackprep/shared` (`packages/shared
 | `edgeSupabaseEnvSchema`    | `SUPABASE_URL`, `SUPABASE_ANON_KEY`, `SUPABASE_SERVICE_ROLE_KEY` (injected by the runtime)     |
 | `inngestEnvSchema`         | `INNGEST_EVENT_KEY`, `INNGEST_SIGNING_KEY`                                                    |
 | `openAIEnvSchema`          | `OPENAI_API_KEY`, `OPENAI_REALTIME_MODEL`, `OPENAI_REALTIME_TRANSCRIPTION_MODEL`, `OPENAI_PLANNING_MODEL`, `OPENAI_EVALUATION_MODEL`, `OPENAI_REPORT_MODEL`, `OPENAI_VISION_MODEL`, `OPENAI_EMBEDDING_MODEL` (default `text-embedding-3-small`; must natively output 1536 dimensions), and per-task `OPENAI_{PLANNING,EVALUATION,REPORT,VISION}_REASONING_EFFORT`. |
-| `githubAppEnvSchema`       | `GITHUB_APP_ID`, `GITHUB_APP_CLIENT_ID`, `GITHUB_APP_CLIENT_SECRET`, `GITHUB_APP_PRIVATE_KEY`, `GITHUB_APP_WEBHOOK_SECRET` |
+| `githubAppEnvSchema`       | `GITHUB_APP_ID`, `GITHUB_APP_CLIENT_ID`, `GITHUB_APP_CLIENT_SECRET`, `GITHUB_APP_PRIVATE_KEY`, `GITHUB_APP_WEBHOOK_SECRET` (the `github-webhooks` function reads only the webhook secret) |
 | `edgeSentryEnvSchema`      | `SENTRY_DSN`, `SENTRY_ENVIRONMENT`                                                            |
 | `adminEnvSchema`           | `ADMIN_USER_IDS` (`admin` function; same list as the web app)                                 |
 

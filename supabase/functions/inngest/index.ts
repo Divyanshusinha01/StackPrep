@@ -16,6 +16,9 @@ import { createMemoryEmbeddingFunction } from "./memory-embedding.ts";
 import { createMemoryEmbeddingStore } from "./memory-embedding-store.ts";
 import { createInterviewPlanningFunction } from "./planning.ts";
 import { createPlanningStore } from "./planning-store.ts";
+import { createPushReconcileFunction } from "./push-reconcile.ts";
+import { createPushSyncFunction } from "./push-sync.ts";
+import { createPushSyncStore } from "./push-sync-store.ts";
 import { createInterviewReportFunction } from "./report.ts";
 import { createReportStore } from "./report-store.ts";
 import { createAnalysisStore } from "./store.ts";
@@ -40,6 +43,7 @@ const github = createGithubApp({
 const inngest = createInngestClient(env);
 const ai = createOpenAIProvider({ apiKey: env.OPENAI_API_KEY });
 const jobs = createInngestJobQueue(inngest);
+const pushSyncStore = createPushSyncStore(serviceClient);
 
 Deno.serve(withSentry(
   createInngestHandler(inngest, [
@@ -48,6 +52,8 @@ Deno.serve(withSentry(
       store: createAnalysisStore(serviceClient),
       jobs,
     }),
+    createPushSyncFunction(inngest, { github, store: pushSyncStore, jobs }),
+    createPushReconcileFunction(inngest, { store: pushSyncStore, jobs }),
     createCodeIndexFunction(inngest, {
       github,
       store: createCodeIndexStore(serviceClient),
