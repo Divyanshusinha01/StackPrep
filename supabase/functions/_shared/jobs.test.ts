@@ -43,6 +43,24 @@ Deno.test("memory embedding events are keyed by the originating job and never co
   assertEquals(sent[0].data, embedding);
 });
 
+Deno.test("events without a job are keyed by their explicit dedupe key", async () => {
+  const sent: Parameters<EventSender["send"]>[0][] = [];
+  const queue = createInngestJobQueue({
+    send(event) {
+      sent.push(event);
+      return Promise.resolve({ ids: [] });
+    },
+  });
+  const push = { workspace_id: payload.workspace_id, installation_id: 7, dedupe_key: `push:delivery-1:${payload.workspace_id}` };
+  await queue.enqueue("repository.push.received", push);
+  await queue.enqueue("repository.push.received", push);
+  assertEquals(sent.map((e) => e.id), [
+    `repository.push.received:push:delivery-1:${payload.workspace_id}`,
+    `repository.push.received:push:delivery-1:${payload.workspace_id}`,
+  ]);
+  assertEquals(sent[0].data, push);
+});
+
 Deno.test("Inngest job queue returns no event id when none is reported and propagates send errors", async () => {
   const empty = createInngestJobQueue({ send: () => Promise.resolve({ ids: [] }) });
   assertEquals(await empty.enqueue("repository.analysis.requested", payload), { eventId: null });

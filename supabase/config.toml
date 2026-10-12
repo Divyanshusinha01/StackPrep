@@ -56,6 +56,12 @@ enabled = true
 verify_jwt = true
 entrypoint = "./functions/admin/index.ts"
 
+# Called by GitHub, not browsers: requests are authenticated with the GitHub App webhook secret.
+[functions.github-webhooks]
+enabled = true
+verify_jwt = false
+entrypoint = "./functions/github-webhooks/index.ts"
+
 # Called by Inngest, not browsers: requests are authenticated with the Inngest signing key.
 [functions.inngest]
 enabled = true

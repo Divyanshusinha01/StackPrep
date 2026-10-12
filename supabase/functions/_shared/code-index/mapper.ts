@@ -269,6 +269,33 @@ export function toFilePayload(
   };
 }
 
+/**
+ * Rebuilds a payload stored for the same path, blob and parser version at another commit. Only
+ * `resolved_path` depends on the rest of the tree, so it is recomputed against the new commit's
+ * paths; the result equals a fresh parse of the same blob in the same tree.
+ */
+export function hydratePayload(stored: CodeFilePayload, knownPaths: ReadonlySet<string>): CodeFilePayload {
+  const language = stored.language;
+  return {
+    path: stored.path,
+    blob_sha: stored.blob_sha,
+    language,
+    size_bytes: stored.size_bytes,
+    line_count: stored.line_count,
+    parse_status: stored.parse_status,
+    parse_error_count: stored.parse_error_count,
+    skipped_reason: stored.skipped_reason,
+    stats: stored.stats,
+    symbols: stored.symbols.map((s) => ({ ...s })),
+    imports: stored.imports.map((imp) => ({
+      ...imp,
+      names: [...imp.names],
+      resolved_path: language ? resolveRelativeImport(stored.path, language, imp.source, knownPaths) : null,
+    })),
+    calls: stored.calls.map((c) => ({ ...c })),
+  };
+}
+
 /** Exported top-level symbols first, then other top-level ones, then members; source order within. */
 export function toOutline(payload: CodeFilePayload): FileOutline | null {
   if ((payload.parse_status !== "ok" && payload.parse_status !== "partial") || !payload.language) {

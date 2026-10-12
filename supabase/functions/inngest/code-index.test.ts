@@ -54,8 +54,21 @@ function shaFor(path: string): string {
   return h.toString(16).padStart(40, "0");
 }
 
+/** Blob shas depend on content, like git, so a changed file gets a new sha at the same path. */
 function tree(files: Record<string, string> = FILES): RepositoryTreeEntry[] {
-  return Object.entries(files).map(([path, text]) => ({ path, type: "blob", sha: shaFor(path), size: new TextEncoder().encode(text).length }));
+  return Object.entries(files).map(([path, text]) => ({
+    path,
+    type: "blob",
+    sha: shaFor(`${path}\0${text}`),
+    size: new TextEncoder().encode(text).length,
+  }));
+}
+
+/** Stored code_files payloads across commits, keyed like `load_reusable_code_files` matches them. */
+type StoredFacts = Map<string, CodeFilePayload>;
+
+function factsKey(path: string, blobSha: string, version: string): string {
+  return `${path}|${blobSha}|${version}`;
 }
 
 function target(extra: Partial<CodeIndexTarget> = {}): CodeIndexTarget {
@@ -79,9 +92,11 @@ interface Setup {
   blobError?: (path: string) => Error | null;
   prune?: () => Promise<number>;
   limits?: Partial<typeof DEFAULT_CODE_INDEX_LIMITS>;
+  /** Shared between runs to simulate indexing successive commits of one workspace. */
+  db?: StoredFacts;
 }
 
-function setup({ target: t = target(), files = FILES, entries, blobError, prune, limits }: Setup = {}) {
+function setup({ target: t = target(), files = FILES, entries, blobError, prune, limits, db = new Map() }: Setup = {}) {
   const calls: string[] = [];
   const replaced: { commit: string; version: string; files: CodeFilePayload[] }[] = [];
   const memory: CodeMemoryRow[][] = [];
@@ -102,9 +117,19 @@ function setup({ target: t = target(), files = FILES, entries, blobError, prune,
       stages.push(progress);
       return Promise.resolve();
     },
+    loadReusable: (_w, version, lookups) => {
+      assert(lookups.length <= 100);
+      return Promise.resolve(lookups
+        .map((l) => db.get(factsKey(l.path, l.blob_sha, version)))
+        .filter((p): p is CodeFilePayload => p !== undefined && p.skipped_reason !== "fetch_failed" && p.skipped_reason !== "internal_error")
+        .map((p) => JSON.parse(JSON.stringify(p))));
+    },
     replaceFiles: (_w, commit, version, batch) => {
       calls.push(`replace:${batch.length}`);
       replaced.push({ commit, version, files: batch });
+      for (const p of batch) {
+        db.set(factsKey(p.path, p.blob_sha, version), JSON.parse(JSON.stringify(p)));
+      }
       return Promise.resolve(batch.length);
     },
     saveMemory: (_w, _j, _c, rows) => {
@@ -352,6 +377,91 @@ Deno.test("a failed prune is swallowed and the index still completes", async () 
   assertEquals(enqueued.length, 1);
   assert(logs.some((l) => JSON.parse(l).event === "code_index_prune_failed"));
   assert(!logs.join("\n").includes("db down"));
+});
+
+// Incremental re-indexing ------------------------------------------------------------
+
+const nextEvent = { ...event, commit_sha: OTHER_SHA };
+
+async function indexCommit(db: StoredFacts, files: Record<string, string>, data = nextEvent, extra: Setup = {}) {
+  const s = setup({ db, files, target: target({ commit_sha: data.commit_sha }), ...extra });
+  const { step } = stepRunner();
+  const result = await runCodeIndex(s.deps, { data, runId: "r", step });
+  return { ...s, result, files: byPath(s.replaced), fetched: s.calls.filter((c) => c.startsWith("blob:")).map((c) => c.slice(5)).sort() };
+}
+
+function completedLog(logs: string[]): Record<string, unknown> {
+  return logs.map((l) => JSON.parse(l)).find((l) => l.event === "code_index_completed");
+}
+
+Deno.test("a followed commit fetches only changed files and reuses the rest", async () => {
+  const db: StoredFacts = new Map();
+  await indexCommit(db, FILES, event);
+  const changed = { ...FILES, "src/auth/login.ts": FILES["src/auth/login.ts"] + "\nexport function logout() {}\n" };
+  const next = await indexCommit(db, changed);
+
+  assertEquals(next.result.outcome, "indexed");
+  assertEquals(next.fetched, ["src/auth/login.ts"]);
+  assertEquals(next.files.get("src/auth/login.ts")?.symbols.map((s) => s.name), ["Session", "refresh", "login", "logout"]);
+  assertEquals(next.files.get("src/auth/config.ts")?.skipped_reason, "secret", "deterministic skips are reused");
+  assert(next.replaced.every((r) => r.commit === OTHER_SHA));
+  assertEquals(completedLog(next.logs).reused, 6);
+  assertEquals((next.completed[0].summary.selection as Record<string, number>).reused, 6);
+
+  // Reused payloads are what a fresh index of the same tree produces.
+  const fresh = await indexCommit(new Map(), changed);
+  assertEquals(fresh.fetched.length, 7);
+  assertEquals(next.files, fresh.files);
+  assertEquals(next.memory, fresh.memory);
+});
+
+Deno.test("reused imports are resolved against the new tree", async () => {
+  const db: StoredFacts = new Map();
+  const base = {
+    "src/index.ts": `import { login } from "./auth/login.js";\nimport { util } from "./util";\n\nexport const main = () => login(util);\n`,
+    "src/auth/login.ts": "export function login(x: unknown) {\n  return x;\n}\n",
+  };
+  await indexCommit(db, base, event);
+  const resolved = (r: Awaited<ReturnType<typeof indexCommit>>) => r.files.get("src/index.ts")!.imports.map((i) => i.resolved_path);
+
+  const added = await indexCommit(db, { ...base, "src/util.ts": "export const util = 1;\n" });
+  assertEquals(added.fetched, ["src/util.ts"]);
+  assertEquals(resolved(added), ["src/auth/login.ts", "src/util.ts"], "a file added elsewhere resolves a reused import");
+
+  const deleted = await indexCommit(db, { "src/index.ts": base["src/index.ts"] }, { ...event, commit_sha: "e".repeat(40) });
+  assertEquals(deleted.fetched, []);
+  assertEquals(resolved(deleted), [null, null], "a deleted target makes the reused import unresolved");
+
+  const fresh = await indexCommit(new Map(), { "src/index.ts": base["src/index.ts"] }, { ...event, commit_sha: "e".repeat(40) });
+  assertEquals(deleted.files, fresh.files);
+});
+
+Deno.test("reuse needs the same path, blob and parser version", async () => {
+  const db: StoredFacts = new Map();
+  const files = { "src/a.ts": "export const a = 1;\n", "src/b.ts": "export const b = 2;\n" };
+  await indexCommit(db, files, event);
+
+  // Facts stored by another parser version are re-parsed.
+  for (const [key, payload] of [...db]) {
+    db.delete(key);
+    db.set(key.replace(/\|[^|]*$/, "|old-parser"), payload);
+  }
+  assertEquals((await indexCommit(db, files)).fetched, ["src/a.ts", "src/b.ts"]);
+
+  // A moved file has the same blob at another path, so it is re-parsed as well.
+  const moved = await indexCommit(db, { "src/a.ts": files["src/a.ts"], "lib/b.ts": files["src/b.ts"] });
+  assertEquals(moved.fetched, ["lib/b.ts"]);
+  assertEquals(moved.files.get("lib/b.ts")?.path, "lib/b.ts");
+});
+
+Deno.test("a stored fetch failure is fetched again", async () => {
+  const db: StoredFacts = new Map();
+  await indexCommit(db, FILES, event, {
+    blobError: (path) => path === "src/auth/login.ts" ? new GithubUnexpectedResponseError({ status: 500 }) : null,
+  });
+  const next = await indexCommit(db, FILES);
+  assertEquals(next.fetched, ["src/auth/login.ts"]);
+  assertEquals(next.files.get("src/auth/login.ts")?.parse_status, "ok");
 });
 
 Deno.test("onFailure records a fixed code and message, never the raw error", async () => {

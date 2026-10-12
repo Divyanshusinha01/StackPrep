@@ -25,6 +25,12 @@ export interface CodeIndexTarget {
 export interface CodeIndexStore {
   loadTarget(jobId: string, workspaceId: string): Promise<CodeIndexTarget | null>;
   markStage(jobId: string, progress: number, runId: string): Promise<void>;
+  /**
+   * Stored payloads from any commit of the workspace for an exact path, blob and parser version
+   * match (at most 100 lookups). Transient failures are never returned. Stored `resolved_path`
+   * values belong to another tree and must be recomputed.
+   */
+  loadReusable(workspaceId: string, parserVersion: string, files: { path: string; blob_sha: string }[]): Promise<CodeFilePayload[]>;
   /** One batch through `replace_code_index`; returns the number of files written (unchanged ones are skipped). */
   replaceFiles(workspaceId: string, commitSha: string, parserVersion: string, files: CodeFilePayload[]): Promise<number>;
   /** Replaces the commit's code-index memory rows; returns the number inserted. */
@@ -106,6 +112,16 @@ export function createCodeIndexStore(serviceClient: SupabaseClient): CodeIndexSt
         .eq("id", jobId)
         .is("started_at", null);
       check("record code index start", startError);
+    },
+
+    async loadReusable(workspaceId, parserVersion, files) {
+      const { data, error } = await serviceClient.rpc("load_reusable_code_files", {
+        p_workspace_id: workspaceId,
+        p_parser_version: parserVersion,
+        p_files: files,
+      });
+      check("load reusable code files", error);
+      return Array.isArray(data) ? (data as CodeFilePayload[]) : [];
     },
 
     async replaceFiles(workspaceId, commitSha, parserVersion, files) {

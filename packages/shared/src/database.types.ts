@@ -937,9 +937,11 @@ export type Database = {
           created_at: string
           id: string
           indexed_commit_sha: string | null
+          push_generation: number
           ready_at: string | null
           repository_id: string
           status: Database["public"]["Enums"]["workspace_status"]
+          synced_generation: number
           target_commit_sha: string | null
           updated_at: string
           user_id: string
@@ -948,9 +950,11 @@ export type Database = {
           created_at?: string
           id?: string
           indexed_commit_sha?: string | null
+          push_generation?: number
           ready_at?: string | null
           repository_id: string
           status?: Database["public"]["Enums"]["workspace_status"]
+          synced_generation?: number
           target_commit_sha?: string | null
           updated_at?: string
           user_id: string
@@ -959,9 +963,11 @@ export type Database = {
           created_at?: string
           id?: string
           indexed_commit_sha?: string | null
+          push_generation?: number
           ready_at?: string | null
           repository_id?: string
           status?: Database["public"]["Enums"]["workspace_status"]
+          synced_generation?: number
           target_commit_sha?: string | null
           updated_at?: string
           user_id?: string
@@ -1212,6 +1218,33 @@ export type Database = {
           start_line: number
         }[]
       }
+      follow_repository_head: {
+        Args: {
+          p_commit_sha: string
+          p_observed_generation: number
+          p_workspace_id: string
+        }
+        Returns: {
+          job_id: string
+          outcome: string
+        }[]
+      }
+      list_pending_push_workspaces: {
+        Args: { p_limit?: number }
+        Returns: {
+          installation_id: number
+          push_generation: number
+          workspace_id: string
+        }[]
+      }
+      load_reusable_code_files: {
+        Args: { p_files: Json; p_parser_version: string; p_workspace_id: string }
+        Returns: Json
+      }
+      mark_push_received: {
+        Args: { p_github_repo_id: number; p_installation_id: number }
+        Returns: string[]
+      }
       match_repository_memory: {
         Args: {
           p_commit_sha: string
@@ -1301,6 +1334,10 @@ export type Database = {
           sequence: number
           status: string
         }[]
+      }
+      reopen_push_sync: {
+        Args: { p_observed_generation: number; p_workspace_id: string }
+        Returns: boolean
       }
       replace_code_index: {
         Args: {

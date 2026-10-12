@@ -7,6 +7,7 @@ import {
   type CodeFilePayload,
   failedPayload,
   type FileOutline,
+  hydratePayload,
   skippedPayload,
   toFilePayload,
   toOutline,
@@ -76,6 +77,8 @@ export interface CodeIndexDeps {
 
 export interface CodeIndexBatchResult {
   written: number;
+  /** Files whose facts were reused from another commit instead of being fetched and parsed. */
+  reused: number;
   counts: Record<CodeFilePayload["parse_status"], number>;
   outlines: FileOutline[];
 }
@@ -195,6 +198,32 @@ async function indexFile(
   }
 }
 
+/**
+ * Payloads for one batch. Files whose blob was already indexed at another commit (same path and
+ * parser version) are rebuilt from stored facts; only the rest are fetched and parsed.
+ */
+async function indexBatch(
+  deps: CodeIndexDeps,
+  target: CodeIndexTarget & { installation_id: number },
+  batch: CodeIndexFile[],
+  knownPaths: ReadonlySet<string>,
+  limits: CodeIndexLimits,
+): Promise<{ payloads: CodeFilePayload[]; reused: number }> {
+  const lookups = batch.filter((f) => !f.skip).map((f) => ({ path: f.path, blob_sha: f.sha }));
+  const stored = lookups.length > 0 ? await deps.store.loadReusable(target.workspace_id, PARSER_VERSION, lookups) : [];
+  const reusable = new Map(stored.map((p) => [p.path, p]));
+  let reused = 0;
+  const payloads = await mapLimited(batch, FETCH_CONCURRENCY, (file) => {
+    const hit = file.skip ? undefined : reusable.get(file.path);
+    if (hit && hit.blob_sha === file.sha) {
+      reused++;
+      return Promise.resolve(hydratePayload(hit, knownPaths));
+    }
+    return indexFile(deps, target, file, knownPaths, limits);
+  });
+  return { payloads, reused };
+}
+
 function emptyCounts(): CodeIndexBatchResult["counts"] {
   return { ok: 0, partial: 0, failed: 0, unsupported: 0, skipped: 0 };
 }
@@ -252,13 +281,14 @@ export async function runCodeIndex(
   const totals = emptyCounts();
   const outlines: FileOutline[] = [];
   let written = 0;
+  let reused = 0;
   for (const [index, batch] of batches.entries()) {
     const result: CodeIndexBatchResult = await step.run(`index-batch-${index}`, () =>
       classified(async () => {
         const progress = BATCH_PROGRESS.start +
           Math.floor(((BATCH_PROGRESS.end - BATCH_PROGRESS.start) * index) / Math.max(batches.length, 1));
         await deps.store.markStage(event.job_id, progress, runId);
-        const payloads = await mapLimited(batch, FETCH_CONCURRENCY, (file) => indexFile(deps, target, file, knownPaths, limits));
+        const { payloads, reused: reusedNow } = await indexBatch(deps, target, batch, knownPaths, limits);
         const writtenNow = await deps.store.replaceFiles(event.workspace_id, event.commit_sha, PARSER_VERSION, payloads);
         const counts = emptyCounts();
         for (const p of payloads) {
@@ -266,11 +296,13 @@ export async function runCodeIndex(
         }
         return {
           written: writtenNow,
+          reused: reusedNow,
           counts,
           outlines: payloads.map(toOutline).filter((o): o is FileOutline => o !== null),
         };
       }));
     written += result.written;
+    reused += result.reused;
     outlines.push(...result.outlines);
     for (const [status, n] of Object.entries(result.counts) as [keyof typeof totals, number][]) {
       totals[status] += n;
@@ -289,7 +321,7 @@ export async function runCodeIndex(
     classified(() =>
       deps.store.complete(event.workspace_id, event.job_id, event.commit_sha, PARSER_VERSION, {
         limits_hit: selection.limits_hit,
-        selection: { candidates: selection.candidates, selected: selection.files.length, batches: batches.length },
+        selection: { candidates: selection.candidates, selected: selection.files.length, batches: batches.length, reused },
         limits: { max_files: limits.maxFiles, max_file_bytes: limits.maxFileBytes, max_total_bytes: limits.maxTotalBytes },
       })
     ));
@@ -304,6 +336,7 @@ export async function runCodeIndex(
     files: selection.files.length,
     batches: batches.length,
     written,
+    reused,
     ...totals,
     memory_rows: memoryRows,
     limits_hit: selection.limits_hit.join(",") || "none",
