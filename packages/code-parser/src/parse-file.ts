@@ -1,5 +1,6 @@
 import { defaultWasmLoader, GrammarCache, type WasmLoader } from "./engine.ts";
 import { emptyFacts, extractFacts } from "./extract.ts";
+import type { LanguageDefinition } from "./language.ts";
 import { defaultLanguages } from "./languages/index.ts";
 import { resolveLimits, utf8Length } from "./limits.ts";
 import { createRegistry, type LanguageRegistry } from "./registry.ts";
@@ -15,11 +16,18 @@ export interface CodeParserOptions {
 export interface CodeParser {
   /** Never throws for bad source; failures are reported through `status` and `reason`. */
   parseFile(input: ParseFileInput): Promise<CodeFacts>;
-  detectLanguage(path: string): string | null;
+  /** Path-only unless `content` is given, which lets ambiguous extensions (`.h`) pick by content. */
+  detectLanguage(path: string, content?: string): string | null;
   /** Load grammars up front. Returns the load error per language id, or null when loaded. */
   preload(languageIds?: string[]): Promise<Record<string, string | null>>;
   /** Free WASM parsers and queries. The parser must not be used afterwards. */
   dispose(): void;
+}
+
+export function detectWithContent(registry: LanguageRegistry, path: string, content: string): LanguageDefinition | undefined {
+  const def = registry.detect(path);
+  const alternative = def?.detectContent?.(content, path);
+  return (alternative ? registry.byId(alternative) : undefined) ?? def;
 }
 
 export function createCodeParser(options: CodeParserOptions = {}): CodeParser {
@@ -33,7 +41,7 @@ export function createCodeParser(options: CodeParserOptions = {}): CodeParser {
       const content = input.content;
       const def = input.language !== undefined
         ? registry.byId(input.language)
-        : input.path !== undefined ? registry.detect(input.path) : undefined;
+        : input.path !== undefined ? detectWithContent(registry, input.path, content) : undefined;
       if (!def) return emptyFacts(input.language ?? null, "unsupported", "no_language", content);
 
       if (utf8Length(content) > limits.maxBytes) return emptyFacts(def.id, "failed", "too_large", content, ["maxBytes"]);
@@ -48,7 +56,8 @@ export function createCodeParser(options: CodeParserOptions = {}): CodeParser {
       }
     },
 
-    detectLanguage: (path) => registry.detect(path)?.id ?? null,
+    detectLanguage: (path, content) =>
+      (content === undefined ? registry.detect(path) : detectWithContent(registry, path, content))?.id ?? null,
 
     async preload(languageIds) {
       const defs = languageIds ? languageIds.map((id) => registry.byId(id) ?? id) : registry.list();

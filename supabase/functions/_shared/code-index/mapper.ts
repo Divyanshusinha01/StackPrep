@@ -2,7 +2,7 @@
  * Maps parser facts to `replace_code_index` file payloads and to the compact outline that memory
  * rows are built from. Only names, kinds, ranges and specifiers leave this module, never source.
  */
-import type { CodeFacts, SymbolKind } from "@stackprep/code-parser";
+import { type CodeFacts, type ImportResolution, resolveImport, type SymbolKind } from "@stackprep/code-parser";
 import type { CodeIndexFile } from "./select.ts";
 
 /** Call sites kept per file; the rest are counted in `stats.calls_dropped`. */
@@ -37,6 +37,7 @@ export interface CodeImportPayload {
   kind: string;
   names: string[];
   resolved_path: string | null;
+  resolution: ImportResolution | null;
   line: number;
 }
 
@@ -89,80 +90,27 @@ function clip(text: string, max: number): string {
   return text.length <= max ? text : text.slice(0, max);
 }
 
-function dirname(path: string): string {
-  const slash = path.lastIndexOf("/");
-  return slash === -1 ? "" : path.slice(0, slash);
+/** Path-only resolution through the shared resolver; see `resolveImport` in the parser package. */
+function resolveImportPayload(
+  fromPath: string,
+  language: string | null,
+  source: string,
+  names: readonly string[],
+  knownPaths: ReadonlySet<string>,
+): Pick<CodeImportPayload, "resolved_path" | "resolution"> {
+  const target = resolveImport(fromPath, language, source, knownPaths, names);
+  return { resolved_path: target.resolvedPath, resolution: target.resolution };
 }
 
-/** Resolves `a/./b/../c` style segments; null when the path climbs above the repository root. */
-function normalize(path: string): string | null {
-  const out: string[] = [];
-  for (const segment of path.split("/")) {
-    if (segment === "" || segment === ".") {
-      continue;
-    }
-    if (segment === "..") {
-      if (out.length === 0) {
-        return null;
-      }
-      out.pop();
-    } else {
-      out.push(segment);
-    }
-  }
-  return out.length ? out.join("/") : null;
-}
-
-const ECMA_EXTENSIONS = ["", ".ts", ".tsx", ".d.ts", ".js", ".jsx", ".mjs", ".cjs", ".mts", ".cts"];
-const ECMA_INDEX = ["/index.ts", "/index.tsx", "/index.js", "/index.jsx", "/index.mjs"];
-
-/**
- * Path-only guess for a relative specifier: never follows aliases, packages or configuration.
- * ECMAScript tries the usual extensions and index files (and `.js` written for a `.ts` file);
- * Python resolves leading-dot module paths. Other languages import packages, so nothing resolves.
- */
+/** The resolved repository path of one import, or null; directory targets end in `/`. */
 export function resolveRelativeImport(
   fromPath: string,
   language: string,
   source: string,
   knownPaths: ReadonlySet<string>,
+  names: readonly string[] = [],
 ): string | null {
-  const first = (candidates: (string | null)[]) => candidates.find((c): c is string => c !== null && knownPaths.has(c)) ?? null;
-
-  if (["typescript", "tsx", "javascript"].includes(language)) {
-    if (!source.startsWith("./") && !source.startsWith("../")) {
-      return null;
-    }
-    const base = normalize(`${dirname(fromPath)}/${source}`);
-    if (!base) {
-      return null;
-    }
-    const stem = base.replace(/\.(m|c)?jsx?$/, "");
-    return first([
-      ...ECMA_EXTENSIONS.map((ext) => `${base}${ext}`),
-      ...(stem !== base ? [".ts", ".tsx", ".mts", ".cts"].map((ext) => `${stem}${ext}`) : []),
-      ...ECMA_INDEX.map((index) => `${base}${index}`),
-    ]);
-  }
-
-  if (language === "python") {
-    const match = /^(\.+)([\w.]*)$/.exec(source);
-    if (!match) {
-      return null;
-    }
-    let dir = dirname(fromPath);
-    for (let i = 1; i < match[1].length; i++) {
-      if (!dir) {
-        return null;
-      }
-      dir = dirname(dir);
-    }
-    const rest = match[2] ? match[2].split(".").join("/") : "";
-    const base = [dir, rest].filter(Boolean).join("/");
-    return base ? first([`${base}.py`, `${base}.pyi`, `${base}/__init__.py`]) : null;
-  }
-
-  return null;
+  return resolveImport(fromPath, language, source, knownPaths, names).resolvedPath;
 }
 
 function emptyPayload(file: Pick<CodeIndexFile, "path" | "sha" | "size">): Omit<CodeFilePayload, "parse_status" | "skipped_reason"> {
@@ -234,13 +182,16 @@ export function toFilePayload(
 
   const imports: CodeImportPayload[] = facts.imports
     .filter((imp) => imp.source.length > 0 && imp.source.length <= MAX_SOURCE_CHARS)
-    .map((imp) => ({
-      source: imp.source,
-      kind: imp.kind,
-      names: imp.names.slice(0, MAX_IMPORT_NAMES),
-      resolved_path: resolveRelativeImport(file.path, language, imp.source, knownPaths),
-      line: imp.range.start.line,
-    }));
+    .map((imp) => {
+      const names = imp.names.slice(0, MAX_IMPORT_NAMES);
+      return {
+        source: imp.source,
+        kind: imp.kind,
+        names,
+        ...resolveImportPayload(file.path, language, imp.source, names, knownPaths),
+        line: imp.range.start.line,
+      };
+    });
 
   const eligibleCalls = facts.calls.filter((c) => c.calleeText.length > 0 && c.calleeText.length <= MAX_CALLEE_CHARS);
   const calls: CodeCallPayload[] = eligibleCalls.slice(0, MAX_CALLS_PER_FILE).map((c) => ({
@@ -271,8 +222,8 @@ export function toFilePayload(
 
 /**
  * Rebuilds a payload stored for the same path, blob and parser version at another commit. Only
- * `resolved_path` depends on the rest of the tree, so it is recomputed against the new commit's
- * paths; the result equals a fresh parse of the same blob in the same tree.
+ * `resolved_path` and `resolution` depend on the rest of the tree, so they are recomputed against
+ * the new commit's paths; the result equals a fresh parse of the same blob in the same tree.
  */
 export function hydratePayload(stored: CodeFilePayload, knownPaths: ReadonlySet<string>): CodeFilePayload {
   const language = stored.language;
@@ -288,9 +239,13 @@ export function hydratePayload(stored: CodeFilePayload, knownPaths: ReadonlySet<
     stats: stored.stats,
     symbols: stored.symbols.map((s) => ({ ...s })),
     imports: stored.imports.map((imp) => ({
-      ...imp,
+      source: imp.source,
+      kind: imp.kind,
       names: [...imp.names],
-      resolved_path: language ? resolveRelativeImport(stored.path, language, imp.source, knownPaths) : null,
+      ...(language
+        ? resolveImportPayload(stored.path, language, imp.source, imp.names, knownPaths)
+        : { resolved_path: null, resolution: null }),
+      line: imp.line,
     })),
     calls: stored.calls.map((c) => ({ ...c })),
   };

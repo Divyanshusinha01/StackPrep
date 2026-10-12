@@ -1,6 +1,7 @@
 /**
- * Read access to the commit-pinned code index. Every result is syntactic: matched by name or path
- * as written, never resolved to a declaration, so callers must not present it as precise semantics.
+ * Read access to the commit-pinned code index. Results are syntactic: matched by name or path as
+ * written, or linked by the path-based call graph (never type-checked), so callers must not
+ * present them as precise semantics.
  */
 import type { SupabaseClient } from "@supabase/supabase-js";
 
@@ -69,6 +70,20 @@ export interface CallSite {
   line: number;
   col: number;
   exact: boolean;
+  /** True when the row comes from a call-graph edge rather than name matching. */
+  resolved?: boolean;
+  /** `resolved` or `ambiguous` for edge rows; null for the name fallback. */
+  confidence?: string | null;
+  target_path?: string | null;
+  target_name?: string | null;
+}
+
+export interface FindCallersOptions {
+  limit?: number;
+  /** Narrows edge targets to symbols declared in this file. */
+  file?: string;
+  /** Narrows edge targets to this symbol, as `name` or `Parent.name`. */
+  symbol?: string;
 }
 
 export interface CodeIndexReader {
@@ -80,8 +95,16 @@ export interface CodeIndexReader {
   /** Files importing `target` (a repository path matched through path-resolved relative imports, or a specifier). */
   findImporters(workspaceId: string, commitSha: string, target: string, limit?: number): Promise<Syntactic<Importer>>;
   findDependencies(workspaceId: string, commitSha: string, path: string, limit?: number): Promise<Syntactic<Dependency>>;
-  /** Call sites whose callee's last segment matches the last segment of `name`. */
-  findCallers(workspaceId: string, commitSha: string, name: string, limit?: number): Promise<Syntactic<CallSite>>;
+  /**
+   * Call sites of `name`: calls linked to a matching declaration by the call graph first, then
+   * calls whose callee's last segment matches the last segment of `name` and have no such link.
+   */
+  findCallers(
+    workspaceId: string,
+    commitSha: string,
+    name: string,
+    options?: number | FindCallersOptions,
+  ): Promise<Syntactic<CallSite>>;
 }
 
 function check(action: string, error: { message: string } | null): void {
@@ -188,12 +211,15 @@ export function createCodeIndexReader(client: SupabaseClient): CodeIndexReader {
       return syntactic((data ?? []) as Dependency[]);
     },
 
-    async findCallers(workspaceId, commitSha, name, limit = 50) {
+    async findCallers(workspaceId, commitSha, name, options = {}) {
+      const { limit = 50, file, symbol } = typeof options === "number" ? { limit: options } : options;
       const { data, error } = await client.rpc("find_callers", {
         p_workspace_id: workspaceId,
         p_commit_sha: commitSha,
         p_name: name,
         p_limit: limit,
+        p_file: file ?? null,
+        p_symbol: symbol ?? null,
       });
       check("find callers", error);
       return syntactic((data ?? []) as CallSite[]);

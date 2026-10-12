@@ -1,6 +1,7 @@
 import { assert, assertEquals, assertInstanceOf, assertRejects } from "@std/assert";
 import { PARSER_VERSION } from "@stackprep/code-parser";
 import { NonRetriableError, RetryAfterError } from "inngest";
+import type { CodeEdgeFilePayload, CodeLinkFile } from "../_shared/code-index/link.ts";
 import type { CodeFilePayload } from "../_shared/code-index/mapper.ts";
 import type { CodeMemoryRow } from "../_shared/code-index/memory.ts";
 import { DEFAULT_CODE_INDEX_LIMITS } from "../_shared/code-index/select.ts";
@@ -94,11 +95,17 @@ interface Setup {
   limits?: Partial<typeof DEFAULT_CODE_INDEX_LIMITS>;
   /** Shared between runs to simulate indexing successive commits of one workspace. */
   db?: StoredFacts;
+  linkError?: Error;
+  /** The fake returns pages no larger than this, to exercise paging. */
+  linkPageSize?: number;
 }
 
-function setup({ target: t = target(), files = FILES, entries, blobError, prune, limits, db = new Map() }: Setup = {}) {
+function setup(
+  { target: t = target(), files = FILES, entries, blobError, prune, limits, db = new Map(), linkError, linkPageSize = 1000 }: Setup = {},
+) {
   const calls: string[] = [];
   const replaced: { commit: string; version: string; files: CodeFilePayload[] }[] = [];
+  const edges: { commit: string; files: CodeEdgeFilePayload[] }[] = [];
   const memory: CodeMemoryRow[][] = [];
   const completed: { commit: string; version: string; summary: Record<string, unknown> }[] = [];
   const pruned: string[][] = [];
@@ -131,6 +138,35 @@ function setup({ target: t = target(), files = FILES, entries, blobError, prune,
         db.set(factsKey(p.path, p.blob_sha, version), JSON.parse(JSON.stringify(p)));
       }
       return Promise.resolve(batch.length);
+    },
+    loadLinkFacts: (_w, commit, afterPath, limit) => {
+      calls.push(`link-facts:${afterPath ?? ""}`);
+      if (linkError) {
+        return Promise.reject(linkError);
+      }
+      const latest = new Map<string, CodeFilePayload>();
+      for (const r of replaced.filter((r) => r.commit === commit)) {
+        for (const f of r.files) {
+          latest.set(f.path, f);
+        }
+      }
+      const page = [...latest.values()]
+        .filter((f) => (f.parse_status === "ok" || f.parse_status === "partial") && (afterPath === null || f.path > afterPath))
+        .sort((a, b) => (a.path < b.path ? -1 : a.path > b.path ? 1 : 0))
+        .slice(0, Math.min(limit, linkPageSize))
+        .map((f): CodeLinkFile => ({
+          path: f.path,
+          language: f.language,
+          symbols: f.symbols.map((s) => ({ name: s.name, kind: s.kind, parent_ord: s.parent_ord, exported: s.exported, signature: s.signature })),
+          imports: f.imports.map((i) => ({ source: i.source, kind: i.kind, names: i.names })),
+          calls: f.calls.map((c) => ({ caller_ord: c.caller_ord, callee_text: c.callee_text })),
+        }));
+      return Promise.resolve(page);
+    },
+    replaceEdges: (_w, commit, batch) => {
+      calls.push(`edges:${batch.length}`);
+      edges.push({ commit, files: batch });
+      return Promise.resolve(batch.reduce((n, f) => n + f.edges.length, 0));
     },
     saveMemory: (_w, _j, _c, rows) => {
       calls.push("save-memory");
@@ -180,7 +216,7 @@ function setup({ target: t = target(), files = FILES, entries, blobError, prune,
     limits: { ...DEFAULT_CODE_INDEX_LIMITS, batchFiles: 3, ...limits },
     log: (line) => logs.push(line),
   };
-  return { deps, calls, replaced, memory, completed, pruned, failures, stages, enqueued, logs };
+  return { deps, calls, replaced, edges, memory, completed, pruned, failures, stages, enqueued, logs };
 }
 
 function stepRunner(memo = new Map<string, unknown>()) {
@@ -215,6 +251,7 @@ Deno.test("a run selects parseable files, indexes them in batches, writes memory
     "index-batch-0",
     "index-batch-1",
     "index-batch-2",
+    "link",
     "save-memory",
     "complete",
     "prune",
@@ -262,11 +299,71 @@ Deno.test("a run selects parseable files, indexes them in batches, writes memory
   assertEquals(enqueued, [[MEMORY_EMBEDDING_EVENT, event]]);
 });
 
+Deno.test("the link step writes call-graph edges for every parsed file and records a summary", async () => {
+  const { deps, edges, completed, logs } = setup();
+  await runCodeIndex(deps, { data: event, runId: "r", step: stepRunner().step });
+
+  const files = edges.flatMap((e) => e.files);
+  assert(edges.every((e) => e.commit === SHA));
+  assertEquals(files.map((f) => f.path), ["api/handler.py", "api/models.py", "src/auth/login.ts", "src/broken.ts", "src/index.ts"]);
+  const out = new Map(files.map((f) => [f.path, f.edges]));
+  assertEquals(out.get("src/index.ts"), [
+    { call_ord: 0, target_path: "src/auth/login.ts", target_ord: 2, confidence: "resolved", candidate_count: 1 },
+  ]);
+  assertEquals(out.get("api/handler.py"), [
+    { call_ord: 0, target_path: "api/models.py", target_ord: 0, confidence: "resolved", candidate_count: 1 },
+  ]);
+  assertEquals(out.get("api/models.py"), [], "files without calls are listed so stale edges are cleared");
+
+  const link = completed[0].summary.link as Record<string, unknown>;
+  assertEquals(link.calls_unresolved, 0);
+  assert((link.edges_resolved as number) >= 2);
+  assertEquals(link.limits_hit, []);
+  assert(logs.some((l) => JSON.parse(l).event === "code_index_linked"));
+});
+
+Deno.test("link facts are paged by path", async () => {
+  const { deps, calls, edges } = setup({ linkPageSize: 2 });
+  await runCodeIndex(deps, { data: event, runId: "r", step: stepRunner().step });
+  assertEquals(calls.filter((c) => c.startsWith("link-facts:")), [
+    "link-facts:",
+    "link-facts:api/models.py",
+    "link-facts:src/broken.ts",
+    "link-facts:src/index.ts",
+  ]);
+  assertEquals(edges.flatMap((e) => e.files).length, 5);
+});
+
+Deno.test("a failed link step is swallowed and the index still completes without edges", async () => {
+  const { deps, edges, completed, enqueued, logs } = setup({ linkError: new Error(`db down ${SECRET}`) });
+  const result = await runCodeIndex(deps, { data: event, runId: "r", step: stepRunner().step });
+  assertEquals(result.outcome, "indexed");
+  assertEquals(edges, []);
+  assertEquals(completed[0].summary.link, null);
+  assertEquals(enqueued.length, 1);
+  assert(logs.some((l) => JSON.parse(l).event === "code_index_link_failed"));
+  assert(!logs.join("\n").includes("db down"));
+});
+
+Deno.test("an ambiguous header is parsed as C++ when its content needs it", async () => {
+  const { deps, replaced } = setup({
+    files: {
+      "include/plain.h": "int add(int a, int b);\n",
+      "include/shape.h": "namespace geo {\nclass Shape {\npublic:\n  int area() const;\n};\n}\n",
+    },
+  });
+  await runCodeIndex(deps, { data: event, runId: "r", step: stepRunner().step });
+  const files = byPath(replaced);
+  assertEquals(files.get("include/plain.h")?.language, "c");
+  assertEquals(files.get("include/shape.h")?.language, "cpp");
+  assertEquals(files.get("include/shape.h")?.symbols.map((s) => s.name), ["geo", "Shape", "area"]);
+});
+
 Deno.test("persisted facts, memory, step outputs and logs carry no source text or secrets", async () => {
-  const { deps, replaced, memory, logs } = setup();
+  const { deps, replaced, edges, memory, logs } = setup();
   const { step, memo } = stepRunner();
   await runCodeIndex(deps, { data: event, runId: "r", step });
-  for (const haystack of [JSON.stringify(replaced), JSON.stringify(memory), JSON.stringify([...memo.values()]), logs.join("\n")]) {
+  for (const haystack of [JSON.stringify(replaced), JSON.stringify(edges), JSON.stringify(memory), JSON.stringify([...memo.values()]), logs.join("\n")]) {
     assert(!haystack.includes(SECRET), "secret leaked");
     assert(!haystack.includes(SOURCE_MARKER), "source leaked");
   }

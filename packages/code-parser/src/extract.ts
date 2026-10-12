@@ -174,12 +174,16 @@ export function extractFacts(loaded: LoadedLanguage, content: string, limits: Pa
       const cap = (name: string) => match.captures.find((c) => c.name === name)?.node ?? null;
       const defCap = match.captures.find((c) => c.name.startsWith("definition."));
       if (defCap) {
-        const nameNode = cap("name");
+        const captured = cap("name");
         const kind = defCap.name.slice("definition.".length) as SymbolKind;
-        if (nameNode && SYMBOL_KINDS.includes(kind)) {
+        if (!SYMBOL_KINDS.includes(kind)) continue;
+        const named = captured
+          ? [{ name: captured, kind }]
+          : (hooks.definitions?.(defCap.node, kind) ?? []).filter((d) => SYMBOL_KINDS.includes(d.kind));
+        for (const { name: nameNode, kind: namedKind } of named) {
           const existing = rawSymbols.get(nameNode.id);
           if (!existing || match.patternIndex < existing.pattern) {
-            rawSymbols.set(nameNode.id, { def: defCap.node, nameNode, kind, pattern: match.patternIndex });
+            rawSymbols.set(nameNode.id, { def: defCap.node, nameNode, kind: namedKind, pattern: match.patternIndex });
           }
         }
         continue;

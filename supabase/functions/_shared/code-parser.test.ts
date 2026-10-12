@@ -14,3 +14,17 @@ Deno.test("code-parser resolves and parses under Deno", async () => {
     parser.dispose();
   }
 });
+
+Deno.test("C and C++ grammars load under Deno and headers pick a language by content", async () => {
+  const parser = createCodeParser();
+  try {
+    const c = await parser.parseFile({ path: "util.h", content: "#include <stdio.h>\nint add(int a, int b);\n" });
+    assertEquals([c.language, c.status], ["c", "ok"]);
+    assertEquals(c.symbols.map((s) => [s.name, s.kind]), [["add", "function"]]);
+    const cpp = await parser.parseFile({ path: "shape.h", content: "class Shape {\npublic:\n  int area() const;\n};\n" });
+    assertEquals([cpp.language, cpp.status], ["cpp", "ok"]);
+    assertEquals(cpp.symbols.map((s) => [s.name, s.kind, s.exported]), [["Shape", "class", true], ["area", "method", true]]);
+  } finally {
+    parser.dispose();
+  }
+});

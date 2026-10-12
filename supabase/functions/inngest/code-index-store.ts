@@ -1,4 +1,5 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
+import type { CodeEdgeFilePayload, CodeLinkFile } from "../_shared/code-index/link.ts";
 import type { CodeFilePayload } from "../_shared/code-index/mapper.ts";
 import type { CodeMemoryRow } from "../_shared/code-index/memory.ts";
 import type { CodeIndexErrorCode } from "./code-index.ts";
@@ -33,6 +34,10 @@ export interface CodeIndexStore {
   loadReusable(workspaceId: string, parserVersion: string, files: { path: string; blob_sha: string }[]): Promise<CodeFilePayload[]>;
   /** One batch through `replace_code_index`; returns the number of files written (unchanged ones are skipped). */
   replaceFiles(workspaceId: string, commitSha: string, parserVersion: string, files: CodeFilePayload[]): Promise<number>;
+  /** One page (at most 200) of the commit's parsed files in path order, after `afterPath`; empty ends paging. */
+  loadLinkFacts(workspaceId: string, commitSha: string, afterPath: string | null, limit: number): Promise<CodeLinkFile[]>;
+  /** One batch through `replace_code_edges`; returns the number of edge rows inserted. */
+  replaceEdges(workspaceId: string, commitSha: string, files: CodeEdgeFilePayload[]): Promise<number>;
   /** Replaces the commit's code-index memory rows; returns the number inserted. */
   saveMemory(workspaceId: string, jobId: string, commitSha: string, rows: CodeMemoryRow[]): Promise<number>;
   /** Writes the commit's `code_index` row and marks the job succeeded. */
@@ -132,6 +137,27 @@ export function createCodeIndexStore(serviceClient: SupabaseClient): CodeIndexSt
         p_files: files,
       });
       check("replace code index", error);
+      return typeof data === "number" ? data : 0;
+    },
+
+    async loadLinkFacts(workspaceId, commitSha, afterPath, limit) {
+      const { data, error } = await serviceClient.rpc("load_code_link_facts", {
+        p_workspace_id: workspaceId,
+        p_commit_sha: commitSha,
+        ...(afterPath === null ? {} : { p_after_path: afterPath }),
+        p_limit: limit,
+      });
+      check("load code link facts", error);
+      return Array.isArray(data) ? (data as unknown as CodeLinkFile[]) : [];
+    },
+
+    async replaceEdges(workspaceId, commitSha, files) {
+      const { data, error } = await serviceClient.rpc("replace_code_edges", {
+        p_workspace_id: workspaceId,
+        p_commit_sha: commitSha,
+        p_files: files,
+      });
+      check("replace code edges", error);
       return typeof data === "number" ? data : 0;
     },
 
