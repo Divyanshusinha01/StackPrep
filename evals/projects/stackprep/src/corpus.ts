@@ -8,6 +8,7 @@
  * SQL, and vector matches are whatever the caller supplies, not pgvector.
  */
 import { type CodeParser, createCodeParser, PARSER_VERSION } from "@stackprep/code-parser";
+import type { CodeEdgeFilePayload, CodeLinkFile } from "../../../../supabase/functions/_shared/code-index/link.ts";
 import type { CodeFilePayload } from "../../../../supabase/functions/_shared/code-index/mapper.ts";
 import type { CodeMemoryRow } from "../../../../supabase/functions/_shared/code-index/memory.ts";
 import type { FileSymbol, SymbolSearchHit } from "../../../../supabase/functions/_shared/code-index/reader.ts";
@@ -87,6 +88,7 @@ export function createCorpusGithub(files: ReadonlyMap<string, string>): GithubAp
 export async function indexCorpus(source: CorpusSource, options: { parser?: CodeParser } = {}): Promise<IndexedCorpus> {
   const { manifest, files } = source;
   const codeFiles: CodeFilePayload[] = [];
+  const edgeFiles: CodeEdgeFilePayload[] = [];
   const saved: { rows: CodeMemoryRow[] | null } = { rows: null };
   const logs: string[] = [];
   const store: CodeIndexStore = {
@@ -102,9 +104,28 @@ export async function indexCorpus(source: CorpusSource, options: { parser?: Code
         suspended: false,
       }),
     markStage: () => Promise.resolve(),
+    loadReusable: () => Promise.resolve([]),
     replaceFiles: (_w, _c, _v, batch) => {
       codeFiles.push(...batch);
       return Promise.resolve(batch.length);
+    },
+    loadLinkFacts: (_w, _c, afterPath, limit) =>
+      Promise.resolve(
+        codeFiles
+          .filter((f) => (f.parse_status === "ok" || f.parse_status === "partial") && (afterPath === null || f.path > afterPath))
+          .sort((a, b) => (a.path < b.path ? -1 : a.path > b.path ? 1 : 0))
+          .slice(0, limit)
+          .map((f): CodeLinkFile => ({
+            path: f.path,
+            language: f.language,
+            symbols: f.symbols.map((s) => ({ name: s.name, kind: s.kind, parent_ord: s.parent_ord, exported: s.exported, signature: s.signature })),
+            imports: f.imports.map((i) => ({ source: i.source, kind: i.kind, names: i.names })),
+            calls: f.calls.map((c) => ({ caller_ord: c.caller_ord, callee_text: c.callee_text })),
+          })),
+      ),
+    replaceEdges: (_w, _c, batch) => {
+      edgeFiles.push(...batch);
+      return Promise.resolve(batch.reduce((n, f) => n + f.edges.length, 0));
     },
     saveMemory: (_w, _j, _c, rows) => {
       saved.rows = rows;
