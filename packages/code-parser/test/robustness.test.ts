@@ -91,6 +91,25 @@ describe("malformed and edge-case input", () => {
     expect(facts.stats.limitsHit).toContain("oversizedErrorNode");
   });
 
+  it.each([
+    ["broken.c", "int f( {\n#include \nstruct { int x;\nvoid g(void) { h(; }\n"],
+    ["broken.cpp", "namespace a { class B : public { void m() { this->; } template <typename> }\n"],
+    ["broken.h", "#ifndef X\n#define X\nint f(int a,\n"],
+    ["macros.c", "#define CALL(x) x()\nCALL(foo)\nint MACRO_FN(a, b) { return 0; }\n"],
+  ])("returns facts without throwing for malformed C/C++ (%s)", async (path, content) => {
+    const facts = await parser.parseFile({ path, content });
+    expect(["ok", "partial"]).toContain(facts.status);
+    expect(facts.reason).toBeNull();
+    expectRangesValid(facts);
+  });
+
+  it("keeps healthy C functions around an error", async () => {
+    const content = "int before(void) { return 1; }\nint broken( {\nint after(void) { return before(); }\n";
+    const facts = await parser.parseFile({ path: "a.c", content });
+    expect(facts.status).toBe("partial");
+    expect(facts.symbols.map((s) => s.name)).toEqual(expect.arrayContaining(["before"]));
+  });
+
   it("still extracts healthy code before and after a small error", async () => {
     const content = "function before() {}\nconst x = (;\nfunction after() {}\n";
     const facts = await parser.parseFile({ path: "a.js", content });
@@ -145,6 +164,7 @@ describe("limits", () => {
 describe("unsupported languages and grammar failures", () => {
   it("returns unsupported for unknown paths and language ids", async () => {
     expect(await parser.parseFile({ path: "main.rs", content: "fn main() {}" })).toMatchObject({ language: null, status: "unsupported", reason: "no_language" });
+    expect(await parser.parseFile({ path: "main.m", content: "@interface A @end" })).toMatchObject({ language: null, status: "unsupported", reason: "no_language" });
     expect(await parser.parseFile({ language: "cobol", content: "x" })).toMatchObject({ language: "cobol", status: "unsupported", reason: "no_language" });
     expect(await parser.parseFile({ content: "x" })).toMatchObject({ status: "unsupported", reason: "no_language" });
   });
@@ -208,6 +228,8 @@ describe("determinism and multi-language use", () => {
     { path: "d.py", content: "from x import y\ndef d():\n    return y()\n" },
     { path: "E.java", content: "public class E { public void e() { run(); } }\n" },
     { path: "f.go", content: "package f\nimport \"fmt\"\nfunc F() { fmt.Println() }\n" },
+    { path: "g.c", content: "#include \"g.h\"\nint g(void) { return h(); }\n" },
+    { path: "h.cpp", content: "namespace n { int H() { return n::g(); } }\n" },
   ];
 
   it("returns identical output for identical input across runs and parser instances", async () => {
@@ -228,7 +250,7 @@ describe("determinism and multi-language use", () => {
   it("parses a mixed-language batch concurrently", async () => {
     const results = await Promise.all(files.map((f) => parser.parseFile(f)));
     expect(results.map((r) => [r.language, r.status])).toEqual([
-      ["typescript", "ok"], ["tsx", "ok"], ["javascript", "ok"], ["python", "ok"], ["java", "ok"], ["go", "ok"],
+      ["typescript", "ok"], ["tsx", "ok"], ["javascript", "ok"], ["python", "ok"], ["java", "ok"], ["go", "ok"], ["c", "ok"], ["cpp", "ok"],
     ]);
     expect(results.every((r) => r.symbols.length > 0 && r.calls.length > 0)).toBe(true);
   });

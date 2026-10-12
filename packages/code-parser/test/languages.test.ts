@@ -330,7 +330,7 @@ func (s *Service) Load(ctx context.Context, id string) error {
 func helper() { f.Println("x") }
 `;
 
-  it("extracts symbols with Go export rules, imports and calls", async () => {
+  it("extracts symbols with Go export rules, imports and calls (unchanged by C/C++ support)", async () => {
     const facts = await parser.parseFile({ path: "svc/service.go", content });
     expect(facts.status).toBe("ok");
     expect(symbolRows(facts)).toEqual([
@@ -354,6 +354,67 @@ func helper() { f.Println("x") }
       { callee: "New", in: "Default" },
       { callee: "s.store.Find", in: "Load" },
       { callee: "f.Println", in: "helper" },
+    ]);
+  });
+});
+
+describe("c", () => {
+  it("extracts functions, types, includes and calls", async () => {
+    const facts = await parser.parseFile({
+      path: "src/list.c",
+      content: `#include "list.h"
+#include <stdlib.h>
+
+typedef struct node { int value; struct node *next; } node_t;
+static node_t *alloc_node(int v) { return malloc(sizeof(node_t)); }
+node_t *list_push(node_t *head, int v) { node_t *n = alloc_node(v); n->next = head; return n; }
+`,
+    });
+    expect(facts.status).toBe("ok");
+    expect(symbolRows(facts)).toEqual([
+      { name: "node_t", kind: "type", parent: null, exported: true },
+      { name: "node", kind: "class", parent: "node_t", exported: true },
+      { name: "alloc_node", kind: "function", parent: null, exported: false },
+      { name: "list_push", kind: "function", parent: null, exported: true },
+    ]);
+    expect(importRows(facts)).toEqual([
+      { source: "list.h", names: [], kind: "static" },
+      { source: "<stdlib.h>", names: [], kind: "static" },
+    ]);
+    expect(callRows(facts)).toEqual([
+      { callee: "malloc", in: "alloc_node" },
+      { callee: "alloc_node", in: "list_push" },
+    ]);
+  });
+});
+
+describe("cpp", () => {
+  it("extracts classes with access-aware member visibility and qualified calls", async () => {
+    const facts = await parser.parseFile({
+      path: "src/cache.cpp",
+      content: `#include "cache.hpp"
+namespace svc {
+class Cache {
+ public:
+  int get(int key);
+ private:
+  void evict();
+};
+int Cache::get(int key) { evict(); return std::max(key, 0); }
+}
+`,
+    });
+    expect(facts.status).toBe("ok");
+    expect(symbolRows(facts)).toEqual([
+      { name: "svc", kind: "module", parent: null, exported: true },
+      { name: "Cache", kind: "class", parent: "svc", exported: true },
+      { name: "get", kind: "method", parent: "Cache", exported: true },
+      { name: "evict", kind: "method", parent: "Cache", exported: false },
+      { name: "get", kind: "function", parent: "svc", exported: true },
+    ]);
+    expect(callRows(facts)).toEqual([
+      { callee: "evict", in: "get" },
+      { callee: "std::max", in: "get" },
     ]);
   });
 });

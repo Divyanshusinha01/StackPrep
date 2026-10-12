@@ -1,5 +1,5 @@
 import { defaultLanguages } from "./languages/index.ts";
-import { createCodeParser, type CodeParser } from "./parse-file.ts";
+import { createCodeParser, detectWithContent, type CodeParser } from "./parse-file.ts";
 import { createRegistry } from "./registry.ts";
 import type { CodeFacts, ParseFileInput } from "./types.ts";
 
@@ -9,8 +9,10 @@ export { createRegistry, type LanguageRegistry } from "./registry.ts";
 export { createCodeParser, type CodeParser, type CodeParserOptions } from "./parse-file.ts";
 export { defaultWasmLoader, type WasmLoader } from "./engine.ts";
 export { DEFAULT_PARSE_LIMITS } from "./limits.ts";
-export { defaultLanguages, go, java, javascript, python, tsx, typescript } from "./languages/index.ts";
+export { c, cpp, defaultLanguages, go, java, javascript, python, tsx, typescript } from "./languages/index.ts";
+export { looksLikeCpp } from "./languages/c-family.ts";
 export { GRAMMAR_VERSIONS, PARSER_VERSION } from "./version.ts";
+export * from "./resolve/index.ts";
 
 export const defaultRegistry = createRegistry(defaultLanguages);
 
@@ -22,6 +24,7 @@ export function parseFile(input: ParseFileInput): Promise<CodeFacts> {
   return shared.parseFile(input);
 }
 
-export function detectLanguage(path: string): string | null {
-  return defaultRegistry.detect(path)?.id ?? null;
+/** Path-only by default (`.h` is C); pass `content` to let a `.h` header select C++. */
+export function detectLanguage(path: string, content?: string): string | null {
+  return (content === undefined ? defaultRegistry.detect(path) : detectWithContent(defaultRegistry, path, content))?.id ?? null;
 }

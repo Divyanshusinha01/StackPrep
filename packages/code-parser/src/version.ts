@@ -1,7 +1,7 @@
 /** Bump whenever extraction logic, queries or grammar versions change so stored facts are re-derived. */
-export const PARSER_VERSION = "1";
+export const PARSER_VERSION = "2";
 
-/** Provenance of the vendored WASM files in `grammars/`. */
+/** Provenance of the vendored WASM files in `grammars/` (the prebuilt WASM shipped in each npm package). */
 export const GRAMMAR_VERSIONS = Object.freeze({
   "web-tree-sitter": "0.27.0",
   "tree-sitter-typescript": "0.23.2",
@@ -9,4 +9,6 @@ export const GRAMMAR_VERSIONS = Object.freeze({
   "tree-sitter-python": "0.25.0",
   "tree-sitter-java": "0.23.5",
   "tree-sitter-go": "0.25.0",
+  "tree-sitter-c": "0.24.1",
+  "tree-sitter-cpp": "0.23.4",
 });

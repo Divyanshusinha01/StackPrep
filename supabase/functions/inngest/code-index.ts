@@ -12,6 +12,7 @@ import {
   toFilePayload,
   toOutline,
 } from "../_shared/code-index/mapper.ts";
+import { batchEdgePayloads, type CodeLinkFile, linkFiles, type LinkSummary } from "../_shared/code-index/link.ts";
 import { buildCodeMemory } from "../_shared/code-index/memory.ts";
 import {
   type CodeIndexFile,
@@ -30,8 +31,9 @@ export const CODE_INDEX_EVENT = "repository.code_index.requested";
 export const CODE_INDEX_FUNCTION_ID = "code-index";
 const FN = "inngest";
 const FETCH_CONCURRENCY = 5;
-/** Progress share of the parse batches, between selection (10) and memory (90). */
+/** Progress share of the parse batches, between selection (10) and linking (85). */
 const BATCH_PROGRESS = { start: 10, end: 85 };
+const LINK_PAGE_SIZE = 200;
 
 export const codeIndexEventSchema = z.object({
   workspace_id: z.uuid(),
@@ -190,7 +192,9 @@ async function indexFile(
     return skippedPayload(file, "secret");
   }
   try {
-    const facts = await parserFor(deps).parseFile({ content: text, language: file.language, path: file.path, limits: { maxBytes: limits.maxFileBytes } });
+    const parser = parserFor(deps);
+    const language = parser.detectLanguage(file.path, text) ?? file.language;
+    const facts = await parser.parseFile({ content: text, language, path: file.path, limits: { maxBytes: limits.maxFileBytes } });
     return toFilePayload(file, facts, bytes.length, knownPaths);
   } catch {
     // parseFile reports bad input as data; this only guards against a defect in the mapping.
@@ -244,6 +248,54 @@ async function pruneOtherCommits(deps: CodeIndexDeps, step: StepRunner, event: C
     } catch {
       logLine(deps, { event: "code_index_prune_failed", ...ids });
       return { deleted: 0 };
+    }
+  });
+}
+
+/**
+ * Best-effort cross-file call graph over everything the batches stored for the commit. Failures
+ * are logged and swallowed: without edges, `find_callers` still answers by name.
+ */
+async function linkCallGraph(
+  deps: CodeIndexDeps,
+  step: StepRunner,
+  event: CodeIndexEvent,
+  knownPaths: string[],
+  runId: string,
+): Promise<LinkSummary | null> {
+  const ids = { workspace_id: event.workspace_id, job_id: event.job_id };
+  return await step.run("link", async () => {
+    try {
+      await deps.store.markStage(event.job_id, BATCH_PROGRESS.end, runId);
+      const files: CodeLinkFile[] = [];
+      let after: string | null = null;
+      for (;;) {
+        const page = await deps.store.loadLinkFacts(event.workspace_id, event.commit_sha, after, LINK_PAGE_SIZE);
+        if (page.length === 0) {
+          break;
+        }
+        files.push(...page);
+        after = page[page.length - 1].path;
+      }
+      const { payloads, summary } = linkFiles(files, knownPaths);
+      let edges = 0;
+      for (const batch of batchEdgePayloads(payloads)) {
+        edges += await deps.store.replaceEdges(event.workspace_id, event.commit_sha, batch);
+      }
+      logLine(deps, {
+        event: "code_index_linked",
+        ...ids,
+        files: summary.files,
+        edges,
+        edges_resolved: summary.edges_resolved,
+        edges_ambiguous: summary.edges_ambiguous,
+        calls_unresolved: summary.calls_unresolved,
+        limits_hit: summary.limits_hit.join(",") || "none",
+      });
+      return summary;
+    } catch {
+      logLine(deps, { event: "code_index_link_failed", ...ids });
+      return null;
     }
   });
 }
@@ -309,6 +361,8 @@ export async function runCodeIndex(
     }
   }
 
+  const link = await linkCallGraph(deps, step, event, selection.known_paths, runId);
+
   const memoryRows = await step.run("save-memory", () =>
     classified(async () => {
       await deps.store.markStage(event.job_id, 90, runId);
@@ -323,6 +377,14 @@ export async function runCodeIndex(
         limits_hit: selection.limits_hit,
         selection: { candidates: selection.candidates, selected: selection.files.length, batches: batches.length, reused },
         limits: { max_files: limits.maxFiles, max_file_bytes: limits.maxFileBytes, max_total_bytes: limits.maxTotalBytes },
+        link: link
+          ? {
+            edges_resolved: link.edges_resolved,
+            edges_ambiguous: link.edges_ambiguous,
+            calls_unresolved: link.calls_unresolved,
+            limits_hit: link.limits_hit,
+          }
+          : null,
       })
     ));
   await pruneOtherCommits(deps, step, event);
@@ -340,6 +402,7 @@ export async function runCodeIndex(
     ...totals,
     memory_rows: memoryRows,
     limits_hit: selection.limits_hit.join(",") || "none",
+    linked: link !== null,
   });
   return { outcome: "indexed", files: selection.files.length, memory_rows: memoryRows };
 }

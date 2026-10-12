@@ -106,6 +106,74 @@ export type Database = {
           },
         ]
       }
+      code_call_edges: {
+        Row: {
+          call_ord: number
+          candidate_count: number
+          confidence: string
+          file_id: string
+          id: number
+          repository_commit_sha: string
+          target_file_id: string
+          target_ord: number
+          user_id: string
+          workspace_id: string
+        }
+        Insert: {
+          call_ord: number
+          candidate_count: number
+          confidence: string
+          file_id: string
+          id?: never
+          repository_commit_sha: string
+          target_file_id: string
+          target_ord: number
+          user_id: string
+          workspace_id: string
+        }
+        Update: {
+          call_ord?: number
+          candidate_count?: number
+          confidence?: string
+          file_id?: string
+          id?: never
+          repository_commit_sha?: string
+          target_file_id?: string
+          target_ord?: number
+          user_id?: string
+          workspace_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "code_call_edges_file_id_call_ord_fkey"
+            columns: ["file_id", "call_ord"]
+            isOneToOne: false
+            referencedRelation: "code_calls"
+            referencedColumns: ["file_id", "ord"]
+          },
+          {
+            foreignKeyName: "code_call_edges_file_id_workspace_id_repository_commit_sha_fkey"
+            columns: ["file_id", "workspace_id", "repository_commit_sha", "user_id"]
+            isOneToOne: false
+            referencedRelation: "code_files"
+            referencedColumns: ["id", "workspace_id", "repository_commit_sha", "user_id"]
+          },
+          {
+            foreignKeyName: "code_call_edges_target_file_id_target_ord_fkey"
+            columns: ["target_file_id", "target_ord"]
+            isOneToOne: false
+            referencedRelation: "code_symbols"
+            referencedColumns: ["file_id", "ord"]
+          },
+          {
+            foreignKeyName: "code_call_edges_target_file_id_workspace_id_repository_com_fkey"
+            columns: ["target_file_id", "workspace_id", "repository_commit_sha", "user_id"]
+            isOneToOne: false
+            referencedRelation: "code_files"
+            referencedColumns: ["id", "workspace_id", "repository_commit_sha", "user_id"]
+          },
+        ]
+      }
       code_calls: {
         Row: {
           callee_name: string
@@ -240,6 +308,7 @@ export type Database = {
           names: string[]
           ord: number
           repository_commit_sha: string
+          resolution: string | null
           resolved_path: string | null
           source: string
           user_id: string
@@ -253,6 +322,7 @@ export type Database = {
           names?: string[]
           ord: number
           repository_commit_sha: string
+          resolution?: string | null
           resolved_path?: string | null
           source: string
           user_id: string
@@ -266,6 +336,7 @@ export type Database = {
           names?: string[]
           ord?: number
           repository_commit_sha?: string
+          resolution?: string | null
           resolved_path?: string | null
           source?: string
           user_id?: string
@@ -1147,23 +1218,51 @@ export type Database = {
         }
         Returns: undefined
       }
-      find_callers: {
-        Args: {
-          p_commit_sha: string
-          p_limit?: number
-          p_name: string
-          p_workspace_id: string
-        }
-        Returns: {
-          callee_text: string
-          caller_kind: string
-          caller_name: string
-          col: number
-          exact: boolean
-          line: number
-          path: string
-        }[]
-      }
+      find_callers:
+        | {
+            Args: {
+              p_commit_sha: string
+              p_limit?: number
+              p_name: string
+              p_workspace_id: string
+            }
+            Returns: {
+              callee_text: string
+              caller_kind: string
+              caller_name: string
+              col: number
+              confidence: string
+              exact: boolean
+              line: number
+              path: string
+              resolved: boolean
+              target_name: string
+              target_path: string
+            }[]
+          }
+        | {
+            Args: {
+              p_commit_sha: string
+              p_file: string
+              p_limit: number
+              p_name: string
+              p_symbol: string
+              p_workspace_id: string
+            }
+            Returns: {
+              callee_text: string
+              caller_kind: string
+              caller_name: string
+              col: number
+              confidence: string
+              exact: boolean
+              line: number
+              path: string
+              resolved: boolean
+              target_name: string
+              target_path: string
+            }[]
+          }
       find_dependencies: {
         Args: {
           p_commit_sha: string
@@ -1236,6 +1335,15 @@ export type Database = {
           push_generation: number
           workspace_id: string
         }[]
+      }
+      load_code_link_facts: {
+        Args: {
+          p_after_path?: string
+          p_commit_sha: string
+          p_limit?: number
+          p_workspace_id: string
+        }
+        Returns: Json
       }
       load_reusable_code_files: {
         Args: { p_files: Json; p_parser_version: string; p_workspace_id: string }
@@ -1338,6 +1446,10 @@ export type Database = {
       reopen_push_sync: {
         Args: { p_observed_generation: number; p_workspace_id: string }
         Returns: boolean
+      }
+      replace_code_edges: {
+        Args: { p_commit_sha: string; p_files: Json; p_workspace_id: string }
+        Returns: number
       }
       replace_code_index: {
         Args: {

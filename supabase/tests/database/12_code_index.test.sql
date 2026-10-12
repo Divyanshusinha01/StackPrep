@@ -2,7 +2,7 @@ begin;
 
 create extension if not exists pgtap with schema extensions;
 
-select plan(50);
+select plan(53);
 
 -- Fixtures ------------------------------------------------------------------
 
@@ -36,7 +36,7 @@ create function pg_temp.parsed(p_path text, p_method text) returns jsonb languag
       jsonb_build_object('name', p_method, 'kind', 'method', 'parent_ord', 0, 'start_line', 3, 'start_col', 3, 'end_line', 5, 'end_col', 4)
     ),
     'imports', jsonb_build_array(
-      jsonb_build_object('source', './db', 'names', '["db"]'::jsonb, 'resolved_path', 'src/db.ts', 'line', 1)
+      jsonb_build_object('source', './db', 'names', '["db"]'::jsonb, 'resolved_path', 'src/db.ts', 'resolution', 'resolved', 'line', 1)
     ),
     'calls', jsonb_build_array(
       jsonb_build_object('caller_ord', 1, 'callee_text', 'this.db.from', 'line', 4, 'col', 5)
@@ -110,6 +110,29 @@ select is(
   'static:db',
   'import kind defaults to static and names are kept'
 );
+select is(
+  (select resolved_path || ':' || resolution from public.code_imports where file_id = pg_temp.file_id(repeat('a', 40), 'src/service.ts')),
+  'src/db.ts:resolved',
+  'the import resolution is stored'
+);
+
+select pg_temp.replace(repeat('a', 40), jsonb_build_array(pg_temp.parsed('src/native.cc', 'x') || jsonb_build_object(
+  'calls', '[{"caller_ord": 1, "callee_text": "app::Store::Make", "line": 4, "col": 5},
+             {"caller_ord": 1, "callee_text": "self->ops.Get", "line": 5, "col": 5},
+             {"caller_ord": 1, "callee_text": "dev->Close", "line": 6, "col": 5}]'::jsonb)));
+select is(
+  (select string_agg(callee_name, ',' order by ord) from public.code_calls where file_id = pg_temp.file_id(repeat('a', 40), 'src/native.cc')),
+  'make,get,close',
+  'callee_name takes the last segment across ., :: and ->'
+);
+select throws_ok(
+  $$select pg_temp.replace(repeat('a', 40), jsonb_build_array(pg_temp.parsed('src/other.ts', 'x') || jsonb_build_object(
+    'imports', '[{"source": "./db", "resolution": "guessed", "line": 1}]'::jsonb)))$$,
+  '23514', null, 'an unknown import resolution is rejected'
+);
+reset role;
+delete from public.code_files where id = pg_temp.file_id(repeat('a', 40), 'src/native.cc');
+set local role service_role;
 select is(
   (select parse_status || ':' || skipped_reason || ':' || coalesce(language, '-') from public.code_files
    where id = pg_temp.file_id(repeat('a', 40), 'src/big.ts')),

@@ -22,7 +22,7 @@
 | Transcript storage  | **Supabase PostgreSQL (canonical)** | OpenAI Realtime runs the live session; StackPrep persists the interview record |
 | Vision              | **`gpt-6-luna`, 1 low-detail frame every 10 s** | No CV infrastructure; frames are analyzed and discarded |
 | GitHub              | **GitHub App**               | Secure repository access                             |
-| Parsing             | **Tree-sitter (`web-tree-sitter` WASM)** via `packages/code-parser`, plus rule-based baseline extraction | Syntactic code facts (symbols, imports, calls) for TypeScript/TSX, JavaScript/JSX, Python, Java and Go; runs in the Inngest Edge Function, verified on hosted Supabase Edge. The rule-based extractor still produces the baseline and covers files Tree-sitter does not parse |
+| Parsing             | **Tree-sitter (`web-tree-sitter` WASM)** via `packages/code-parser`, plus rule-based baseline extraction | Syntactic code facts (symbols, imports, calls) for TypeScript/TSX, JavaScript/JSX, Python, Java, Go, C and C++, linked into a path-based cross-file call graph; runs in the Inngest Edge Function, verified on hosted Supabase Edge. The rule-based extractor still produces the baseline and covers files Tree-sitter does not parse |
 | Validation          | **Zod**                      | Lightweight schema validation                        |
 | Testing             | **Vitest + Playwright**      | Unit + E2E testing                                   |
 | Monitoring          | **Sentry**                   | Error tracking; free tier initially                  |

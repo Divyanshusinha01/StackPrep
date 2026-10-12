@@ -2,7 +2,7 @@ begin;
 
 create extension if not exists pgtap with schema extensions;
 
-select plan(31);
+select plan(39);
 
 -- Fixtures ------------------------------------------------------------------
 -- Owner has two workspaces (api, web); other user has one (forked api).
@@ -35,6 +35,12 @@ select public.replace_code_index('13131313-0000-4000-8000-000000000021', repeat(
 select public.replace_code_index('13131313-0000-4000-8000-000000000021', repeat('b', 40), '1', pg_temp.file('apiHandlerNext'));
 select public.replace_code_index('13131313-0000-4000-8000-000000000022', repeat('a', 40), '1', pg_temp.file('webHandler'));
 select public.replace_code_index('13131313-0000-4000-8000-000000000023', repeat('a', 40), '1', pg_temp.file('forkHandler'));
+-- Ambiguous, so the `query` call still shows up in the name fallback of find_callers.
+select public.replace_code_edges(w.id, repeat('a', 40),
+  '[{"path": "src/index.ts", "edges": [{"call_ord": 0, "target_path": "src/index.ts", "target_ord": 0, "confidence": "ambiguous", "candidate_count": 2}]}]')
+from (values ('13131313-0000-4000-8000-000000000021'::uuid), ('13131313-0000-4000-8000-000000000022'), ('13131313-0000-4000-8000-000000000023')) as w(id);
+select public.replace_code_edges('13131313-0000-4000-8000-000000000021', repeat('b', 40),
+  '[{"path": "src/index.ts", "edges": [{"call_ord": 0, "target_path": "src/index.ts", "target_ord": 0, "confidence": "ambiguous", "candidate_count": 2}]}]');
 reset role;
 
 create function pg_temp.visible() returns text language sql as $$
@@ -42,7 +48,8 @@ create function pg_temp.visible() returns text language sql as $$
     (select count(*) from public.code_files) || '/' ||
     (select count(*) from public.code_symbols) || '/' ||
     (select count(*) from public.code_imports) || '/' ||
-    (select count(*) from public.code_calls);
+    (select count(*) from public.code_calls) || '/' ||
+    (select count(*) from public.code_call_edges);
 $$;
 
 -- Schema-level guarantees ---------------------------------------------------------------
@@ -51,13 +58,14 @@ select ok((select relrowsecurity from pg_class where oid = 'public.code_files'::
 select ok((select relrowsecurity from pg_class where oid = 'public.code_symbols'::regclass), 'code_symbols has RLS enabled');
 select ok((select relrowsecurity from pg_class where oid = 'public.code_imports'::regclass), 'code_imports has RLS enabled');
 select ok((select relrowsecurity from pg_class where oid = 'public.code_calls'::regclass), 'code_calls has RLS enabled');
+select ok((select relrowsecurity from pg_class where oid = 'public.code_call_edges'::regclass), 'code_call_edges has RLS enabled');
 
 select ok(
   not exists (
     select 1 from information_schema.role_table_grants
     where grantee in ('anon', 'authenticated')
       and table_schema = 'public'
-      and table_name in ('code_files', 'code_symbols', 'code_imports', 'code_calls')
+      and table_name in ('code_files', 'code_symbols', 'code_imports', 'code_calls', 'code_call_edges')
       and (grantee = 'anon' or privilege_type <> 'SELECT')
   ),
   'authenticated can only select code index tables and anon has no access'
@@ -72,13 +80,23 @@ select ok(has_function_privilege('service_role', 'public.replace_code_index(uuid
 select ok(has_function_privilege('authenticated', 'public.find_symbol(uuid, text, text, text, integer)', 'EXECUTE'), 'authenticated can execute find_symbol');
 select ok(not has_function_privilege('anon', 'public.find_symbol(uuid, text, text, text, integer)', 'EXECUTE'), 'anon cannot execute find_symbol');
 select ok(not has_function_privilege('anon', 'public.find_callers(uuid, text, text, integer)', 'EXECUTE'), 'anon cannot execute find_callers');
+select ok(not has_function_privilege('anon', 'public.find_callers(uuid, text, text, integer, text, text)', 'EXECUTE'), 'anon cannot execute the narrowed find_callers');
+select ok(has_function_privilege('authenticated', 'public.find_callers(uuid, text, text, integer, text, text)', 'EXECUTE'), 'authenticated can execute the narrowed find_callers');
+select ok(not has_function_privilege('authenticated', 'public.replace_code_edges(uuid, text, jsonb)', 'EXECUTE'), 'authenticated cannot execute replace_code_edges');
+select ok(not has_function_privilege('authenticated', 'public.load_code_link_facts(uuid, text, text, integer)', 'EXECUTE'), 'authenticated cannot execute load_code_link_facts');
+select ok(
+  has_function_privilege('service_role', 'public.replace_code_edges(uuid, text, jsonb)', 'EXECUTE')
+    and has_function_privilege('service_role', 'public.load_code_link_facts(uuid, text, text, integer)', 'EXECUTE'),
+  'service_role can execute the link functions'
+);
 
 select ok(
   not exists (
     select 1 from pg_proc
     where pronamespace = 'public'::regnamespace
       and proname in ('replace_code_index', 'prune_code_index', 'request_code_index', 'complete_code_index',
-                      'fail_code_index', 'find_symbol', 'find_importers', 'find_dependencies', 'find_callers')
+                      'fail_code_index', 'find_symbol', 'find_importers', 'find_dependencies', 'find_callers',
+                      'replace_code_edges', 'load_code_link_facts')
       and (prosecdef or not coalesce(proconfig @> array['search_path=""'], false))
   ),
   'code index functions are security invoker with an empty search_path'
@@ -104,13 +122,21 @@ select throws_ok(
     from public.code_files where workspace_id = '13131313-0000-4000-8000-000000000021' and repository_commit_sha = repeat('a', 40)$$,
   '23503', null, 'a symbol must carry its file''s commit'
 );
+select throws_ok(
+  $$insert into public.code_call_edges (file_id, workspace_id, user_id, repository_commit_sha, call_ord, target_file_id, target_ord, confidence, candidate_count)
+    select src.id, src.workspace_id, src.user_id, src.repository_commit_sha, 0, tgt.id, 0, 'resolved', 1
+    from public.code_files as src, public.code_files as tgt
+    where src.workspace_id = '13131313-0000-4000-8000-000000000021' and src.repository_commit_sha = repeat('a', 40)
+      and tgt.workspace_id = '13131313-0000-4000-8000-000000000023'$$,
+  '23503', null, 'an edge cannot point into another owner''s workspace'
+);
 
 -- Owner reads -----------------------------------------------------------------------------
 
 set local role authenticated;
 select set_config('request.jwt.claims', '{"sub": "13131313-0000-4000-8000-000000000001", "role": "authenticated"}', true);
 
-select is(pg_temp.visible(), '3/3/3/3', 'the owner sees only their own facts across workspaces and commits');
+select is(pg_temp.visible(), '3/3/3/3/3', 'the owner sees only their own facts across workspaces and commits');
 select is(
   (select coalesce(string_agg(name, ',' order by name), '') from public.find_symbol('13131313-0000-4000-8000-000000000021', repeat('a', 40), 'a')),
   'apiHandler',
@@ -136,6 +162,10 @@ select throws_ok(
   '42501', null, 'the owner cannot write through replace_code_index'
 );
 select throws_ok(
+  $$select public.replace_code_edges('13131313-0000-4000-8000-000000000021', repeat('a', 40), '[]')$$,
+  '42501', null, 'the owner cannot write through replace_code_edges'
+);
+select throws_ok(
   $$delete from public.code_files where workspace_id = '13131313-0000-4000-8000-000000000021'$$,
   '42501', null, 'the owner cannot delete code files directly'
 );
@@ -148,7 +178,7 @@ select throws_ok(
 
 select set_config('request.jwt.claims', '{"sub": "13131313-0000-4000-8000-000000000002", "role": "authenticated"}', true);
 
-select is(pg_temp.visible(), '1/1/1/1', 'another user sees only their own facts');
+select is(pg_temp.visible(), '1/1/1/1/1', 'another user sees only their own facts');
 select is(
   (select count(*)::integer from public.find_symbol('13131313-0000-4000-8000-000000000021', repeat('a', 40), 'apiHandler')),
   0,
@@ -157,7 +187,8 @@ select is(
 select is(
   (select count(*)::integer from public.find_importers('13131313-0000-4000-8000-000000000021', repeat('a', 40), 'src/db.ts'))
   + (select count(*)::integer from public.find_dependencies('13131313-0000-4000-8000-000000000021', repeat('a', 40), 'src/index.ts'))
-  + (select count(*)::integer from public.find_callers('13131313-0000-4000-8000-000000000021', repeat('a', 40), 'query')),
+  + (select count(*)::integer from public.find_callers('13131313-0000-4000-8000-000000000021', repeat('a', 40), 'query'))
+  + (select count(*)::integer from public.find_callers('13131313-0000-4000-8000-000000000021', repeat('a', 40), 'apiHandler', 50, null, null)),
   0,
   'the import and call lookups respect RLS too'
 );

@@ -53,8 +53,8 @@ describe("createRegistry", () => {
 });
 
 describe("default registry", () => {
-  it("ships TypeScript, TSX, JavaScript, Python, Java and Go", () => {
-    expect(defaultLanguages.map((d) => d.id)).toEqual(["typescript", "tsx", "javascript", "python", "java", "go"]);
+  it("ships TypeScript, TSX, JavaScript, Python, Java, Go, C and C++", () => {
+    expect(defaultLanguages.map((d) => d.id)).toEqual(["typescript", "tsx", "javascript", "python", "java", "go", "c", "cpp"]);
   });
 
   it.each([
@@ -70,12 +70,22 @@ describe("default registry", () => {
     ["types/stub.pyi", "python"],
     ["src/Main.java", "java"],
     ["cmd/main.go", "go"],
+    ["src/main.c", "c"],
+    ["include/lib.h", "c"],
+    ["src/MAIN.C", "c"],
+    ["src/a.cc", "cpp"],
+    ["src/a.cpp", "cpp"],
+    ["src/a.cxx", "cpp"],
+    ["include/a.hpp", "cpp"],
+    ["include/a.hh", "cpp"],
+    ["include/a.hxx", "cpp"],
+    ["include/a.ipp", "cpp"],
   ])("detects %s as %s", (path, id) => {
     expect(detectLanguage(path)).toBe(id);
     expect(defaultRegistry.detect(path)?.id).toBe(id);
   });
 
-  it.each(["main.rs", "main.c", "main.cpp", "lib.h", "README.md", "Dockerfile"])("does not claim %s", (path) => {
+  it.each(["main.rs", "main.m", "README.md", "Dockerfile", "Makefile"])("does not claim %s", (path) => {
     expect(detectLanguage(path)).toBeNull();
   });
 });
