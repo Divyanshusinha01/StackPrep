@@ -1,7 +1,10 @@
 import {
   gitCommitShaSchema,
+  INTERVIEW_PLANNING_LIMITS,
   type InterviewPlanningOutput,
   interviewPlanningOutputSchema,
+  type InterviewPlanningProviderOutput,
+  interviewPlanningProviderOutputSchema,
   type PlanningErrorCode,
   planningErrorCodeSchema,
 } from "@stackprep/shared";
@@ -234,22 +237,54 @@ export function buildPlanningInput(
   ].join("\n\n");
 }
 
+function clip(text: string, max: number): string {
+  return text.trim().slice(0, max).trim();
+}
+
+function clipAll(items: string[], max: number): string[] {
+  return items.map((item) => clip(item, max)).filter(Boolean);
+}
+
 /**
- * Coverage starts untouched, and references to unknown areas are dropped. Throws when what remains
- * is no longer a usable plan.
+ * Text is clipped to the stored caps, coverage starts untouched, and references to unknown areas
+ * are dropped. Throws when what remains is no longer a usable plan.
  */
-export function normalizePlan(output: InterviewPlanningOutput): InterviewPlanningOutput {
+export function normalizePlan(output: InterviewPlanningProviderOutput): InterviewPlanningOutput {
+  const L = INTERVIEW_PLANNING_LIMITS;
   const ids = new Set(output.coverage_map.areas.map((a) => a.id));
   if (ids.size !== output.coverage_map.areas.length) {
     throw new AIInvalidOutputError("schema_mismatch");
   }
+  const areas = output.coverage_map.areas.map((a) => ({
+    ...a,
+    name: clip(a.name, L.nameChars),
+    rationale: clip(a.rationale, L.shortTextChars),
+    topics: clipAll(a.topics, L.shortTextChars),
+    repo_evidence: clipAll(a.repo_evidence, L.shortTextChars),
+    status: "not_started" as const,
+  }));
   const phases = output.plan.phases
-    .map((p) => ({ ...p, coverage_area_ids: p.coverage_area_ids.filter((id) => ids.has(id)) }))
+    .map((p) => ({
+      ...p,
+      title: clip(p.title, L.nameChars),
+      coverage_area_ids: p.coverage_area_ids.filter((id) => ids.has(id)),
+      goals: clipAll(p.goals, L.shortTextChars),
+    }))
     .filter((p) => p.coverage_area_ids.length > 0);
   const normalized: InterviewPlanningOutput = {
-    coverage_map: { areas: output.coverage_map.areas.map((a) => ({ ...a, status: "not_started" })) },
-    plan: { ...output.plan, phases },
-    strategy: { ...output.strategy, focus_area_ids: output.strategy.focus_area_ids.filter((id) => ids.has(id)) },
+    coverage_map: { areas },
+    plan: {
+      summary: clip(output.plan.summary, L.summaryChars),
+      phases,
+      opening_question: clip(output.plan.opening_question, L.openingQuestionChars),
+    },
+    strategy: {
+      ...output.strategy,
+      focus_area_ids: output.strategy.focus_area_ids.filter((id) => ids.has(id)),
+      avoid_repeating: clipAll(output.strategy.avoid_repeating, L.shortTextChars),
+      follow_up_style: clip(output.strategy.follow_up_style, L.shortTextChars),
+      notes: clipAll(output.strategy.notes, L.shortTextChars),
+    },
   };
   const parsed = interviewPlanningOutputSchema.safeParse(normalized);
   if (!parsed.success) {
@@ -306,7 +341,7 @@ export async function runInterviewPlanning(
         system: PLANNING_SYSTEM_PROMPT,
         input: buildPlanningInput(target, memory, prior),
         schemaName: "interview_plan",
-        schema: interviewPlanningOutputSchema,
+        schema: interviewPlanningProviderOutputSchema,
         maxOutputTokens: MAX_OUTPUT_TOKENS,
         reasoningEffort: deps.reasoningEffort,
         timeoutMs: AI_TIMEOUT_MS,

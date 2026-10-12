@@ -1,5 +1,5 @@
 import { assert, assertAlmostEquals, assertEquals, assertInstanceOf, assertRejects, assertThrows } from "@std/assert";
-import type { InterviewPlanningOutput } from "@stackprep/shared";
+import { INTERVIEW_PLANNING_LIMITS, type InterviewPlanningOutput, interviewPlanningOutputSchema } from "@stackprep/shared";
 import { NonRetriableError, RetryAfterError } from "inngest";
 import {
   AIInvalidOutputError,
@@ -456,6 +456,31 @@ Deno.test("normalizePlan rejects duplicate areas and plans left without enough p
   const orphaned = aiOutput();
   orphaned.plan.phases = orphaned.plan.phases.map((p) => ({ ...p, coverage_area_ids: ["made_up"] }));
   assertThrows(() => normalizePlan(orphaned), AIInvalidOutputError);
+});
+
+Deno.test("over-long provider text is clipped to the stored caps instead of failing the plan", async () => {
+  const L = INTERVIEW_PLANNING_LIMITS;
+  const long = (n: number) => "x".repeat(n + 50);
+  const verbose = (): InterviewPlanningOutput => {
+    const out = aiOutput();
+    out.coverage_map.areas[0] = { ...out.coverage_map.areas[0], name: long(L.nameChars), rationale: long(L.shortTextChars), topics: [long(L.shortTextChars), "  "] };
+    out.plan.summary = long(L.summaryChars);
+    out.plan.opening_question = long(L.openingQuestionChars);
+    out.strategy.follow_up_style = long(L.shortTextChars);
+    return out;
+  };
+
+  const { deps, completed } = setup({ ai: verbose });
+  const result = await runInterviewPlanning(deps, { data: event, runId: "r", step: stepRunner().step });
+  assertEquals(result.outcome, "planned");
+  const [plan] = completed;
+  assert(interviewPlanningOutputSchema.safeParse(plan).success);
+  assertEquals(plan.coverage_map.areas[0].name.length, L.nameChars);
+  assertEquals(plan.coverage_map.areas[0].rationale.length, L.shortTextChars);
+  assertEquals(plan.coverage_map.areas[0].topics, ["x".repeat(L.shortTextChars)]);
+  assertEquals(plan.plan.summary.length, L.summaryChars);
+  assertEquals(plan.plan.opening_question.length, L.openingQuestionChars);
+  assertEquals(plan.strategy.follow_up_style.length, L.shortTextChars);
 });
 
 Deno.test("onFailure records a fixed code and message, never the raw error", async () => {
