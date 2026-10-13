@@ -21,16 +21,32 @@ const files = sourceFiles(srcRoot).map((path) => ({
   text: readFileSync(path, "utf8"),
 }));
 
-const USE_CLIENT = /^\s*(?:\/\/[^\n]*\n|\/\*[\s\S]*?\*\/\s*)*["']use client["']/;
+function isClientComponent(text: string): boolean {
+  let rest = text.trimStart();
+  for (;;) {
+    if (rest.startsWith("//")) {
+      const nl = rest.indexOf("\n");
+      if (nl === -1) return false;
+      rest = rest.slice(nl + 1).trimStart();
+    } else if (rest.startsWith("/*")) {
+      const end = rest.indexOf("*/", 2);
+      if (end === -1) return false;
+      rest = rest.slice(end + 2).trimStart();
+    } else {
+      return /^["']use client["']/.test(rest);
+    }
+  }
+}
+
 const IMPORTS_ADMIN = /from\s+["'](?:@\/lib\/admin|(?:\.{1,2}\/)+(?:lib\/)?admin)["']/;
 
 describe("admin boundary", () => {
   it("finds client components to check", () => {
-    expect(files.filter((f) => USE_CLIENT.test(f.text)).length).toBeGreaterThan(0);
+    expect(files.filter((f) => isClientComponent(f.text)).length).toBeGreaterThan(0);
   });
 
   it("keeps the admin module out of every client component", () => {
-    const offenders = files.filter((f) => USE_CLIENT.test(f.text) && IMPORTS_ADMIN.test(f.text)).map((f) => f.path);
+    const offenders = files.filter((f) => isClientComponent(f.text) && IMPORTS_ADMIN.test(f.text)).map((f) => f.path);
     expect(offenders).toEqual([]);
   });
 

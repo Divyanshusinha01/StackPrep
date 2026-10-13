@@ -42,7 +42,7 @@ function formatCi(ci: [number, number] | undefined): string {
 }
 
 function cell(text: string): string {
-  return text.replace(/\|/g, "\\|").replace(/\r?\n/g, " ");
+  return text.replace(/[\\|]/g, "\\$&").replace(/\r?\n/g, " ");
 }
 
 function table(head: string[], rows: string[][]): string[] {

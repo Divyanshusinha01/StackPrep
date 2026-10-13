@@ -75,7 +75,10 @@ export function signatureQualifier(signature: string | null, name: string): stri
   if (!signature) return [];
   const match = new RegExp(`((?:[A-Za-z_]\\w*(?:<[^<>()]*>)?\\s*::\\s*)+)${escapeRegExp(name)}\\s*\\(`).exec(signature);
   if (!match) return [];
-  return match[1]!.split("::").map((s) => s.replace(/<.*$/, "").trim()).filter(Boolean);
+  return match[1]!.split("::").map((s) => {
+    const lt = s.indexOf("<");
+    return (lt === -1 ? s : s.slice(0, lt)).trim();
+  }).filter(Boolean);
 }
 
 export function parseCallee(text: string): ParsedCallee | null {

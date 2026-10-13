@@ -22,7 +22,7 @@ function linkageVisible(def: Node, member: boolean): boolean {
 function memberAccess(def: Node): string {
   const member = def.parent?.type === "template_declaration" ? def.parent : def;
   for (let n = member.previousNamedSibling; n; n = n.previousNamedSibling) {
-    if (n.type === "access_specifier") return n.text.replace(/\s*:$/, "");
+    if (n.type === "access_specifier") return n.text.endsWith(":") ? n.text.slice(0, -1).trimEnd() : n.text;
   }
   return member.parent?.parent?.type === "class_specifier" ? "private" : "public";
 }
@@ -115,18 +115,55 @@ export const cFamilyHooks: LanguageHooks = {
   },
 };
 
-/** Strips comments and string/char literals so markers inside them are ignored. */
+/** End of a quoted literal starting at `start`: past the closing quote, or at the newline/end if unterminated. */
+function literalEnd(content: string, start: number): number {
+  const quote = content[start];
+  for (let i = start + 1; i < content.length; i++) {
+    const ch = content[i];
+    if (ch === "\\") i++;
+    else if (ch === quote) return i + 1;
+    else if (ch === "\n") return i;
+  }
+  return content.length;
+}
+
+/**
+ * Strips comments and string/char literals so markers inside them are ignored. A linear scan: an
+ * unterminated block comment runs to the end, an unterminated literal to the end of its line.
+ */
 function codeOnly(content: string): string {
-  return content.replace(/\/\*[\s\S]*?\*\/|\/\/[^\n]*|"(?:\\.|[^"\\\n])*"|'(?:\\.|[^'\\\n])*'/g, " ");
+  let out = "";
+  let i = 0;
+  while (i < content.length) {
+    const ch = content[i];
+    let end = -1;
+    if (ch === "/" && content[i + 1] === "*") {
+      const close = content.indexOf("*/", i + 2);
+      end = close === -1 ? content.length : close + 2;
+    } else if (ch === "/" && content[i + 1] === "/") {
+      const nl = content.indexOf("\n", i);
+      end = nl === -1 ? content.length : nl;
+    } else if (ch === '"' || ch === "'") {
+      end = literalEnd(content, i);
+    }
+    if (end === -1) {
+      out += ch;
+      i++;
+    } else {
+      out += " ";
+      i = end;
+    }
+  }
+  return out;
 }
 
 const CPP_MARKERS = [
   /\bclass\s+[A-Za-z_]\w*\s*(?:final\s*)?[:{;]/,
-  /\bnamespace\b\s*[A-Za-z_\w:]*\s*\{/,
+  /\bnamespace\b\s*[\w:]*\s*\{/,
   /\btemplate\s*</,
   /\b(?:public|private|protected)\s*:/,
   /\busing\s+namespace\b/,
-  /[A-Za-z_\w>]\s*::\s*~?[A-Za-z_]/,
+  /[\w>]\s*::\s*~?[A-Za-z_]/,
 ];
 
 /** True when header text uses C++-only syntax. `extern "C++"` counts; `extern "C"` guards do not. */

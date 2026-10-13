@@ -9,7 +9,7 @@ const moduleFiles = (base: string) => [`${base}.py`, `${base}.pyi`, `${base}/__i
  * a known module or package at the root, else a unique path suffix (src layouts); else external.
  */
 export function resolvePythonImport(fromPath: string, source: string, index: PathIndex): ImportTarget {
-  const relative = /^(\.+)([\w.]*)$/.exec(source);
+  const relative = /^(\.+)((?:\w[\w.]*)?)$/.exec(source);
   if (relative) {
     let dir = dirname(fromPath);
     for (let i = 1; i < relative[1]!.length; i++) {
