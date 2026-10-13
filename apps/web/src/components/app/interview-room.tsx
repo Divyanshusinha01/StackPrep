@@ -157,9 +157,12 @@ function TranscriptPane({
   }, [turns]);
 
   return (
-    <section aria-labelledby={id} className="relative flex min-h-0 flex-col overflow-hidden rounded-xl border bg-panel/60">
-      <div className="flex items-center justify-between gap-3 border-b px-4 py-2.5">
-        <h2 id={id} className="flex items-center gap-2 text-sm font-medium">
+    <section
+      aria-labelledby={id}
+      className="surface-inset relative flex min-h-0 flex-col overflow-hidden rounded-xl border bg-panel/60"
+    >
+      <div className="flex items-center justify-between gap-3 border-b bg-panel-raised/40 px-4 py-3">
+        <h2 id={id} className="flex items-center gap-2 font-display text-sm font-semibold tracking-tight">
           {icon}
           {title}
         </h2>
@@ -175,26 +178,46 @@ function TranscriptPane({
           stickRef.current = el.scrollHeight - el.scrollTop - el.clientHeight < 48;
         }}
         className={cn(
-          "flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto overscroll-contain px-4 py-4 text-sm leading-relaxed",
-          overlay !== undefined && "pb-16",
+          "flex min-h-0 flex-1 flex-col divide-y divide-border/50 overflow-y-auto overscroll-contain px-4 py-2 text-sm leading-relaxed",
+          overlay !== undefined && "pb-14",
         )}
       >
-        {turns.length === 0 ? <p className="m-auto max-w-xs text-center text-muted-foreground">{placeholder}</p> : null}
-        {turns.map((turn) => (
-          <p
-            key={turn.itemId}
-            className={cn(
-              "max-w-[92%] rounded-2xl px-3.5 py-2.5 break-words",
-              side === "ai"
-                ? "self-start rounded-tl-sm border bg-panel-raised"
-                : "self-end rounded-tr-sm border border-brand/20 bg-brand-muted",
-              turn.final ? "text-foreground" : "text-foreground/70",
-            )}
-          >
-            {turn.text || <span className="text-muted-foreground">…</span>}
-            {turn.interrupted ? <span className="ml-1 text-xs text-muted-foreground">(cut off)</span> : null}
-          </p>
-        ))}
+        {turns.length === 0 ? (
+          <p className="m-auto max-w-xs py-8 text-center text-sm text-muted-foreground">{placeholder}</p>
+        ) : null}
+        {turns.map((turn, index) => {
+          const isLatest = index === turns.length - 1;
+          return (
+            <div
+              key={turn.itemId}
+              className={cn(
+                "py-3.5 first:pt-2 last:pb-2",
+                isLatest ? "text-foreground" : "text-foreground/80",
+              )}
+            >
+              <div
+                className={cn(
+                  "border-l-2 pl-3.5 transition-colors",
+                  side === "ai"
+                    ? isLatest
+                      ? "border-brand"
+                      : "border-brand/35"
+                    : isLatest
+                      ? "border-foreground/60"
+                      : "border-border-strong",
+                  !turn.final && "text-foreground/75",
+                )}
+              >
+                <p className="break-words">
+                  {turn.text || <span className="text-muted-foreground">…</span>}
+                  {turn.interrupted ? (
+                    <span className="ml-1.5 font-mono text-xs text-muted-foreground">(cut off)</span>
+                  ) : null}
+                </p>
+              </div>
+            </div>
+          );
+        })}
       </div>
       {overlay}
     </section>
@@ -208,12 +231,12 @@ function ExaminingIndicator({ items }: { items: ExaminedItem[] | null }) {
     <p
       aria-live="polite"
       title={items?.map((item) => item.path).join("\n")}
-      className="pointer-events-none absolute inset-x-3 bottom-3 flex justify-start"
+      className="pointer-events-none absolute inset-x-0 bottom-0 flex justify-start p-2.5"
     >
       {label ? (
-        <span className="pointer-events-auto inline-flex max-w-full items-center gap-2 rounded-full border border-brand/30 bg-background/90 px-3 py-1.5 text-xs text-foreground shadow-lg shadow-black/30 backdrop-blur-md motion-safe:animate-in motion-safe:fade-in-0 motion-safe:slide-in-from-bottom-1">
+        <span className="pointer-events-auto inline-flex max-w-full items-center gap-2 rounded-lg border border-brand/35 bg-background/95 px-3 py-1.5 text-xs text-foreground shadow-lg shadow-black/40 backdrop-blur-md motion-safe:animate-in motion-safe:fade-in-0 motion-safe:slide-in-from-bottom-1">
           <FileSearch className="size-3.5 shrink-0 text-brand" aria-hidden />
-          <span className="truncate font-mono">{label}</span>
+          <span className="truncate font-mono text-[11px]">{label}</span>
         </span>
       ) : null}
     </p>
@@ -430,12 +453,12 @@ export function InterviewRoom({
 
   return (
     <div>
-      <div className="sticky top-[var(--app-header-h)] z-30 -mx-4 border-b bg-background/85 px-4 py-2.5 backdrop-blur-md sm:-mx-6 sm:px-6">
-        <div className="flex items-center gap-3 text-sm">
+      <div className="sticky top-[var(--app-header-h)] z-30 -mx-4 border-b border-border/80 bg-background/90 px-4 py-3 backdrop-blur-md sm:-mx-6 sm:px-6">
+        <div className="flex items-center gap-3.5 text-sm">
           <span aria-live="polite" className="flex min-w-0 items-center">
             {status === "connecting" ? (
               <span className="flex items-center gap-2 text-muted-foreground">
-                <Loader2 className="size-4 shrink-0 motion-safe:animate-spin" aria-hidden />
+                <Loader2 className="size-4 shrink-0 motion-safe:animate-spin text-brand" aria-hidden />
                 <span className="truncate">Connecting to your interviewer…</span>
               </span>
             ) : live ? (
@@ -444,7 +467,7 @@ export function InterviewRoom({
               </StatusChip>
             ) : status === "reconnecting" ? (
               <span className="flex items-center gap-2 text-muted-foreground">
-                <Loader2 className="size-4 shrink-0 motion-safe:animate-spin" aria-hidden />
+                <Loader2 className="size-4 shrink-0 motion-safe:animate-spin text-brand" aria-hidden />
                 <span className="truncate">Reconnecting… your answers are saved</span>
               </span>
             ) : status === "closed" ? (
@@ -453,7 +476,12 @@ export function InterviewRoom({
               </span>
             ) : null}
           </span>
-          <span className="inline-flex items-baseline gap-1.5 font-mono text-base font-medium tabular-nums">
+          <span
+            className={cn(
+              "inline-flex items-baseline gap-2 rounded-md border px-2.5 py-1 font-mono text-sm font-medium tabular-nums",
+              wrappingUp ? "border-brand/40 bg-brand-muted/50 text-brand" : "border-border/80 bg-panel/70 text-foreground",
+            )}
+          >
             <span aria-hidden className="hidden font-sans text-xs font-normal text-muted-foreground sm:inline">
               Elapsed
             </span>
@@ -474,7 +502,7 @@ export function InterviewRoom({
                   <span className="max-sm:sr-only">Stop interview</span>
                 </Button>
               ) : (
-                <span className="hidden text-xs text-muted-foreground sm:inline">No pauses left</span>
+                <span className="hidden font-mono text-xs text-muted-foreground sm:inline">No pauses left</span>
               )
             ) : null}
             {ending.button}

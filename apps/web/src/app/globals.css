@@ -31,6 +31,7 @@
   --color-accent-foreground: var(--accent-foreground);
   --color-destructive: var(--destructive);
   --color-border: var(--border);
+  --color-border-strong: var(--border-strong);
   --color-input: var(--input);
   --color-ring: var(--ring);
 
@@ -48,30 +49,31 @@
   --radius: 0.625rem;
 
   /* Midnight navy surfaces (~#0D1117–#161B22) */
-  --background: oklch(0.17 0.025 260);
+  --background: oklch(0.155 0.022 260);
   --foreground: oklch(0.97 0.012 250);
 
-  --card: oklch(0.2 0.028 260);
+  --card: oklch(0.185 0.025 260);
   --card-foreground: var(--foreground);
-  --popover: oklch(0.2 0.028 260);
+  --popover: oklch(0.195 0.026 260);
   --popover-foreground: var(--foreground);
 
   /* Champagne gold CTAs (~#C5A059–#D4AF37) */
   --primary: oklch(0.76 0.11 88);
-  --primary-foreground: oklch(0.17 0.025 260);
+  --primary-foreground: oklch(0.155 0.022 260);
 
   /* Slate blue secondary (~#1F6FEB scaled for fills) */
   --secondary: oklch(0.28 0.055 264);
   --secondary-foreground: var(--foreground);
 
-  --muted: oklch(0.24 0.03 260);
+  --muted: oklch(0.23 0.028 260);
   --muted-foreground: oklch(0.72 0.02 250);
 
-  --accent: oklch(0.26 0.05 264);
+  --accent: oklch(0.25 0.045 264);
   --accent-foreground: var(--foreground);
 
   --destructive: oklch(0.7 0.19 22);
-  --border: oklch(0.76 0.11 88 / 10%);
+  --border: oklch(1 0 0 / 8.5%);
+  --border-strong: oklch(1 0 0 / 15%);
   --input: oklch(1 0 0 / 14%);
   --ring: oklch(0.76 0.11 88);
 
@@ -79,11 +81,11 @@
   --brand-muted: oklch(0.76 0.11 88 / 14%);
   --brand-glow: oklch(0.62 0.12 88 / 32%);
   --spotlight: oklch(0.76 0.11 88 / 9%);
-  --panel: oklch(0.185 0.026 260);
-  --panel-raised: oklch(0.215 0.028 260);
+  --panel: oklch(0.18 0.024 260);
+  --panel-raised: oklch(0.21 0.026 260);
   --grid: oklch(1 0 0 / 5%);
   --success: oklch(0.8 0.14 160);
-  --background-elevated: oklch(0.19 0.026 260);
+  --background-elevated: oklch(0.175 0.024 260);
 
   /* Sticky app header: top row plus the mobile nav row; elements that stick below it offset by this. */
   --app-header-h: calc(6.5rem + 1px);
@@ -182,6 +184,10 @@
 
 @utility section-elevated {
   background-color: var(--background-elevated);
+}
+
+@utility surface-inset {
+  box-shadow: inset 0 1px 0 0 oklch(1 0 0 / 6%);
 }
 
 @keyframes wave {

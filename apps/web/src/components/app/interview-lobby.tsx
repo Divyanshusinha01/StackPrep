@@ -78,7 +78,7 @@ function CheckItem({
   children?: React.ReactNode;
 }) {
   return (
-    <li className="flex gap-3">
+    <li className="flex gap-3 py-3.5">
       <StepMarker step={step} state={ok ? "done" : waiting ? "active" : "pending"} />
       <div className="min-w-0 flex-1 pt-0.5">
         <p className={cn("flex items-center gap-2 text-sm font-medium", ok ? "text-foreground" : "text-muted-foreground")}>
@@ -145,13 +145,21 @@ export function InterviewLobby({
             : null;
 
   return (
-    <div className="grid gap-6 md:grid-cols-[minmax(0,1fr)_20rem]">
-      <section aria-labelledby="device-check" className="rounded-xl border bg-panel/60 p-4 sm:p-5">
-        <h2 id="device-check" className="text-sm font-medium">
-          Camera and microphone check
-        </h2>
-        <p className="mt-1 text-xs text-muted-foreground">Both are required for the interview.</p>
-        <div className="relative mt-4 aspect-video overflow-hidden rounded-lg border bg-black/60">
+    <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_22rem]">
+      <section aria-labelledby="device-check" className="surface-inset rounded-xl border bg-panel/60 p-5 sm:p-6">
+        <div className="flex items-baseline justify-between gap-3">
+          <div>
+            <h2 id="device-check" className="font-display text-base font-semibold tracking-tight">
+              Camera and microphone check
+            </h2>
+            <p className="mt-1 text-xs text-muted-foreground">Both are required for the interview.</p>
+          </div>
+          <span className="font-mono text-[11px] text-muted-foreground tabular-nums">
+            {[cameraOk, micOk].filter(Boolean).length}/2 verified
+          </span>
+        </div>
+
+        <div className="relative mt-4 aspect-video overflow-hidden rounded-lg border border-border-strong/70 bg-black/80 shadow-inner">
           <video
             ref={videoRef}
             autoPlay
@@ -162,8 +170,11 @@ export function InterviewLobby({
             aria-label="Camera preview"
           />
           {phase !== "active" ? (
-            <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 p-4 text-center">
-              <span aria-hidden className="grid size-12 place-items-center rounded-full bg-brand-muted text-brand">
+            <div className="absolute inset-0 flex flex-col items-center justify-center gap-3.5 bg-radial from-panel/80 to-black/90 p-4 text-center">
+              <span
+                aria-hidden
+                className="grid size-12 place-items-center rounded-xl border border-brand/25 bg-brand-muted/70 text-brand"
+              >
                 <Video className="size-5" />
               </span>
               <Button onClick={() => void start()} disabled={phase === "requesting"} variant="outline">
@@ -172,13 +183,14 @@ export function InterviewLobby({
             </div>
           ) : null}
           {checking && cameraOk ? (
-            <span className="absolute top-2.5 left-2.5 inline-flex items-center gap-1.5 rounded-full bg-black/60 px-2 py-0.5 text-xs text-emerald-300 backdrop-blur">
+            <span className="absolute top-3 left-3 inline-flex items-center gap-1.5 rounded-full border border-emerald-500/30 bg-black/70 px-2.5 py-0.5 font-mono text-[11px] text-emerald-300 backdrop-blur-md">
               <span aria-hidden className="size-1.5 rounded-full bg-emerald-400" />
               Preview on
             </span>
           ) : null}
         </div>
-        <ol className="mt-5 space-y-4">
+
+        <ol className="mt-5 divide-y divide-border/70 rounded-lg border bg-background/40 px-4">
           <CheckItem
             step={1}
             ok={cameraOk}
@@ -196,25 +208,25 @@ export function InterviewLobby({
           >
             <div
               aria-hidden
-              className="relative mt-2.5 h-3 overflow-hidden rounded-full border bg-muted/50"
+              className="relative mt-2.5 h-2.5 overflow-hidden rounded-full border border-border-strong/60 bg-muted/50"
             >
               <div
                 ref={meterRef}
                 className="h-full origin-left scale-x-0 bg-gradient-to-r from-emerald-500 via-emerald-400 to-brand transition-transform duration-75"
               />
-              <div className="pointer-events-none absolute inset-0 bg-[repeating-linear-gradient(to_right,transparent_0,transparent_10px,var(--background)_10px,var(--background)_12px)] opacity-60" />
+              <div className="pointer-events-none absolute inset-0 bg-[repeating-linear-gradient(to_right,transparent_0,transparent_8px,var(--background)_8px,var(--background)_10px)] opacity-60" />
             </div>
           </CheckItem>
         </ol>
         {error ? <Notice tone="error">{DEVICE_ERRORS[error]}</Notice> : null}
       </section>
 
-      <aside className="flex flex-col gap-4">
-        <section aria-labelledby="planning-status" aria-live="polite" className="rounded-xl border bg-panel/60 p-4 sm:p-5">
+      <aside className="surface-inset flex flex-col divide-y self-start overflow-hidden rounded-xl border bg-panel/60">
+        <section aria-labelledby="planning-status" aria-live="polite" className="p-5">
           <div className="flex gap-3">
             <StepMarker step={3} state={planReady ? "done" : planFailed ? "failed" : "active"} />
             <div className="min-w-0 pt-0.5">
-              <h2 id="planning-status" className="text-sm font-medium">
+              <h2 id="planning-status" className="font-display text-sm font-semibold">
                 Interview plan
               </h2>
               <p className="mt-1 text-sm text-muted-foreground">
@@ -230,13 +242,13 @@ export function InterviewLobby({
         </section>
 
         {resume ? (
-          <section aria-labelledby="pause-status" className="rounded-xl border bg-panel/60 p-4 sm:p-5">
-            <h2 id="pause-status" className="text-sm font-medium">
+          <section aria-labelledby="pause-status" className="p-5">
+            <h2 id="pause-status" className="font-display text-sm font-semibold">
               Paused
             </h2>
-            <p className="mt-2 text-sm text-muted-foreground">
+            <p className="mt-2 text-sm leading-relaxed text-muted-foreground">
               Your answers are saved. Resume by{" "}
-              <span className="text-foreground" suppressHydrationWarning>
+              <span className="font-mono text-xs text-foreground" suppressHydrationWarning>
                 {formatResumeBy(resume.resumeBy)}
               </span>{" "}
               to continue where you left off.
@@ -253,7 +265,7 @@ export function InterviewLobby({
           </section>
         ) : null}
 
-        <div className="rounded-xl border bg-panel/60 p-4 sm:p-5">
+        <div className="bg-panel-raised/30 p-5">
           <Button
             disabled={!canEnter}
             onClick={onEnter}
@@ -267,14 +279,14 @@ export function InterviewLobby({
           <p
             id={hintId}
             className={cn(
-              "mt-3 flex items-start gap-2 text-xs leading-relaxed",
+              "mt-3.5 flex items-start gap-2 text-xs leading-relaxed",
               blocker ? "text-muted-foreground" : "text-emerald-300",
             )}
           >
             {blocker ? (
-              <CircleAlert className="mt-px size-3.5 shrink-0 text-amber-300" aria-hidden />
+              <CircleAlert className="mt-0.5 size-3.5 shrink-0 text-amber-300" aria-hidden />
             ) : (
-              <CircleCheck className="mt-px size-3.5 shrink-0" aria-hidden />
+              <CircleCheck className="mt-0.5 size-3.5 shrink-0" aria-hidden />
             )}
             <span>
               {blocker ??

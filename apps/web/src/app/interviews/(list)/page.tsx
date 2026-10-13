@@ -40,16 +40,24 @@ export default async function InterviewsPage({ searchParams }: PageProps<"/inter
         <div className="space-y-8">
           {groups.map((group) => (
             <section key={group.workspace_id} aria-labelledby={`workspace-${group.workspace_id}`}>
-              <h2 id={`workspace-${group.workspace_id}`} className="flex items-center gap-2 text-sm font-semibold">
-                <FolderGit2 className="size-4 text-brand" aria-hidden />
-                <Link
-                  href={`/workspaces/${group.workspace_id}`}
-                  className="focus-ring truncate rounded-sm font-mono hover:underline"
-                >
-                  {group.repository_full_name}
-                </Link>
-              </h2>
-              <ul className="mt-3 divide-y overflow-hidden rounded-xl border bg-panel/60" data-testid="interview-history">
+              <div className="flex items-center justify-between gap-3">
+                <h2 id={`workspace-${group.workspace_id}`} className="flex items-center gap-2 text-sm font-semibold">
+                  <FolderGit2 className="size-4 text-brand" aria-hidden />
+                  <Link
+                    href={`/workspaces/${group.workspace_id}`}
+                    className="focus-ring truncate rounded-sm font-mono hover:text-brand hover:underline"
+                  >
+                    {group.repository_full_name}
+                  </Link>
+                </h2>
+                <span className="font-mono text-xs text-muted-foreground tabular-nums">
+                  {group.interviews.length} {group.interviews.length === 1 ? "session" : "sessions"}
+                </span>
+              </div>
+              <ul
+                className="surface-inset mt-3 divide-y overflow-hidden rounded-xl border bg-panel/60"
+                data-testid="interview-history"
+              >
                 {group.interviews.map((interview) => (
                   <InterviewHistoryRow key={interview.id} interview={interview} returnTo="/interviews" />
                 ))}

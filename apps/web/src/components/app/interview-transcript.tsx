@@ -8,34 +8,39 @@ export function InterviewTranscript({ entries }: { entries: TranscriptEntry[] })
     return <p className="mt-3 text-sm text-muted-foreground">No transcript was recorded for this interview.</p>;
   }
   return (
-    <ol className="mt-4 flex flex-col gap-4 text-sm leading-relaxed" data-testid="interview-transcript">
+    <ol
+      className="mt-2 divide-y divide-border/60 text-sm leading-relaxed print:divide-border"
+      data-testid="interview-transcript"
+    >
       {entries.map((entry) => {
         const ai = entry.role === "ai";
         return (
           <li
             key={entry.id}
-            className={cn("flex max-w-[92%] gap-2.5 sm:max-w-[80%] print:max-w-none", ai ? "self-start" : "flex-row-reverse self-end")}
+            className="grid gap-1.5 py-3.5 sm:grid-cols-[8.5rem_minmax(0,1fr)] sm:items-baseline sm:gap-4 print:break-inside-avoid"
           >
-            <span
-              aria-hidden
-              className={cn(
-                "mt-5 grid size-7 shrink-0 place-items-center rounded-full border print:hidden",
-                ai ? "bg-brand-muted text-brand" : "bg-panel-raised text-muted-foreground",
-              )}
-            >
-              {ai ? <Bot className="size-3.5" /> : <Mic className="size-3.5" />}
-            </span>
-            <div className={cn("min-w-0", !ai && "text-right")}>
-              <p className="text-xs font-medium text-muted-foreground">{ai ? "Interviewer" : "You"}</p>
-              <p
+            <div className="flex items-center gap-2">
+              <span
+                aria-hidden
                 className={cn(
-                  "mt-1 rounded-2xl border px-3.5 py-2.5 text-left break-words whitespace-pre-wrap print:border-0 print:p-0",
-                  ai ? "rounded-tl-sm bg-panel-raised" : "rounded-tr-sm border-brand/20 bg-brand-muted",
+                  "grid size-5 shrink-0 place-items-center rounded border print:hidden",
+                  ai
+                    ? "border-brand/30 bg-brand-muted text-brand"
+                    : "border-border-strong/60 bg-panel-raised text-muted-foreground",
                 )}
               >
-                {entry.content}
-              </p>
+                {ai ? <Bot className="size-3" /> : <Mic className="size-3" />}
+              </span>
+              <span
+                className={cn(
+                  "font-mono text-xs font-medium",
+                  ai ? "text-brand print:text-foreground" : "text-muted-foreground print:text-foreground",
+                )}
+              >
+                {ai ? "Interviewer" : "You"}
+              </span>
             </div>
+            <p className="min-w-0 break-words whitespace-pre-wrap text-foreground/95">{entry.content}</p>
           </li>
         );
       })}

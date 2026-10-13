@@ -48,19 +48,19 @@ export function TechnicalDepth() {
           </SectionHeading>
         </ScrollReveal>
 
-        <ol ref={listRef} className="relative space-y-3">
-          <span aria-hidden className="absolute top-5 bottom-5 left-[19px] w-px bg-border" />
+        <ol ref={listRef} className="relative divide-y divide-border/60">
+          <span aria-hidden className="absolute top-6 bottom-6 left-[19px] w-px bg-border" />
           <m.span
             aria-hidden
-            className="absolute top-5 bottom-5 left-[19px] w-px origin-top bg-linear-to-b from-brand to-success"
+            className="absolute top-6 bottom-6 left-[19px] w-px origin-top bg-linear-to-b from-brand to-success"
             style={{ scaleY: reduced ? 1 : fill }}
           />
           {STEPS.map((step, i) => (
-            <li key={step.title} className="relative">
-              <ScrollReveal delay={i * 0.06} className="flex gap-5">
+            <li key={step.title} className="relative py-4 first:pt-0 last:pb-0">
+              <ScrollReveal delay={i * 0.06} className="flex items-start gap-5">
                 <span
                   className={cn(
-                    "relative z-10 flex size-10 shrink-0 items-center justify-center rounded-full border bg-panel font-mono text-xs transition-[color,border-color,box-shadow] duration-500",
+                    "relative z-10 mt-0.5 flex size-10 shrink-0 items-center justify-center rounded-full border bg-panel font-mono text-xs transition-[color,border-color,box-shadow] duration-500",
                     i < reached
                       ? "border-brand/60 text-brand shadow-[0_0_0_4px_var(--brand-muted),0_0_24px_-4px_var(--brand-glow)]"
                       : "text-muted-foreground",
@@ -68,13 +68,15 @@ export function TechnicalDepth() {
                 >
                   {String(i + 1).padStart(2, "0")}
                 </span>
-                <span
-                  className={cn(
-                    "flex-1 rounded-lg border bg-panel/60 px-4 py-3.5 transition-colors duration-500",
-                    i < reached && "border-brand/20",
-                  )}
-                >
-                  <span className="block text-sm font-medium text-foreground">{step.title}</span>
+                <span className="flex-1 pt-1">
+                  <span
+                    className={cn(
+                      "block font-display text-base font-medium transition-colors duration-500",
+                      i < reached ? "text-foreground" : "text-foreground/80",
+                    )}
+                  >
+                    {step.title}
+                  </span>
                   <span className="mt-1 block text-sm leading-relaxed text-muted-foreground">{step.body}</span>
                 </span>
               </ScrollReveal>

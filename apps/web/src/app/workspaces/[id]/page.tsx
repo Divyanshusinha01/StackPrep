@@ -132,28 +132,40 @@ export default async function WorkspacePage({ params, searchParams }: PageProps<
       <section
         aria-labelledby="start-interview"
         className={cn(
-          "relative overflow-hidden rounded-xl border p-5 sm:p-6",
-          ready ? "border-brand/25 bg-panel-raised/70" : "bg-panel/60",
+          "surface-inset relative overflow-hidden rounded-xl border p-6",
+          ready
+            ? "border-brand/30 bg-linear-to-br from-panel-raised/90 via-panel/80 to-panel/60"
+            : workspace.status === "failed"
+              ? "border-red-500/25 bg-panel/70"
+              : "border-border-strong/60 bg-panel/60",
         )}
       >
         {ready ? (
           <div aria-hidden className="glow-brand pointer-events-none absolute -top-24 -right-24 size-72 opacity-40" />
         ) : null}
-        <div className="relative flex flex-col gap-5 sm:flex-row sm:items-center sm:justify-between">
+        <div className="relative flex flex-col gap-6 sm:flex-row sm:items-center sm:justify-between">
           <div className="min-w-0">
-            <h2 id="start-interview" className="flex items-center gap-2 font-display text-lg font-semibold">
-              <Mic className="size-4.5 text-brand" aria-hidden />
+            <h2 id="start-interview" className="flex items-center gap-2.5 font-display text-lg font-semibold tracking-tight">
+              <span
+                aria-hidden
+                className={cn(
+                  "grid size-8 shrink-0 place-items-center rounded-lg border",
+                  ready ? "border-brand/30 bg-brand-muted text-brand" : "border-border bg-panel-raised text-muted-foreground",
+                )}
+              >
+                <Mic className="size-4" />
+              </span>
               {interviews.length === 0 ? "Start your first interview" : "Start a new interview"}
             </h2>
-            <p className="mt-1.5 max-w-xl text-sm text-muted-foreground">
+            <p className="mt-2 max-w-xl text-sm leading-relaxed text-muted-foreground">
               {ready
                 ? "The interviewer has read this repository and will ask about its architecture and your decisions. Plan for about 30 minutes; camera and microphone are required."
                 : workspace.status === "failed"
                   ? "Interviews are available once the repository analysis succeeds. Retry it below."
                   : "Interviews are available as soon as the repository analysis below finishes."}
             </p>
-            <p className="mt-3 inline-flex items-center gap-1.5 text-xs text-muted-foreground">
-              <Clock className="size-3.5" aria-hidden />
+            <p className="mt-3 inline-flex items-center gap-1.5 font-mono text-xs text-muted-foreground/90">
+              <Clock className="size-3.5 text-brand/80" aria-hidden />
               You can start up to 5 interviews in any 24 hours, across all workspaces.
             </p>
           </div>
@@ -181,11 +193,11 @@ export default async function WorkspacePage({ params, searchParams }: PageProps<
 
       <section className="mt-10" aria-labelledby="interview-history">
         <div className="flex items-baseline justify-between gap-3">
-          <h2 id="interview-history" className="font-display text-lg font-semibold">
+          <h2 id="interview-history" className="font-display text-lg font-semibold tracking-tight">
             Interview history
           </h2>
           {interviews.length > 0 ? (
-            <span className="text-xs text-muted-foreground">
+            <span className="font-mono text-xs text-muted-foreground tabular-nums">
               {interviews.length} {interviews.length === 1 ? "interview" : "interviews"}
             </span>
           ) : null}
@@ -200,7 +212,10 @@ export default async function WorkspacePage({ params, searchParams }: PageProps<
             description="Each interview and its report will be listed here."
           />
         ) : (
-          <ul className="mt-4 divide-y overflow-hidden rounded-xl border bg-panel/60" data-testid="interview-history">
+          <ul
+            className="surface-inset mt-4 divide-y overflow-hidden rounded-xl border bg-panel/60"
+            data-testid="interview-history"
+          >
             {interviews.map((interview) => (
               <InterviewHistoryRow key={interview.id} interview={interview} returnTo={`/workspaces/${workspace.id}`} />
             ))}

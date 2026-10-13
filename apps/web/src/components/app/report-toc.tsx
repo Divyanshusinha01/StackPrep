@@ -36,8 +36,10 @@ export function ReportToc({ items }: { items: readonly { id: string; label: stri
 
   return (
     <nav aria-label="Report sections" className="print:hidden">
-      <p className="hidden text-xs font-medium tracking-wide text-muted-foreground uppercase lg:block">On this page</p>
-      <ol className="-mx-4 flex gap-2 overflow-x-auto px-4 pb-1 lg:mx-0 lg:mt-3 lg:flex-col lg:gap-0.5 lg:overflow-visible lg:border-l lg:px-0 lg:pb-0">
+      <p className="hidden font-mono text-[11px] font-medium tracking-wider text-muted-foreground uppercase lg:block">
+        On this page
+      </p>
+      <ol className="-mx-4 flex gap-2 overflow-x-auto px-4 pb-1 lg:mx-0 lg:mt-3 lg:flex-col lg:gap-0.5 lg:overflow-visible lg:border-l lg:border-border/80 lg:px-0 lg:pb-0">
         {items.map((item) => {
           const current = active === item.id;
           return (
@@ -47,9 +49,9 @@ export function ReportToc({ items }: { items: readonly { id: string; label: stri
                 aria-current={current ? "location" : undefined}
                 className={cn(
                   "focus-ring block rounded-full border px-3 py-1.5 text-xs whitespace-nowrap transition-colors",
-                  "lg:-ml-px lg:rounded-none lg:border-0 lg:border-l-2 lg:py-1.5 lg:pr-2 lg:pl-3 lg:text-[13px] lg:whitespace-normal",
+                  "lg:-ml-px lg:rounded-none lg:border-0 lg:border-l-2 lg:py-1.5 lg:pr-2 lg:pl-3.5 lg:text-[13px] lg:whitespace-normal",
                   current
-                    ? "border-brand/40 bg-brand-muted text-foreground lg:border-brand lg:bg-transparent"
+                    ? "border-brand/40 bg-brand-muted font-medium text-foreground lg:border-brand lg:bg-transparent lg:text-brand"
                     : "text-muted-foreground hover:text-foreground lg:border-transparent",
                 )}
               >

@@ -31,13 +31,14 @@ export function AppShell({ user, children }: AppShellProps) {
       >
         Skip to content
       </a>
-      <header className="sticky top-0 z-40 border-b bg-background/85 backdrop-blur supports-[backdrop-filter]:bg-background/70 print:hidden">
-        <div className="mx-auto flex h-14 max-w-6xl items-center gap-4 px-4 sm:h-16 sm:gap-6 sm:px-6">
-          <Link href="/" aria-label="StackPrep home" className="focus-ring rounded-md">
+      <header className="sticky top-0 z-40 border-b border-border/80 bg-background/85 backdrop-blur-md supports-[backdrop-filter]:bg-background/75 print:hidden">
+        <div className="mx-auto flex h-14 max-w-6xl items-center gap-4 px-4 sm:h-16 sm:gap-8 sm:px-6">
+          <Link href="/" aria-label="StackPrep home" className="focus-ring rounded-md transition-opacity hover:opacity-90">
             <Wordmark />
           </Link>
-          <AppNav className="hidden sm:flex" />
-          <div className="ml-auto">
+          <div className="hidden h-4 w-px bg-border sm:block" aria-hidden />
+          <AppNav className="hidden sm:flex sm:h-full" />
+          <div className="ml-auto flex items-center gap-3">
             {user ? (
               <UserMenu name={displayName(user)} email={user.email ?? null} />
             ) : (
@@ -45,7 +46,7 @@ export function AppShell({ user, children }: AppShellProps) {
             )}
           </div>
         </div>
-        <AppNav className="mx-auto h-12 max-w-6xl border-t px-3 sm:hidden" />
+        <AppNav className="mx-auto h-12 max-w-6xl border-t border-border/70 px-3 sm:hidden" />
       </header>
       <main
         id="main"

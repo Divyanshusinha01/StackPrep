@@ -4,7 +4,6 @@ import { useRef, useState } from "react";
 import { useMotionValueEvent, useScroll } from "framer-motion";
 import { CornerDownRight, FileCode, Mic, Search, Waypoints } from "lucide-react";
 
-import { cn } from "@/lib/utils";
 import { Parallax } from "@/components/motion/parallax";
 import { ScrollReveal } from "@/components/motion/scroll-reveal";
 import { useReducedMotion } from "@/components/motion/use-reduced-motion";
@@ -12,7 +11,6 @@ import { INTERVIEW_MESSAGES, InterviewPanel } from "./mockups/interview-panel";
 import { FileChip } from "./mockups/panel";
 import { VoiceOrb } from "./mockups/voice-orb";
 import { SectionHeading } from "./section-heading";
-import { Spotlight } from "./spotlight";
 
 const MINI_WAVE = [40, 75, 100, 60, 85, 45, 70, 95, 50, 65];
 
@@ -97,44 +95,26 @@ export function Interview() {
           </SectionHeading>
         </ScrollReveal>
 
-        <ul className="mt-10 grid auto-rows-fr grid-cols-1 gap-4 md:grid-cols-3 md:grid-rows-[1fr_1fr_auto]">
-          {FEATURES.map(({ icon: Icon, title, body, visual }, i) => {
-            const bento =
-              i === 0
-                ? "md:col-span-2 md:row-span-2"
-                : i === 2
-                  ? "md:col-span-1 md:row-span-2 md:col-start-3 md:row-start-1"
-                  : "md:col-span-3 md:row-start-3";
-            return (
-              <li key={title} className={bento}>
-                <ScrollReveal delay={i * 0.08} className="h-full">
-                  <Spotlight
-                    className={cn(
-                      "flex h-full flex-col rounded-xl border bg-panel/60 p-5 transition-[translate,border-color] duration-300 hover:-translate-y-0.5 hover:border-brand/30",
-                      i === 0 && "md:min-h-[220px]",
-                    )}
-                  >
-                    <div
-                      aria-hidden
-                      className={cn(
-                        "flex items-center border-b border-dashed pb-4",
-                        i === 0 ? "h-20" : "h-12",
-                      )}
-                    >
-                      {visual}
-                    </div>
-                    <span className="mt-4 flex items-center gap-2 text-sm font-medium text-foreground">
-                      <Icon className="size-4 text-brand" aria-hidden />
-                      {title}
-                    </span>
-                    <span className="mt-1.5 block text-sm leading-relaxed text-muted-foreground">
-                      {body}
-                    </span>
-                  </Spotlight>
-                </ScrollReveal>
-              </li>
-            );
-          })}
+        <ul className="surface-inset mt-12 grid grid-cols-1 divide-y overflow-hidden rounded-xl border bg-panel/50 md:grid-cols-3 md:divide-x md:divide-y-0">
+          {FEATURES.map(({ icon: Icon, title, body, visual }, i) => (
+            <li key={title} className="flex flex-col justify-between p-6">
+              <ScrollReveal delay={i * 0.08} className="flex h-full flex-col">
+                <div
+                  aria-hidden
+                  className="flex h-12 items-center border-b border-border/70 pb-4"
+                >
+                  {visual}
+                </div>
+                <span className="mt-4 flex items-center gap-2 font-display text-sm font-semibold text-foreground">
+                  <Icon className="size-4 text-brand" aria-hidden />
+                  {title}
+                </span>
+                <span className="mt-1.5 block text-sm leading-relaxed text-muted-foreground">
+                  {body}
+                </span>
+              </ScrollReveal>
+            </li>
+          ))}
         </ul>
 
         <div
