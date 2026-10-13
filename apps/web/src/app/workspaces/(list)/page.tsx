@@ -18,6 +18,11 @@ export const metadata: Metadata = {
 
 const dateFormat = new Intl.DateTimeFormat("en", { dateStyle: "medium", timeZone: "UTC" });
 
+function splitFullName(fullName: string): [string, string] {
+  const slash = fullName.indexOf("/");
+  return slash === -1 ? ["", fullName] : [fullName.slice(0, slash + 1), fullName.slice(slash + 1)];
+}
+
 /** Latest interview per workspace; best effort, so the list still renders without it. */
 async function latestInterviews(): Promise<Map<string, InterviewHistoryEntry>> {
   try {
@@ -72,43 +77,50 @@ export default async function WorkspacesPage() {
           }
         />
       ) : (
-        <ul className="grid gap-3" data-testid="workspace-list">
+        <ul
+          className="surface-inset divide-y overflow-hidden rounded-xl border bg-panel/60"
+          data-testid="workspace-list"
+        >
           {result.data.workspaces.map((workspace) => {
             const last = latest.get(workspace.id);
+            const [ownerPrefix, repoName] = splitFullName(workspace.repository.full_name);
             return (
               <li
                 key={workspace.id}
-                className="group relative flex min-w-0 items-center gap-4 rounded-xl border bg-panel/60 px-4 py-4 transition-colors focus-within:border-brand/40 hover:border-brand/30 hover:bg-panel-raised/70 sm:px-5"
+                className="group relative flex min-w-0 items-center gap-4 px-4 py-4 transition-colors focus-within:bg-panel-raised/70 hover:bg-panel-raised/60 sm:px-5"
               >
                 <div
                   aria-hidden
-                  className="hidden size-10 shrink-0 place-items-center rounded-lg bg-brand-muted text-brand sm:grid"
+                  className="hidden size-10 shrink-0 place-items-center rounded-lg border border-brand/25 bg-brand-muted/70 text-brand sm:grid"
                 >
-                  <FolderGit2 className="size-5" />
+                  <FolderGit2 className="size-4.5" />
                 </div>
                 <div className="min-w-0 flex-1">
                   <Link
                     href={`/workspaces/${workspace.id}`}
-                    className="block truncate font-mono text-sm font-medium outline-none after:absolute after:inset-0 after:rounded-xl focus-visible:after:ring-[3px] focus-visible:after:ring-ring/50"
+                    className="block truncate font-mono text-sm outline-none after:absolute after:inset-0 focus-visible:after:ring-[3px] focus-visible:after:ring-ring/50 focus-visible:after:ring-inset"
                   >
-                    {workspace.repository.full_name}
+                    <span className="text-muted-foreground">{ownerPrefix}</span>
+                    <span className="font-semibold text-foreground">{repoName}</span>
                   </Link>
                   <div className="mt-1.5 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-muted-foreground">
                     {workspace.repository.is_private ? (
-                      <span className="inline-flex items-center gap-1">
+                      <span className="inline-flex items-center gap-1 rounded border border-border/80 bg-background/50 px-1.5 py-0.5 font-mono text-[11px]">
                         <Lock className="size-3" aria-hidden />
                         Private
                       </span>
                     ) : null}
-                    <span className="inline-flex items-center gap-1">
+                    <span className="inline-flex items-center gap-1 font-mono text-[11px]">
                       <GitBranch className="size-3" aria-hidden />
                       {workspace.repository.default_branch}
                     </span>
-                    <span>
+                    <span className="text-muted-foreground/90">
                       {last ? (
                         <>
                           Last interview{" "}
-                          <time dateTime={last.created_at}>{dateFormat.format(new Date(last.created_at))}</time>
+                          <time dateTime={last.created_at} className="tabular-nums">
+                            {dateFormat.format(new Date(last.created_at))}
+                          </time>
                         </>
                       ) : (
                         "No interviews yet"
@@ -116,7 +128,7 @@ export default async function WorkspacesPage() {
                     </span>
                   </div>
                 </div>
-                <div className="flex shrink-0 flex-col items-end gap-1.5 sm:flex-row sm:items-center sm:gap-2">
+                <div className="flex shrink-0 flex-col items-end gap-1.5 sm:flex-row sm:items-center sm:gap-2.5">
                   {last ? (
                     <span className="hidden md:inline-flex">
                       <InterviewStatusBadge status={last.status} terminationReason={last.termination_reason} />

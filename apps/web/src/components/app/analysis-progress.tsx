@@ -61,11 +61,20 @@ export function AnalysisProgress({
   const currentIndex = analysis?.stage ? STAGES.findIndex((s) => s.stage === analysis.stage) : -1;
 
   return (
-    <section aria-labelledby="analysis-progress" aria-live="polite" className="mt-6">
-      <h2 id="analysis-progress" className="text-sm font-medium">
-        {queued ? "Analysis queued" : "Analyzing repository"}
-      </h2>
-      <ol className="mt-4 grid gap-3 text-sm sm:grid-cols-3 sm:gap-2">
+    <section
+      aria-labelledby="analysis-progress"
+      aria-live="polite"
+      className="mt-6 border-t border-border/80 pt-5"
+    >
+      <div className="flex items-center justify-between gap-2">
+        <h2 id="analysis-progress" className="font-mono text-xs font-medium tracking-wider text-muted-foreground uppercase">
+          {queued ? "Analysis queued" : "Analyzing repository"}
+        </h2>
+        <span className="font-mono text-xs text-brand tabular-nums">
+          {currentIndex >= 0 ? `Step ${currentIndex + 1} of ${STAGES.length}` : "Queued"}
+        </span>
+      </div>
+      <ol className="mt-3.5 grid gap-3 text-sm sm:grid-cols-3 sm:gap-4">
         {STAGES.map(({ stage, label }, index) => {
           const done = currentIndex > index;
           const current = currentIndex === index;
@@ -74,36 +83,30 @@ export function AnalysisProgress({
               key={stage}
               aria-current={current ? "step" : undefined}
               className={cn(
-                "relative flex items-center gap-3 sm:flex-col sm:items-start sm:gap-2",
-                done || current ? "text-foreground" : "text-muted-foreground",
+                "relative flex items-center gap-3 rounded-lg border px-3.5 py-2.5 transition-colors",
+                done && "border-emerald-500/30 bg-emerald-500/[0.06] text-foreground",
+                current && "border-brand/40 bg-brand-muted/50 text-foreground",
+                !done && !current && "border-border/70 bg-background/40 text-muted-foreground",
               )}
             >
-              <div className="flex items-center gap-2 sm:w-full">
-                <span
-                  aria-hidden
-                  className={cn(
-                    "grid size-7 shrink-0 place-items-center rounded-full border text-xs font-semibold tabular-nums transition-colors",
-                    done && "border-emerald-500/40 bg-emerald-500/15 text-emerald-300",
-                    current && "border-brand/50 bg-brand-muted text-brand",
-                    !done && !current && "border-border text-muted-foreground",
-                  )}
-                >
-                  {done ? (
-                    <Check className="size-3.5" />
-                  ) : current ? (
-                    <Loader2 className="size-3.5 motion-safe:animate-spin" />
-                  ) : (
-                    index + 1
-                  )}
-                </span>
-                {index < STAGES.length - 1 ? (
-                  <span
-                    aria-hidden
-                    className={cn("hidden h-px flex-1 sm:block", done ? "bg-emerald-500/40" : "bg-border")}
-                  />
-                ) : null}
-              </div>
-              <span>
+              <span
+                aria-hidden
+                className={cn(
+                  "grid size-6 shrink-0 place-items-center rounded-full border font-mono text-[11px] font-semibold tabular-nums transition-colors",
+                  done && "border-emerald-500/40 bg-emerald-500/15 text-emerald-300",
+                  current && "border-brand/50 bg-brand-muted text-brand",
+                  !done && !current && "border-border text-muted-foreground",
+                )}
+              >
+                {done ? (
+                  <Check className="size-3.5" />
+                ) : current ? (
+                  <Loader2 className="size-3.5 motion-safe:animate-spin" />
+                ) : (
+                  index + 1
+                )}
+              </span>
+              <span className="font-medium">
                 {label}
                 <span className="sr-only">{done ? " (done)" : current ? " (in progress)" : " (pending)"}</span>
               </span>

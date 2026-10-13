@@ -25,13 +25,16 @@ export function PageHeader({
   children?: React.ReactNode;
 }) {
   return (
-    <header className="mb-8">
+    <header className="mb-8 border-b border-border/70 pb-6 print:border-border print:pb-4">
       {back ? (
         <Link
           href={back.href}
-          className="mb-3 inline-flex max-w-full items-center gap-1.5 rounded-md text-sm text-muted-foreground focus-ring hover:text-foreground print:hidden"
+          className="group mb-3 inline-flex max-w-full items-center gap-1.5 rounded-md text-xs font-medium tracking-wide text-muted-foreground transition-colors focus-ring hover:text-foreground print:hidden"
         >
-          <ArrowLeft className="size-3.5 shrink-0" aria-hidden />
+          <ArrowLeft
+            className="size-3.5 shrink-0 transition-transform duration-150 group-hover:-translate-x-0.5"
+            aria-hidden
+          />
           <span className="truncate">{back.label}</span>
         </Link>
       ) : null}
@@ -48,7 +51,9 @@ export function PageHeader({
             </h1>
             {badge}
           </div>
-          {description ? <p className="mt-2 max-w-2xl text-sm text-muted-foreground">{description}</p> : null}
+          {description ? (
+            <p className="mt-2 max-w-2xl text-sm leading-relaxed text-muted-foreground">{description}</p>
+          ) : null}
           {children}
         </div>
         {actions ? <div className="flex shrink-0 flex-wrap items-center gap-2 print:hidden">{actions}</div> : null}

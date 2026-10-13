@@ -39,11 +39,11 @@ export function InterviewHistoryRow({ interview, returnTo }: { interview: Interv
   const ended = ENDED.has(interview.status);
   const integrityTerminated = interview.status === "terminated" && interview.termination_reason === "integrity_violation";
   return (
-    <li className="flex flex-col gap-3 px-4 py-3.5 text-sm transition-colors hover:bg-panel-raised/50 sm:flex-row sm:items-center sm:gap-4">
-      <div className="flex min-w-0 flex-1 items-center gap-3">
+    <li className="flex flex-col gap-3 px-4 py-3.5 text-sm transition-colors hover:bg-panel-raised/50 sm:flex-row sm:items-center sm:justify-between sm:gap-4 sm:px-5">
+      <div className="flex min-w-0 flex-1 items-center gap-3.5">
         <span
           aria-hidden
-          className="grid size-9 shrink-0 place-items-center rounded-lg border bg-panel-raised font-mono text-xs font-semibold text-muted-foreground tabular-nums"
+          className="grid size-9 shrink-0 place-items-center rounded-lg border border-border-strong/60 bg-background/60 font-mono text-xs font-semibold text-muted-foreground tabular-nums"
         >
           #{interview.interview_number}
         </span>
@@ -51,21 +51,21 @@ export function InterviewHistoryRow({ interview, returnTo }: { interview: Interv
           <div className="flex flex-wrap items-center gap-x-2.5 gap-y-1">
             <Link
               href={ended ? reportHref : `/interviews/${interview.id}`}
-              className="focus-ring rounded-sm font-medium hover:underline"
+              className="focus-ring rounded-sm font-display font-medium text-foreground hover:text-brand hover:underline"
             >
               Interview {interview.interview_number}
             </Link>
             <InterviewStatusBadge status={interview.status} terminationReason={interview.termination_reason} />
             {integrityTerminated ? (
-              <span className="inline-flex items-center gap-1 text-xs text-red-300">
+              <span className="inline-flex items-center gap-1 text-xs font-medium text-red-300">
                 <ShieldAlert className="size-3.5" aria-hidden />
                 Ended for integrity
               </span>
             ) : null}
           </div>
-          <p className="mt-1 text-xs text-muted-foreground">
+          <p className="mt-1 font-mono text-[11px] text-muted-foreground tabular-nums">
             <time dateTime={interview.created_at}>{dateTimeFormat.format(new Date(interview.created_at))} UTC</time>
-            {interview.pause === "expired" ? <span> · Pause expired</span> : null}
+            {interview.pause === "expired" ? <span className="text-amber-300/90"> · Pause expired</span> : null}
           </p>
         </div>
       </div>

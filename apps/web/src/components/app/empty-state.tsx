@@ -21,15 +21,18 @@ export function EmptyState({
   return (
     <div
       className={cn(
-        "flex flex-col items-center rounded-xl border border-dashed bg-panel/40 px-6 py-12 text-center",
+        "surface-inset flex flex-col items-center rounded-xl border border-border/80 bg-panel/40 px-6 py-12 text-center",
         className,
       )}
     >
-      <div aria-hidden className="grid size-11 place-items-center rounded-full bg-brand-muted text-brand [&_svg]:size-5">
+      <div
+        aria-hidden
+        className="grid size-11 place-items-center rounded-xl border border-brand/25 bg-brand-muted/70 text-brand [&_svg]:size-5"
+      >
         {icon}
       </div>
-      <Heading className="mt-4 font-display text-base font-semibold">{title}</Heading>
-      {description ? <p className="mt-1.5 max-w-md text-sm text-muted-foreground">{description}</p> : null}
+      <Heading className="mt-4 font-display text-base font-semibold tracking-tight">{title}</Heading>
+      {description ? <p className="mt-1.5 max-w-md text-sm leading-relaxed text-muted-foreground">{description}</p> : null}
       {action ? <div className="mt-6 flex flex-wrap justify-center gap-3">{action}</div> : null}
     </div>
   );
