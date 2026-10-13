@@ -2,7 +2,7 @@
 
 Audit of `GET /interviews/:id/events` (SSE) before any transport change. Nothing here changes behavior. The checklist at the end is what a Realtime path must pass before it can replace or sit beside SSE.
 
-Sources read: `supabase/functions/interviews/events.ts`, `handler.ts` (`streamEvents`), `packages/shared/src/realtime.ts`, the web consumers below, the migrations that write `interview_events`, `interview_messages` and `reports`, the RLS migrations, the e2e suite, `architecture (2).md` (Transport) and `techstack.md`.
+Sources read: `supabase/functions/interviews/events.ts`, `handler.ts` (`streamEvents`), `packages/shared/src/realtime.ts`, the web consumers below, the migrations that write `interview_events`, `interview_messages` and `reports`, the RLS migrations, the e2e suite, `architecture.md` (Transport) and `techstack.md`.
 
 ## 1. Consumers
 

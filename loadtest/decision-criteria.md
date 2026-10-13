@@ -44,7 +44,7 @@ Any harness change (seeding, writer, analysis, sampling) means re-running the SS
 
 ## Open inputs (not in the docs)
 
-- **Target concurrency.** Neither `PRD.md` nor `architecture (2).md` sets a concurrent-interview target. Until one is set, the target is the highest stage the uncapped diagnostic passed (or the highest stage run, if none breached).
+- **Target concurrency.** Neither `PRD.md` nor `architecture.md` sets a concurrent-interview target. Until one is set, the target is the highest stage the uncapped diagnostic passed (or the highest stage run, if none breached).
 - **Intended hosted plan.** It is not named in the docs. Gate 7's hosted check needs the plan's published Realtime limits at decision time.
 
 ## Pinned inputs

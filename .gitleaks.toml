@@ -1,0 +1,19 @@
+title = "StackPrep gitleaks config"
+
+[extend]
+useDefault = true
+
+[[allowlists]]
+description = "Content-addressed SHA-256 hashes in eval recordings and pins"
+condition = "AND"
+paths = ['''^evals/projects/stackprep/(recordings/.+\.json|pins\.json|baseline\.json)$''']
+regexes = ['''^[0-9a-f]{64}$''']
+
+[[allowlists]]
+description = "Deliberately fake secrets used to test the secret scrubber and env parsing"
+paths = [
+  '''^supabase/functions/_shared/analysis/scrub\.test\.ts$''',
+  '''^supabase/functions/_shared/code-index/code-index\.test\.ts$''',
+  '''^supabase/functions/interviews/tool-calls\.test\.ts$''',
+  '''^packages/shared/src/env\.test\.ts$''',
+]
