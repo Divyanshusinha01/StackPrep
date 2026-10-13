@@ -1,5 +1,12 @@
 import { describe, expect, it } from "vitest";
-import { EMPTY_TRANSCRIPT, type RealtimeServerEvent, transcriptReducer } from "./realtime-transcript";
+import {
+  createTranscriptionLink,
+  EMPTY_TRANSCRIPT,
+  type RealtimeServerEvent,
+  type TranscriptionLink,
+  transcriptionFailed,
+  transcriptReducer,
+} from "./realtime-transcript";
 
 function run(events: RealtimeServerEvent[]) {
   return events.reduce(transcriptReducer, EMPTY_TRANSCRIPT);
@@ -79,5 +86,119 @@ describe("transcriptReducer", () => {
       { type: "response.function_call_arguments.done", item_id: "f1", call_id: "c1", arguments: "{}" },
     ]);
     expect(state).toEqual(EMPTY_TRANSCRIPT);
+  });
+});
+
+describe("createTranscriptionLink", () => {
+  function newLink() {
+    let n = 0;
+    return createTranscriptionLink(() => `evt_${++n}`);
+  }
+
+  /** Feeds voice events and transcription events through the link into the reducer. */
+  function play(link: TranscriptionLink, voice: RealtimeServerEvent[], transcription: RealtimeServerEvent[]) {
+    const events = [...voice, ...transcription.flatMap((e) => link.translate(e))];
+    return run(events);
+  }
+
+  it("commits with a client event id per voice turn", () => {
+    const link = newLink();
+    expect(link.commit("v1")).toEqual({ type: "input_audio_buffer.commit", event_id: "evt_1" });
+    expect(link.commit("v2")).toEqual({ type: "input_audio_buffer.commit", event_id: "evt_2" });
+  });
+
+  it("maps transcription items to voice items in commit order, even when transcripts complete out of order", () => {
+    const link = newLink();
+    link.commit("v1");
+    link.commit("v2");
+    const state = play(
+      link,
+      [
+        { type: "input_audio_buffer.speech_started", item_id: "v1" },
+        { type: "input_audio_buffer.speech_started", item_id: "v2" },
+      ],
+      [
+        { type: "input_audio_buffer.committed", item_id: "t1" },
+        { type: "input_audio_buffer.committed", item_id: "t2" },
+        { type: "conversation.item.input_audio_transcription.delta", item_id: "t2", delta: "sec" },
+        { type: "conversation.item.input_audio_transcription.completed", item_id: "t2", transcript: "second" },
+        { type: "conversation.item.input_audio_transcription.completed", item_id: "t1", transcript: "first" },
+      ],
+    );
+    expect(state.user).toEqual([
+      { itemId: "v1", text: "first", final: true, interrupted: false },
+      { itemId: "v2", text: "second", final: true, interrupted: false },
+    ]);
+  });
+
+  it("ends the turn of a rejected commit so later turns stay aligned", () => {
+    const link = newLink();
+    link.commit("v1");
+    link.commit("v2");
+    const state = play(
+      link,
+      [
+        { type: "input_audio_buffer.speech_started", item_id: "v1" },
+        { type: "input_audio_buffer.speech_started", item_id: "v2" },
+      ],
+      [
+        { type: "error", error: { code: "input_audio_buffer_commit_empty", event_id: "evt_1" } },
+        { type: "input_audio_buffer.committed", item_id: "t1" },
+        { type: "conversation.item.input_audio_transcription.completed", item_id: "t1", transcript: "second" },
+      ],
+    );
+    expect(state.user).toEqual([{ itemId: "v2", text: "second", final: true, interrupted: false }]);
+  });
+
+  it("drops an empty or failed transcript and ignores unrelated or unknown events", () => {
+    const link = newLink();
+    link.commit("v1");
+    link.commit("v2");
+    expect(link.translate({ type: "error", error: { code: "other", event_id: "evt_9" } })).toEqual([]);
+    expect(link.translate({ type: "session.created" })).toEqual([]);
+    expect(link.translate({ type: "conversation.item.input_audio_transcription.completed", item_id: "tx", transcript: "x" }))
+      .toEqual([]);
+    const state = play(
+      link,
+      [
+        { type: "input_audio_buffer.speech_started", item_id: "v1" },
+        { type: "input_audio_buffer.speech_started", item_id: "v2" },
+      ],
+      [
+        { type: "input_audio_buffer.committed", item_id: "t1" },
+        { type: "input_audio_buffer.committed", item_id: "t2" },
+        { type: "conversation.item.input_audio_transcription.completed", item_id: "t1", transcript: " " },
+        { type: "conversation.item.input_audio_transcription.failed", item_id: "t2" },
+      ],
+    );
+    expect(state.user).toEqual([]);
+  });
+
+  it("on reset, ends every waiting turn and keeps partial text", () => {
+    const link = newLink();
+    link.commit("v1");
+    link.commit("v2");
+    const before = play(
+      link,
+      [
+        { type: "input_audio_buffer.speech_started", item_id: "v1" },
+        { type: "input_audio_buffer.speech_started", item_id: "v2" },
+      ],
+      [
+        { type: "input_audio_buffer.committed", item_id: "t1" },
+        { type: "conversation.item.input_audio_transcription.delta", item_id: "t1", delta: "partial" },
+      ],
+    );
+    const after = link.reset().reduce(transcriptReducer, before);
+    expect(after.user).toEqual([{ itemId: "v1", text: "partial", final: true, interrupted: false }]);
+    // Nothing from the old session maps after a reset.
+    expect(link.translate({ type: "conversation.item.input_audio_transcription.completed", item_id: "t1", transcript: "late" }))
+      .toEqual([]);
+    expect(link.reset()).toEqual([]);
+  });
+
+  it("a turn with no transcription session is dropped", () => {
+    const state = run([{ type: "input_audio_buffer.speech_started", item_id: "v1" }, transcriptionFailed("v1")]);
+    expect(state.user).toEqual([]);
   });
 });

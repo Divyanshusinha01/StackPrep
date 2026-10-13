@@ -43,6 +43,15 @@ describe("realtimeSessionResponseSchema", () => {
     expect(realtimeSessionResponseSchema.parse({ ...session, api_key: "sk-x" })).toEqual(session);
   });
 
+  it("accepts a transcription credential, null when it could not be minted, or none", () => {
+    const transcription = { client_secret: "ek_tx", expires_at: "2026-10-05T12:00:00.000Z", model: "gpt-live-transcribe" };
+    expect(realtimeSessionResponseSchema.parse({ ...session, transcription }).transcription).toEqual(transcription);
+    expect(realtimeSessionResponseSchema.parse({ ...session, transcription: null }).transcription).toBeNull();
+    expect(realtimeSessionResponseSchema.parse(session).transcription).toBeUndefined();
+    expect(realtimeSessionResponseSchema.safeParse({ ...session, transcription: { ...transcription, client_secret: "" } }).success)
+      .toBe(false);
+  });
+
   it("accepts a resume point", () => {
     const resume = { last_turn_sequence: 7, current_question: "How is auth handled?" };
     expect(realtimeSessionResponseSchema.parse({ ...session, resume }).resume).toEqual(resume);

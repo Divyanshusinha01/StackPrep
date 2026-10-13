@@ -46,14 +46,25 @@ Deno.test("aiUsageRow uses the per-minute rate for a duration-only transcription
     ...base,
     task: "voice",
     source: "duration_estimate",
-    model: "gpt-4o-mini-transcribe",
+    model: "gpt-live-transcribe",
     tokens: undefined,
     audioSeconds: 120,
     voiceSegmentEventId: "e1",
   });
   assertEquals(row.audio_input_tokens, 0);
   assertEquals(row.voice_segment_event_id, "e1");
-  assertAlmostEquals(row.estimated_cost_usd!, 0.006, 1e-12);
+  assertAlmostEquals(row.estimated_cost_usd!, 0.034, 1e-12);
+  // Rows written before the migration keep their model's rate.
+  const historical = aiUsageRow({
+    ...base,
+    task: "voice",
+    source: "duration_estimate",
+    model: "gpt-4o-mini-transcribe",
+    tokens: undefined,
+    audioSeconds: 120,
+    voiceSegmentEventId: "e1",
+  });
+  assertAlmostEquals(historical.estimated_cost_usd!, 0.006, 1e-12);
 });
 
 Deno.test("aiUsageRow keeps the row with a null cost for an unknown model", () => {

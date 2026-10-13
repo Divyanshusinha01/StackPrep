@@ -64,12 +64,8 @@ test("the live room shows both sides of the conversation and stores each turn", 
 
   await realtime.emit(page, { type: "response.output_audio_transcript.delta", item_id: "item_ai_1", delta: "Give me a quick tour" });
   await realtime.emit(page, { type: "response.output_audio_transcript.done", item_id: "item_ai_1", transcript: QUESTION });
-  await realtime.emit(page, { type: "input_audio_buffer.speech_started", item_id: "item_user_1" });
-  await realtime.emit(page, {
-    type: "conversation.item.input_audio_transcription.completed",
-    item_id: "item_user_1",
-    transcript: ANSWER,
-  });
+  await realtime.speak(page, "item_user_1");
+  await realtime.transcribe(page, ANSWER);
 
   await expect(page.getByRole("region", { name: "Interviewer" }).getByRole("log")).toContainText(QUESTION);
   await expect(page.getByRole("region", { name: "You" }).getByRole("log")).toContainText(ANSWER);
@@ -85,4 +81,35 @@ test("the live room shows both sides of the conversation and stores each turn", 
   await expect
     .poll(async () => (await admin.from("interviews").select("status").eq("id", interviewId).single()).data?.status)
     .toBe("in_progress");
+});
+
+test("without a transcription session the interview stays live and retries it in the background", async ({
+  page,
+  context,
+  admin,
+  user,
+  workspace,
+}) => {
+  const realtime = await installFakeRealtime(context, { transcription: false });
+  const { interviewId } = await startInterview(admin, user, workspace);
+  await completePlanning(admin, interviewId);
+
+  await page.goto(`/interviews/${interviewId}`);
+  await passDeviceCheck(page);
+  await page.getByRole("button", { name: "Enter interview" }).click();
+
+  await realtime.waitForOpen(page);
+  await expect(page.getByText("Live", { exact: true })).toBeVisible();
+
+  await realtime.emit(page, { type: "response.output_audio_transcript.done", item_id: "item_ai_1", transcript: QUESTION });
+  await realtime.speak(page, "item_user_1");
+
+  // The interviewer's turn is stored; the untranscribed candidate turn is dropped, not stored empty.
+  await expect
+    .poll(async () => (await listTranscript(admin, interviewId)).map(({ role, content }) => ({ role, content })))
+    .toEqual([{ role: "ai", content: QUESTION }]);
+  await expect(page.getByText("Live", { exact: true })).toBeVisible();
+  // A fresh credential is requested in the background, without reconnecting the voice session.
+  await expect.poll(() => realtime.sessionRequests).toBeGreaterThan(1);
+  await expect(page.getByText("Live", { exact: true })).toBeVisible();
 });

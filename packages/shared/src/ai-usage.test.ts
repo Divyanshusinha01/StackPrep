@@ -85,6 +85,10 @@ describe("estimateTranscriptionCostUsd", () => {
   it("returns null for a model without a per-minute rate", () => {
     expect(estimateTranscriptionCostUsd("gpt-5.6-terra", 60)).toBeNull();
   });
+
+  it("prices gpt-live-transcribe only by the minute, never from tokens", () => {
+    expect(estimateCostUsd("gpt-live-transcribe", { audio_input_tokens: 1_000 })).toBeNull();
+  });
 });
 
 describe("enums", () => {

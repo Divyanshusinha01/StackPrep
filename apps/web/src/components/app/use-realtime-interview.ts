@@ -6,6 +6,7 @@ import {
   apiErrorSchema,
   type PauseReason,
   realtimeSessionResponseSchema,
+  type TranscriptionSessionCredential,
   type TurnPersistedStreamData,
   VOICE_IDLE_TIMEOUT_SECONDS,
   VOICE_LIMIT_SECONDS,
@@ -16,7 +17,13 @@ import { createSupabaseBrowserClient } from "@/lib/supabase/client";
 import { examiningReducer } from "./examining";
 import { toMediaError } from "./interview-media";
 import { relayToolCall } from "./realtime-tool-relay";
-import { EMPTY_TRANSCRIPT, type RealtimeServerEvent, transcriptReducer } from "./realtime-transcript";
+import {
+  createTranscriptionLink,
+  EMPTY_TRANSCRIPT,
+  type RealtimeServerEvent,
+  transcriptionFailed,
+  transcriptReducer,
+} from "./realtime-transcript";
 import { newVoiceUsage } from "./realtime-usage";
 import {
   backoffDelay,
@@ -103,6 +110,35 @@ async function requestSession(interviewId: string) {
   throw new RealtimeStartError("realtime_unavailable");
 }
 
+/** Creates the offer and exchanges it with OpenAI for the SDP answer, using the ephemeral credential. */
+async function requestAnswer(pc: RTCPeerConnection, clientSecret: string): Promise<string> {
+  const offer = await pc.createOffer();
+  await pc.setLocalDescription(offer);
+  let res: Response;
+  try {
+    res = await fetch(REALTIME_CALLS_URL, {
+      method: "POST",
+      body: offer.sdp,
+      headers: { Authorization: `Bearer ${clientSecret}`, "Content-Type": "application/sdp" },
+    });
+  } catch {
+    throw new RealtimeStartError("connection_failed");
+  }
+  if (!res.ok) {
+    throw new RealtimeStartError("connection_failed");
+  }
+  return res.text();
+}
+
+function parseServerEvent(data: unknown): RealtimeServerEvent | null {
+  try {
+    const event = JSON.parse(String(data)) as RealtimeServerEvent;
+    return typeof event?.type === "string" ? event : null;
+  } catch {
+    return null;
+  }
+}
+
 function localStorageOrNull(): OutboxStorage | null {
   try {
     return window.localStorage;
@@ -133,7 +169,9 @@ function toStatus(phase: ReconnectPhase): RealtimeStatus {
 
 /**
  * Live voice session: the backend mints a short-lived credential, then the browser opens a
- * WebRTC call straight to OpenAI with the interview's shared microphone track. Finalized
+ * WebRTC call straight to OpenAI with the interview's shared microphone track. A second,
+ * transcription-only call on the same track transcribes the candidate; it is committed on the
+ * voice session's `speech_stopped`, and losing it never interrupts the interview. Finalized
  * transcript turns and voice events go through a persistent outbox, so unsent ones survive a
  * refresh and are retried until acked. Drops are recovered by the reconnect coordinator, which
  * flushes saved answers before each new session so the backend can resume from them.
@@ -243,11 +281,35 @@ export function useRealtimeInterview(interviewId: string, media: InterviewMedia)
     /** After the backend ends the interview: wait for the closing response, then for its audio to finish. */
     let closing: "none" | "awaiting_response" | "speaking" = "none";
     let connected = false;
+    let tornDown = false;
+    /** Transcription-only call; may be absent while the voice session runs. */
+    let transcriptionPc: RTCPeerConnection | null = null;
+    let transcriptionChannel: RTCDataChannel | null = null;
+    let transcriptionRetryTimer = 0;
+    let transcriptionRetries = 0;
+    const link = createTranscriptionLink();
+    const closeTranscription = () => {
+      if (transcriptionChannel) {
+        transcriptionChannel.onopen = null;
+        transcriptionChannel.onmessage = null;
+        transcriptionChannel.onclose = null;
+        transcriptionChannel = null;
+      }
+      if (transcriptionPc) {
+        transcriptionPc.onconnectionstatechange = null;
+        transcriptionPc.close();
+        transcriptionPc = null;
+      }
+      link.reset().forEach(dispatch);
+    };
     const detach: (() => void)[] = [];
     const cleanup = () => {
+      tornDown = true;
       window.clearTimeout(hardStop);
       window.clearTimeout(closingTimer);
       window.clearTimeout(idleTimer);
+      window.clearTimeout(transcriptionRetryTimer);
+      closeTranscription();
       detach.splice(0).forEach((off) => off());
       if (connected) {
         connected = false;
@@ -335,6 +397,86 @@ export function useRealtimeInterview(interviewId: string, media: InterviewMedia)
         });
       }
 
+      const micStream = stream;
+      /** Background retry with a fresh credential; the session endpoint mints one alongside a voice one. */
+      const retryTranscription = () => {
+        window.clearTimeout(transcriptionRetryTimer);
+        transcriptionRetryTimer = window.setTimeout(() => {
+          if (tornDown || !current()) {
+            return;
+          }
+          requestSession(interviewId).then(
+            (fresh) => {
+              if (!tornDown && current()) {
+                void openTranscription(fresh.transcription);
+              }
+            },
+            () => {
+              if (!tornDown && current()) {
+                retryTranscription();
+              }
+            },
+          );
+        }, backoffDelay(transcriptionRetries++));
+      };
+      const loseTranscription = () => {
+        if (tornDown || !current()) {
+          return;
+        }
+        console.warn("Transcription session lost; candidate turns are not transcribed until it reconnects");
+        closeTranscription();
+        retryTranscription();
+      };
+      /** Never fails the attempt: without it the interview continues with no candidate transcript. */
+      const openTranscription = async (credential: TranscriptionSessionCredential | null | undefined) => {
+        closeTranscription();
+        if (!credential) {
+          loseTranscription();
+          return;
+        }
+        const tpc = new RTCPeerConnection();
+        transcriptionPc = tpc;
+        for (const track of micStream.getAudioTracks()) {
+          tpc.addTrack(track, micStream);
+        }
+        const tchannel = tpc.createDataChannel("oai-events");
+        transcriptionChannel = tchannel;
+        tchannel.onopen = () => {
+          transcriptionRetries = 0;
+        };
+        tchannel.onmessage = (e) => {
+          const event = parseServerEvent(e.data);
+          if (event) {
+            link.translate(event).forEach(dispatch);
+          }
+        };
+        tchannel.onclose = loseTranscription;
+        tpc.onconnectionstatechange = () => {
+          if (tpc.connectionState === "failed") {
+            loseTranscription();
+          }
+        };
+        try {
+          const sdp = await requestAnswer(tpc, credential.client_secret);
+          if (transcriptionPc !== tpc) {
+            return;
+          }
+          await tpc.setRemoteDescription({ type: "answer", sdp });
+        } catch {
+          if (transcriptionPc === tpc) {
+            loseTranscription();
+          }
+        }
+      };
+      /** Asks the transcription session for this voice turn's transcript. */
+      const commitTranscription = (voiceItemId: string) => {
+        if (transcriptionChannel?.readyState === "open") {
+          transcriptionChannel.send(JSON.stringify(link.commit(voiceItemId)));
+        } else {
+          dispatch(transcriptionFailed(voiceItemId));
+        }
+      };
+
       pc = new RTCPeerConnection();
       audio = new Audio();
       audio.autoplay = true;
@@ -354,13 +496,8 @@ export function useRealtimeInterview(interviewId: string, media: InterviewMedia)
       };
       const channel = pc.createDataChannel("oai-events");
       channel.onmessage = (e) => {
-        let event: RealtimeServerEvent;
-        try {
-          event = JSON.parse(String(e.data)) as RealtimeServerEvent;
-        } catch {
-          return;
-        }
-        if (typeof event?.type !== "string") {
+        const event = parseServerEvent(e.data);
+        if (!event) {
           return;
         }
         dispatch(event);
@@ -368,6 +505,9 @@ export function useRealtimeInterview(interviewId: string, media: InterviewMedia)
           clearIdle();
         } else if (event.type === "input_audio_buffer.speech_stopped") {
           armIdle();
+          if (typeof event.item_id === "string") {
+            commitTranscription(event.item_id);
+          }
         }
         const usageOutbox = outboxRef.current;
         if (usageOutbox && event.type === "response.done") {
@@ -432,27 +572,13 @@ export function useRealtimeInterview(interviewId: string, media: InterviewMedia)
         }
       };
 
-      const offer = await pc.createOffer();
-      await pc.setLocalDescription(offer);
-      let res: Response;
-      try {
-        res = await fetch(REALTIME_CALLS_URL, {
-          method: "POST",
-          body: offer.sdp,
-          headers: { Authorization: `Bearer ${session.client_secret}`, "Content-Type": "application/sdp" },
-        });
-      } catch {
-        throw new RealtimeStartError("connection_failed");
-      }
-      if (!res.ok) {
-        throw new RealtimeStartError("connection_failed");
-      }
-      const sdp = await res.text();
+      const sdp = await requestAnswer(pc, session.client_secret);
       if (!current()) {
         cleanup();
         return;
       }
       await pc.setRemoteDescription({ type: "answer", sdp });
+      void openTranscription(session.transcription);
     } catch (err) {
       if (!current()) {
         cleanup();

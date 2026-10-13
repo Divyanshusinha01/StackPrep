@@ -206,7 +206,7 @@ function setup({
     store: interviewStore,
     realtime: createRealtimeClient({ apiKey: "sk-test", fetch: () => Promise.reject(new Error("unused")) }),
     model: "gpt-realtime-2.1-mini",
-    transcriptionModel: "gpt-4o-mini-transcribe",
+    transcriptionModel: "gpt-live-transcribe",
     github,
     ai: fakeAI,
     evaluationModel: "gpt-eval",
@@ -336,7 +336,7 @@ Deno.test("tool-calls: the time limit closes the open voice segment with duratio
   const seconds = VOICE_LIMIT_SECONDS + 60;
   assertEquals(store.usage.map((u) => [u.model, u.source, u.voiceSegmentEventId, u.audioSeconds]), [
     ["gpt-realtime-2.1-mini", "duration_estimate", "event-1", seconds],
-    ["gpt-4o-mini-transcribe", "duration_estimate", "event-1", seconds],
+    ["gpt-live-transcribe", "duration_estimate", "event-1", seconds],
   ]);
 
   // A later limit hit for the same segment is a no-op.

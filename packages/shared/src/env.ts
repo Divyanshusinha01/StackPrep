@@ -48,10 +48,10 @@ export const openAIEnvSchema = z.object({
   OPENAI_REALTIME_MODEL: secret.default("gpt-realtime-2.1-mini"),
   /**
    * Transcribes the candidate's speech for the live transcript; the interviewer's own transcript is free.
-   * Must be supported inside a WebRTC Realtime voice session with server_vad: gpt-live-transcribe and
-   * gpt-transcribe are not.
+   * Runs in a dedicated WebRTC transcription session (`type: "transcription"`, no turn detection)
+   * committed by the browser, so it must support that session type over WebRTC.
    */
-  OPENAI_REALTIME_TRANSCRIPTION_MODEL: secret.default("gpt-4o-mini-transcribe"),
+  OPENAI_REALTIME_TRANSCRIPTION_MODEL: secret.default("gpt-live-transcribe"),
   /** Checks one low-detail camera frame for integrity signals. */
   OPENAI_VISION_MODEL: secret.default("gpt-6-luna"),
   /**

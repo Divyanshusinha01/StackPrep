@@ -99,7 +99,7 @@ describe("integration env schemas", () => {
       OPENAI_PLANNING_MODEL: "gpt-6.1-sol",
       OPENAI_EVALUATION_MODEL: "gpt-6-luna",
       OPENAI_REALTIME_MODEL: "gpt-realtime-2.1-mini",
-      OPENAI_REALTIME_TRANSCRIPTION_MODEL: "gpt-4o-mini-transcribe",
+      OPENAI_REALTIME_TRANSCRIPTION_MODEL: "gpt-live-transcribe",
       OPENAI_VISION_MODEL: "gpt-6-luna",
       OPENAI_EMBEDDING_MODEL: "text-embedding-3-small",
       OPENAI_REPORT_MODEL: "gpt-6-luna",

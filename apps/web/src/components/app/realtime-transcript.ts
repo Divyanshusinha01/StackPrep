@@ -117,3 +117,79 @@ export function transcriptReducer(state: TranscriptState, event: RealtimeServerE
       return state;
   }
 }
+
+const TRANSCRIPTION_DELTA = "conversation.item.input_audio_transcription.delta";
+const TRANSCRIPTION_FAILED = "conversation.item.input_audio_transcription.failed";
+const TRANSCRIPTION_EVENTS: ReadonlySet<string> = new Set([
+  TRANSCRIPTION_DELTA,
+  "conversation.item.input_audio_transcription.completed",
+  TRANSCRIPTION_FAILED,
+]);
+
+/** Ends a candidate turn that will get no transcript: it is dropped, or kept if it has partial text. */
+export function transcriptionFailed(voiceItemId: string): RealtimeServerEvent {
+  return { type: TRANSCRIPTION_FAILED, item_id: voiceItemId };
+}
+
+/**
+ * Links the transcription-only session to the voice session's candidate turns. The browser sends
+ * one commit per voice `speech_stopped`; the transcription session acknowledges commits in order
+ * with `input_audio_buffer.committed`, which binds its item id to the voice item. Transcripts can
+ * complete out of order, so they are matched by that item id, never by arrival order.
+ */
+export interface TranscriptionLink {
+  /** The `input_audio_buffer.commit` to send on the transcription channel for this voice turn. */
+  commit(voiceItemId: string): RealtimeServerEvent;
+  /** A transcription-session event rewritten onto the voice item, for `transcriptReducer`. */
+  translate(event: RealtimeServerEvent): RealtimeServerEvent[];
+  /** Ends every turn still awaiting a transcript, when the transcription session is lost. */
+  reset(): RealtimeServerEvent[];
+}
+
+export function createTranscriptionLink(newEventId: () => string = () => crypto.randomUUID()): TranscriptionLink {
+  const pending: { eventId: string; voiceItemId: string }[] = [];
+  /** Transcription item id to voice item id, until the transcript completes or fails. */
+  const items = new Map<string, string>();
+  return {
+    commit(voiceItemId) {
+      const eventId = newEventId();
+      pending.push({ eventId, voiceItemId });
+      return { type: "input_audio_buffer.commit", event_id: eventId };
+    },
+    translate(event) {
+      if (event.type === "input_audio_buffer.committed") {
+        const next = pending.shift();
+        const itemId = str(event.item_id);
+        if (next && itemId) {
+          items.set(itemId, next.voiceItemId);
+          return [];
+        }
+        return next ? [transcriptionFailed(next.voiceItemId)] : [];
+      }
+      if (event.type === "error") {
+        // A rejected commit (e.g. an empty buffer) gets no `committed`; it names our event id instead.
+        const eventId = str((event.error as { event_id?: unknown } | null)?.event_id);
+        const index = eventId ? pending.findIndex((p) => p.eventId === eventId) : -1;
+        return index === -1 ? [] : [transcriptionFailed(pending.splice(index, 1)[0].voiceItemId)];
+      }
+      if (!TRANSCRIPTION_EVENTS.has(event.type)) {
+        return [];
+      }
+      const itemId = str(event.item_id);
+      const voiceItemId = itemId ? items.get(itemId) : undefined;
+      if (!itemId || !voiceItemId) {
+        return [];
+      }
+      if (event.type !== TRANSCRIPTION_DELTA) {
+        items.delete(itemId);
+      }
+      return [{ ...event, item_id: voiceItemId }];
+    },
+    reset() {
+      const waiting = [...pending.map((p) => p.voiceItemId), ...items.values()];
+      pending.length = 0;
+      items.clear();
+      return waiting.map(transcriptionFailed);
+    },
+  };
+}

@@ -71,7 +71,7 @@ Deno.test("voiceDurationEstimates prices the realtime model by tokens and transc
       workspaceId: "w",
       interviewId: "i",
       realtimeModel: "gpt-realtime-2.1-mini",
-      transcriptionModel: "gpt-4o-mini-transcribe",
+      transcriptionModel: "gpt-live-transcribe",
     },
     segment,
     segment.endedAt!,
@@ -81,5 +81,6 @@ Deno.test("voiceDurationEstimates prices the realtime model by tokens and transc
   // 6000 * 10.00 + 6000 * 20.00 per 1M tokens
   assertAlmostEquals(aiUsageCost(realtime)!, 0.18, 1e-12);
   assertEquals([transcription.tokens, transcription.audioSeconds], [undefined, 600]);
-  assertAlmostEquals(aiUsageCost(transcription)!, 0.03, 1e-12);
+  // 10 minutes at $0.017
+  assertAlmostEquals(aiUsageCost(transcription)!, 0.17, 1e-12);
 });

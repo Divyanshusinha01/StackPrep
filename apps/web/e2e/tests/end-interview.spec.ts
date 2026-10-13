@@ -23,12 +23,8 @@ test("ending from the live room saves the last answer and generates a report", a
   await page.getByRole("button", { name: "Enter interview" }).click();
   await realtime.waitForOpen(page);
 
-  await realtime.emit(page, { type: "input_audio_buffer.speech_started", item_id: "item_user_1" });
-  await realtime.emit(page, {
-    type: "conversation.item.input_audio_transcription.completed",
-    item_id: "item_user_1",
-    transcript: ANSWER,
-  });
+  await realtime.speak(page, "item_user_1");
+  await realtime.transcribe(page, ANSWER);
   await expect.poll(async () => (await listTranscript(admin, interviewId)).length).toBe(1);
   await recordEvaluation(admin, user, interviewId);
 

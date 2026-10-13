@@ -89,11 +89,11 @@ select throws_ok(
 -- Reconciliation ---------------------------------------------------------------------
 
 select pg_temp.usage('est-rt', 'voice', 'gpt-realtime-2.1-mini', 'duration_estimate', (select connected_id from ids));
-select pg_temp.usage('est-tx', 'voice', 'gpt-4o-mini-transcribe', 'duration_estimate', (select connected_id from ids));
+select pg_temp.usage('est-tx', 'voice', 'gpt-live-transcribe', 'duration_estimate', (select connected_id from ids));
 
 select is(
   (select array_agg(model || ':' || source || ':' || is_estimate order by model) from public.ai_usage_effective where task = 'voice'),
-  array['gpt-4o-mini-transcribe:duration_estimate:true', 'gpt-realtime-2.1-mini:duration_estimate:true'],
+  array['gpt-live-transcribe:duration_estimate:true', 'gpt-realtime-2.1-mini:duration_estimate:true'],
   'without relayed usage both estimates are effective'
 );
 
@@ -103,7 +103,7 @@ select pg_temp.usage('client-2', 'voice', 'gpt-realtime-2.1-mini', 'client_repor
 select is(
   (select array_agg(e.model || ':' || e.source order by e.model, u.idempotency_key) from public.ai_usage_effective as e
    join public.ai_usage as u on u.id = e.id where e.task = 'voice'),
-  array['gpt-4o-mini-transcribe:duration_estimate', 'gpt-realtime-2.1-mini:client_reported', 'gpt-realtime-2.1-mini:client_reported'],
+  array['gpt-live-transcribe:duration_estimate', 'gpt-realtime-2.1-mini:client_reported', 'gpt-realtime-2.1-mini:client_reported'],
   'relayed usage supersedes the realtime estimate; the transcription estimate stands'
 );
 select is(

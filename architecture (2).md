@@ -146,7 +146,7 @@ Each task reads its model from an environment variable, so models can change wit
 | Task                                   | Model                        | Variable                 |
 | -------------------------------------- | ---------------------------- | ------------------------ |
 | Live voice interviewer                 | `gpt-realtime-2.1-mini`      | `OPENAI_REALTIME_MODEL`  |
-| Live candidate speech transcription    | `gpt-4o-mini-transcribe`     | `OPENAI_REALTIME_TRANSCRIPTION_MODEL` |
+| Live candidate speech transcription    | `gpt-live-transcribe`        | `OPENAI_REALTIME_TRANSCRIPTION_MODEL` |
 | Interview planning                     | `gpt-6.1-sol`                | `OPENAI_PLANNING_MODEL`  |
 | Deep analysis                          | `gpt-6.1-sol`                | `OPENAI_PLANNING_MODEL`  |
 | Answer evaluation                      | `gpt-6-luna`                 | `OPENAI_EVALUATION_MODEL` |
@@ -158,9 +158,12 @@ Planning and evaluation keep separate variables, so either can change on its own
 
 Each structured call also sets a reasoning effort, read per task from `OPENAI_PLANNING_REASONING_EFFORT` (also used by deep analysis; default `medium`), `OPENAI_EVALUATION_REASONING_EFFORT`, `OPENAI_REPORT_REASONING_EFFORT`, and `OPENAI_VISION_REASONING_EFFORT` (default `low`). `default` omits the parameter for models that reject it. Every call has an explicit output-token cap (reasoning included) and timeout; the interview-time calls (evaluation, vision) retry once on a network error, timeout, or 5xx, while background calls rely on Inngest step retries. Every OpenAI call logs one `ai_call` line with model, schema, `elapsed_ms`, and input, cached, output, and reasoning token counts, never content.
 
-The transcription model is set on the Realtime session when the backend mints the credential. It transcribes only the candidate's speech for the persisted transcript; the interviewer's own transcript comes from the voice model.
+The transcription model transcribes only the candidate's speech for the persisted transcript; the interviewer's own transcript comes from the voice model. It runs in a **second, transcription-only WebRTC session** on the same microphone track, because `gpt-live-transcribe` cannot run as input transcription inside the voice session: it requires a dedicated session (`type: "transcription"`) with `turn_detection: null`. (`gpt-4o-mini-transcribe`, the previous model, ran inside the voice session but OpenAI removes it on **Feb 26, 2027**; `gpt-transcribe` runs inside a Realtime session only over WebSocket.) The model must support that session type over WebRTC.
 
-The transcription model must be supported as input transcription inside a WebRTC Realtime voice session with `server_vad`. `gpt-4o-mini-transcribe` is, but OpenAI removes it on **Feb 26, 2027**. Its recommended replacements do not fit this session: `gpt-live-transcribe` runs only in a dedicated transcription session (`type: "transcription"`) with `turn_detection: null`, and `gpt-transcribe` runs inside a Realtime session only over WebSocket. Migrating therefore needs a second, transcription-only WebRTC session on the same microphone track, committed on the voice session's `speech_stopped`, with its item ids mapped back to the voice session's turns. That design is not yet adopted.
+- **Two mints.** `POST /interviews/:id/realtime/session` mints the voice credential (no `audio.input.transcription`) and, in parallel, a transcription credential (`session.type: "transcription"`, `audio.input.transcription.model`, `noise_reduction: near_field`, `turn_detection: null`), both with the same TTL and safety identifier. The response carries the second as `transcription: { client_secret, expires_at, model }`.
+- **Degrade, never block.** The transcription mint is best-effort. If it fails, the backend logs `realtime_transcription_unavailable` and returns `transcription: null`; only a failed voice mint returns `502 realtime_unavailable`. In the browser, failing to open or losing the transcription session never interrupts the voice session or counts as a reconnect: the browser retries it in the background with the reconnect backoff (2, 4, 8, then every 16 seconds), fetching a fresh credential from the same endpoint (which also mints an unused voice credential that expires after 60 seconds). Candidate turns spoken while it is down get no transcript; they are logged in the browser console and dropped, not stored as placeholders.
+- **Commit on `speech_stopped`.** The voice session's `server_vad` still decides turns. On each voice `input_audio_buffer.speech_stopped`, the browser sends `input_audio_buffer.commit` (with a client `event_id`) on the transcription session's data channel.
+- **Item mapping.** The transcription session acknowledges commits in order with `input_audio_buffer.committed`, which binds its item id to the oldest uncommitted voice item. Transcripts can complete out of order, so `conversation.item.input_audio_transcription.delta|completed|failed` are matched by that item id and rewritten onto the voice item id; the transcript reducer, outbox, and turn order (the voice session's `speech_started` order) are unchanged. A rejected commit (an `error` naming the commit's `event_id`, e.g. an empty buffer) ends that voice turn, so later turns stay aligned. When the transcription session closes or is replaced, every turn still waiting is ended: dropped if it has no text, finalized with its partial text otherwise.
 
 Deep analysis is a single structured call per analyzed commit and reuses `OPENAI_PLANNING_MODEL` rather than adding its own variable. Its token usage is persisted to `ai_usage` with task `deep_analysis` and no interview, like every other AI call (see [Usage tracking](#usage-tracking)).
 
@@ -197,7 +200,7 @@ Text and vision calls (planning, deep analysis, report, answer evaluation, integ
 Voice usage belongs to a **voice segment**: the connected time opened by a `connected` interview event and closed by the next `disconnected` or `connected`, using the same pairing as voice time.
 
 - **Relayed usage.** The browser relays each Realtime `response.done` usage through `POST /interviews/:id/events` as a `voice_usage` event (`client_event_id`, `response_id`, text and audio input / cached-input / output tokens). The backend stores it as a `client_reported` row for the server's `OPENAI_REALTIME_MODEL`, linked to the open segment, idempotent on `client_event_id`, with each count capped and cached counts never above input. Usage relayed while no segment is open is rejected with `409 voice_not_connected`.
-- **Duration estimate.** When a segment closes (a `disconnected`, a `connected` that implies a missed disconnect, or the 35-minute limit completing the interview), the backend writes two `duration_estimate` rows keyed by the segment, so each segment is estimated once: the realtime model, priced from `ESTIMATED_REALTIME_AUDIO_TOKENS_PER_SECOND`, and the transcription model, priced per minute (`TRANSCRIPTION_ESTIMATED_USD_PER_MINUTE`, $0.003/min for `gpt-4o-mini-transcribe`) with no token counts.
+- **Duration estimate.** When a segment closes (a `disconnected`, a `connected` that implies a missed disconnect, or the 35-minute limit completing the interview), the backend writes two `duration_estimate` rows keyed by the segment, so each segment is estimated once: the realtime model, priced from `ESTIMATED_REALTIME_AUDIO_TOKENS_PER_SECOND`, and the transcription model, priced per minute (`TRANSCRIPTION_ESTIMATED_USD_PER_MINUTE`, $0.017/min for `gpt-live-transcribe`, which OpenAI bills only by realtime audio minutes; $0.003/min kept for historical `gpt-4o-mini-transcribe` rows) with no token counts. The transcription estimate uses the voice segment's connected time, so it over-counts while the transcription session is down.
 
 The view `ai_usage_effective` applies the reconciliation rule without changing raw rows. Non-voice rows pass through. For voice, per segment and model, it uses `provider` rows if any exist, else `client_reported` rows, else the `duration_estimate` row, flagged `is_estimate`. So relayed usage supersedes the realtime estimate, while the transcription estimate stands until provider-side transcription usage exists. The superseded estimate stays in `ai_usage` as the cross-check for client-reported numbers.
 
@@ -370,12 +373,14 @@ The browser never holds the OpenAI API key. The backend mints a short-lived ephe
    Verifies the interview plan exists (otherwise returns interview_preparing)
    Uses server-side OPENAI_API_KEY
    Creates ephemeral Realtime credential (session config set server-side)
+   and, best-effort, a transcription-session credential
 
 3. Backend → Browser
-   Returns short-lived ephemeral credential
+   Returns short-lived ephemeral credentials (transcription: null if its mint failed)
 
 4. Browser → OpenAI Realtime
-   WebRTC connection using ephemeral credential
+   WebRTC voice connection using the voice credential, then a second
+   transcription-only connection on the same microphone track
 
 5. Browser ↔ OpenAI
    Live audio + realtime events
@@ -931,7 +936,8 @@ The candidate can pause or end the interview only through the authenticated, UI-
 Transcripts are persisted incrementally during the conversation, never only at the end. The Realtime session itself is ephemeral.
 
 ```text
-Realtime transcription events (user + interviewer turns)
+Voice session: interviewer transcript; speech_started / speech_stopped per candidate turn
+Transcription session: candidate transcript, committed on speech_stopped, mapped to the voice item
        ↓
 Browser (buffer + retry until acknowledged)
        ↓

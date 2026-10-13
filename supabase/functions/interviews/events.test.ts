@@ -144,7 +144,7 @@ function setup({
     store,
     realtime: createRealtimeClient({ apiKey: "sk-test", fetch: unused }),
     model: "gpt-realtime-2.1-mini",
-    transcriptionModel: "gpt-4o-mini-transcribe",
+    transcriptionModel: "gpt-live-transcribe",
     github: createFakeGithub({}),
     ai: createFakeAIProvider(() => ({})),
     evaluationModel: "gpt-eval",
