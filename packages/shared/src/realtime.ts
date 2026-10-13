@@ -22,11 +22,20 @@ export const sessionResumeSchema = z.object({
   current_question: z.string().max(RESUME_QUESTION_MAX_CHARS).nullable(),
 });
 
+/** Credential for the transcription-only session that transcribes the candidate's speech. */
+export const transcriptionSessionCredentialSchema = z.object({
+  client_secret: z.string().min(1),
+  expires_at: z.iso.datetime({ offset: true }),
+  model: z.string().min(1),
+});
+
 export const realtimeSessionResponseSchema = z.object({
   /** Short-lived OpenAI Realtime credential; used once to open the WebRTC call. */
   client_secret: z.string().min(1),
   expires_at: z.iso.datetime({ offset: true }),
   model: z.string().min(1),
+  /** Null when it could not be minted; the voice session runs without a candidate transcript. */
+  transcription: transcriptionSessionCredentialSchema.nullable().optional(),
   remaining_voice_seconds: z.int().min(1).max(VOICE_LIMIT_SECONDS),
   resume: sessionResumeSchema.nullable(),
 });
@@ -478,6 +487,7 @@ export const toolCallEventPayloadSchema = z.object({
 });
 
 export type SessionResume = z.infer<typeof sessionResumeSchema>;
+export type TranscriptionSessionCredential = z.infer<typeof transcriptionSessionCredentialSchema>;
 export type RealtimeSessionResponse = z.infer<typeof realtimeSessionResponseSchema>;
 export type TranscriptTurnEvent = z.infer<typeof transcriptTurnEventSchema>;
 export type VoiceEventRequest = z.infer<typeof voiceEventSchema>;

@@ -849,23 +849,41 @@ export function createInterviewsHandler({
       recap: resumed?.recap ?? null,
     });
 
-    let credential;
     const mintStartedAt = Date.now();
-    try {
-      credential = await realtime.createClientSecret(
-        { model, transcriptionModel, instructions, tools },
-        await safetyIdentifier(ctx.user.id),
-      );
-    } catch (err) {
-      logGithubError(FN, err, { event: "realtime_session_failed", code: "realtime_unavailable", interview_id: interview.id });
+    const safetyId = await safetyIdentifier(ctx.user.id);
+    // The transcription mint is best-effort: without it the interview runs with no candidate transcript.
+    const [voice, transcription] = await Promise.allSettled([
+      realtime.createClientSecret({ model, instructions, tools }, safetyId),
+      realtime.createTranscriptionClientSecret({ model: transcriptionModel }, safetyId),
+    ]);
+    if (voice.status === "rejected") {
+      logGithubError(FN, voice.reason, { event: "realtime_session_failed", code: "realtime_unavailable", interview_id: interview.id });
       return apiError("realtime_unavailable", cors);
     }
-    console.log(JSON.stringify({ fn: FN, event: "realtime_session_minted", interview_id: interview.id, elapsed_ms: Date.now() - mintStartedAt }));
+    const elapsedMs = Date.now() - mintStartedAt;
+    console.log(JSON.stringify({ fn: FN, event: "realtime_session_minted", interview_id: interview.id, elapsed_ms: elapsedMs }));
+    if (transcription.status === "fulfilled") {
+      console.log(JSON.stringify({ fn: FN, event: "realtime_transcription_minted", interview_id: interview.id, elapsed_ms: elapsedMs }));
+    } else {
+      logGithubError(FN, transcription.reason, {
+        event: "realtime_transcription_unavailable",
+        code: "realtime_unavailable",
+        interview_id: interview.id,
+      });
+    }
 
+    const credential = voice.value;
     const body = realtimeSessionResponseSchema.parse({
       client_secret: credential.value,
       expires_at: credential.expiresAt.toISOString(),
       model,
+      transcription: transcription.status === "fulfilled"
+        ? {
+          client_secret: transcription.value.value,
+          expires_at: transcription.value.expiresAt.toISOString(),
+          model: transcriptionModel,
+        }
+        : null,
       remaining_voice_seconds: remaining,
       resume: resumed?.resume ?? null,
     });

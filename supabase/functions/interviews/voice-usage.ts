@@ -84,7 +84,8 @@ export interface VoiceEstimateScope {
 /**
  * Duration-estimate rows for one closed segment: the realtime model from estimated audio tokens,
  * and transcription by the minute with no token counts. Keyed by segment and model, so each
- * segment is estimated once however many times its close is processed.
+ * segment is estimated once however many times its close is processed. The transcription session
+ * is timed by the voice segment, so it over-counts while that session is down.
  */
 export function voiceDurationEstimates(
   scope: VoiceEstimateScope,

@@ -194,7 +194,7 @@ function setup({
     store,
     realtime: createRealtimeClient({ apiKey: API_KEY, fetch: fakeFetch }),
     model: "gpt-realtime-2.1-mini",
-    transcriptionModel: "gpt-4o-mini-transcribe",
+    transcriptionModel: "gpt-live-transcribe",
     github: createFakeGithub({}),
     ai,
     evaluationModel: "gpt-eval",
@@ -204,6 +204,33 @@ function setup({
     now: () => clock.now,
   });
   return { handler, openaiRequests, turns, voiceEvents, pauseCalls, jobs, reportJobs, integrity, ai, clock, usage: toolStore.usage };
+}
+
+type OpenAIRequest = ReturnType<typeof setup>["openaiRequests"][number];
+
+function sessionRequest(requests: OpenAIRequest[], type: "realtime" | "transcription"): OpenAIRequest {
+  const found = requests.filter((r) => (r.body.session as { type: string }).type === type);
+  assertEquals(found.length, 1);
+  return found[0];
+}
+
+function voiceRequest(requests: OpenAIRequest[]): OpenAIRequest {
+  return sessionRequest(requests, "realtime");
+}
+
+/** Answers the voice mint with `voice` and the transcription mint with `transcription`. */
+function bySessionType(
+  voice: () => Response | Promise<Response>,
+  transcription: () => Response | Promise<Response>,
+): Setup["openai"] {
+  return async (req) => {
+    const body = await req.clone().json() as { session: { type: string } };
+    return body.session.type === "transcription" ? transcription() : voice();
+  };
+}
+
+function voiceInstructions(requests: OpenAIRequest[]): string {
+  return (voiceRequest(requests).body.session as { instructions: string }).instructions;
 }
 
 function post(path = `/interviews/${INTERVIEW_ID}/realtime/session`, auth = "Bearer valid", method = "POST") {
@@ -307,25 +334,42 @@ Deno.test("mints a credential with server-side instructions and tools", async ()
     client_secret: "ek_test_123",
     expires_at: "2026-10-05T12:01:00.000Z",
     model: "gpt-realtime-2.1-mini",
+    transcription: {
+      client_secret: "ek_test_123",
+      expires_at: "2026-10-05T12:01:00.000Z",
+      model: "gpt-live-transcribe",
+    },
     remaining_voice_seconds: VOICE_LIMIT_SECONDS - 600,
     resume: { last_turn_sequence: 0, current_question: null },
   });
 
-  assertEquals(openaiRequests.length, 1);
-  const [{ url, headers, body }] = openaiRequests;
-  assertEquals(url, "https://api.openai.com/v1/realtime/client_secrets");
-  assertEquals(headers.get("authorization"), `Bearer ${API_KEY}`);
-  const safetyId = headers.get("openai-safety-identifier") ?? "";
-  assert(/^[0-9a-f]{64}$/.test(safetyId) && !safetyId.includes(userId), "safety id must be a hash");
-  assertEquals(body.expires_after, { anchor: "created_at", seconds: CREDENTIAL_TTL_SECONDS });
-  const session = body.session as Record<string, unknown>;
-  assertEquals(session.type, "realtime");
+  assertEquals(openaiRequests.length, 2);
+  for (const { url, headers, body } of openaiRequests) {
+    assertEquals(url, "https://api.openai.com/v1/realtime/client_secrets");
+    assertEquals(headers.get("authorization"), `Bearer ${API_KEY}`);
+    const safetyId = headers.get("openai-safety-identifier") ?? "";
+    assert(/^[0-9a-f]{64}$/.test(safetyId) && !safetyId.includes(userId), "safety id must be a hash");
+    assertEquals(body.expires_after, { anchor: "created_at", seconds: CREDENTIAL_TTL_SECONDS });
+  }
+  const session = voiceRequest(openaiRequests).body.session as Record<string, unknown>;
   assertEquals(session.model, "gpt-realtime-2.1-mini");
   assertEquals(session.tool_choice, "auto");
   assertEquals(session.truncation, "auto");
   const audio = session.audio as { input: Record<string, Record<string, unknown>> };
-  assertEquals(audio.input.transcription.model, "gpt-4o-mini-transcribe");
+  assertEquals("transcription" in audio.input, false, "the voice session must not transcribe the candidate");
   assertEquals(audio.input.turn_detection.interrupt_response, true);
+
+  const transcription = sessionRequest(openaiRequests, "transcription").body.session as Record<string, unknown>;
+  assertEquals(transcription, {
+    type: "transcription",
+    audio: {
+      input: {
+        noise_reduction: { type: "near_field" },
+        transcription: { model: "gpt-live-transcribe" },
+        turn_detection: null,
+      },
+    },
+  });
   const tools = session.tools as { name: string }[];
   assertEquals(tools.map((t) => t.name).sort(), [
     "advance_interview",
@@ -345,7 +389,7 @@ Deno.test("first session asks the opening question and has no resume point", asy
   const res = await handler(post());
   assertEquals(res.status, 201);
   assertEquals(realtimeSessionResponseSchema.parse(await res.json()).resume, null);
-  const instructions = (openaiRequests[0].body.session as { instructions: string }).instructions;
+  const instructions = voiceInstructions(openaiRequests);
   assert(instructions.includes(plan.opening_question));
   assert(!instructions.includes("<recap>"));
 });
@@ -381,7 +425,7 @@ Deno.test("a reconnected session gets a compact recap and its resume point", asy
     last_turn_sequence: 3,
     current_question: "How do you validate sessions?",
   });
-  const instructions = (openaiRequests[0].body.session as { instructions: string }).instructions;
+  const instructions = voiceInstructions(openaiRequests);
   const recap = instructions.slice(instructions.indexOf("<recap>"));
   assert(recap.includes("Architecture (covered); Data layer (partly covered)"));
   assert(!recap.includes("Testing"));
@@ -398,27 +442,51 @@ Deno.test("a reconnect after a saved answer tells the interviewer it was receive
   const { handler, openaiRequests } = setup({ events, messages, state: coverageState });
   const body = realtimeSessionResponseSchema.parse(await (await handler(post())).json());
   assertEquals(body.resume?.last_turn_sequence, 4);
-  const instructions = (openaiRequests[0].body.session as { instructions: string }).instructions;
+  const instructions = voiceInstructions(openaiRequests);
   assert(instructions.includes(`Candidate's answer: received: "With signed JWTs."`));
   assert(instructions.includes("may have been cut off"));
 });
 
+const OPENAI_FAILURES: (() => Response | Promise<Response>)[] = [
+  () => new Response(`{"error":{"message":"bad key ${API_KEY}"}}`, { status: 401 }),
+  () => new Response("upstream", { status: 503 }),
+  () => Response.json({ unexpected: true }),
+  () => Promise.reject(new TypeError("network down")),
+];
+
+const mintedSecret = () => Response.json({ value: "ek_test_123", expires_at: NOW.getTime() / 1000 + 60, session: {} });
+
 Deno.test("OpenAI failures map to realtime_unavailable without leaking details", async () => {
-  const failures: Setup["openai"][] = [
-    () => new Response(`{"error":{"message":"bad key ${API_KEY}"}}`, { status: 401 }),
-    () => new Response("upstream", { status: 503 }),
-    () => Response.json({ unexpected: true }),
-    () => Promise.reject(new TypeError("network down")),
-  ];
-  for (const openai of failures) {
-    const { handler } = setup({ openai });
+  for (const fail of OPENAI_FAILURES) {
+    // The voice mint decides the outcome whether or not the transcription mint succeeds.
+    for (const openai of [fail, bySessionType(fail, mintedSecret)]) {
+      const { handler } = setup({ openai });
+      const { result: res, lines } = await captureLogs(() => handler(post()));
+      assertEquals(res.status, 502);
+      const text = await res.clone().text();
+      assert(!text.includes(API_KEY) && !text.includes("bad key"));
+      await expectError(res, 502, "realtime_unavailable");
+      assertEquals(lines.length, 1);
+      assert(!lines[0].includes(API_KEY) && !lines[0].includes("bad key"));
+      assertEquals(JSON.parse(lines[0]).event, "realtime_session_failed");
+      assertEquals(JSON.parse(lines[0]).interview_id, INTERVIEW_ID);
+    }
+  }
+});
+
+Deno.test("a failed transcription mint still starts the voice session, without a transcription credential", async () => {
+  for (const fail of OPENAI_FAILURES) {
+    const { handler } = setup({ openai: bySessionType(mintedSecret, fail) });
     const { result: res, lines } = await captureLogs(() => handler(post()));
-    assertEquals(res.status, 502);
+    assertEquals(res.status, 201);
     const text = await res.clone().text();
     assert(!text.includes(API_KEY) && !text.includes("bad key"));
-    await expectError(res, 502, "realtime_unavailable");
+    const body = realtimeSessionResponseSchema.parse(await res.json());
+    assertEquals(body.client_secret, "ek_test_123");
+    assertEquals(body.transcription, null);
     assertEquals(lines.length, 1);
     assert(!lines[0].includes(API_KEY) && !lines[0].includes("bad key"));
+    assertEquals(JSON.parse(lines[0]).event, "realtime_transcription_unavailable");
     assertEquals(JSON.parse(lines[0]).interview_id, INTERVIEW_ID);
   }
 });
@@ -604,10 +672,10 @@ Deno.test("events: a disconnect writes duration estimates for the segment it clo
       source: "duration_estimate",
       audioSeconds: 120,
       voiceSegmentEventId: CONNECTED_ID,
-      model: "gpt-4o-mini-transcribe",
+      model: "gpt-live-transcribe",
     },
   ]);
-  assertAlmostEquals(aiUsageCost(usage[1])!, 0.006, 1e-12);
+  assertAlmostEquals(aiUsageCost(usage[1])!, 0.034, 1e-12);
 
   // Processing the same close again (a retried disconnect) estimates nothing new.
   await handler(postEvent(event));

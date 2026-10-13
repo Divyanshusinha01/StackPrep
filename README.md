@@ -191,7 +191,7 @@ In hosted Supabase, set these under Authentication > Providers > GitHub instead.
 | `INNGEST_EVENT_KEY`, `INNGEST_SIGNING_KEY` | Yes | Sending events and serving Inngest functions |
 | `OPENAI_API_KEY` | Yes | Server-side OpenAI key (never sent to the browser) |
 | `OPENAI_PLANNING_MODEL`, `OPENAI_EVALUATION_MODEL`, `OPENAI_REPORT_MODEL`, `OPENAI_VISION_MODEL` | No (defaults) | Text and vision models per task |
-| `OPENAI_REALTIME_MODEL`, `OPENAI_REALTIME_TRANSCRIPTION_MODEL` | No (defaults) | Voice model and candidate-speech transcription model |
+| `OPENAI_REALTIME_MODEL`, `OPENAI_REALTIME_TRANSCRIPTION_MODEL` | No (defaults) | Voice model, and the candidate-speech transcription model (default `gpt-live-transcribe`), which runs in its own transcription-only WebRTC session |
 | `OPENAI_EMBEDDING_MODEL` | No (default) | Must natively output 1536-dimensional vectors |
 | `OPENAI_PLANNING_REASONING_EFFORT`, `OPENAI_EVALUATION_REASONING_EFFORT`, `OPENAI_REPORT_REASONING_EFFORT`, `OPENAI_VISION_REASONING_EFFORT` | No (defaults) | `default`, `none`, `minimal`, `low`, `medium` or `high` |
 | `GITHUB_APP_ID`, `GITHUB_APP_CLIENT_ID`, `GITHUB_APP_CLIENT_SECRET`, `GITHUB_APP_PRIVATE_KEY` | Yes | GitHub App credentials (PKCS#8 private key) |
