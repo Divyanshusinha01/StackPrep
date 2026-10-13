@@ -87,7 +87,7 @@ function objectKeys(value: unknown): string[] {
 }
 
 function tomlSection(text: string, header: string): string {
-  const start = text.search(new RegExp(`^\\[${header.replace(/[.[\]]/g, "\\$&")}\\]\\s*$`, "m"));
+  const start = text.search(new RegExp(`^\\[${header.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\]\\s*$`, "m"));
   if (start === -1) {
     return "";
   }

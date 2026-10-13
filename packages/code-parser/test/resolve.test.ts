@@ -67,6 +67,7 @@ describe("parseCallee and signatureQualifier", () => {
     expect(signatureQualifier("Box<T>::~Box()", "~Box")).toEqual(["Box"]);
     expect(signatureQualifier("int get(int key)", "get")).toEqual([]);
     expect(signatureQualifier(null, "get")).toEqual([]);
+    expect(signatureQualifier("Map<K,\nV>::size()", "size")).toEqual(["Map"]);
   });
 });
 

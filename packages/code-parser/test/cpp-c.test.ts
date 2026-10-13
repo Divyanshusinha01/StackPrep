@@ -234,8 +234,18 @@ describe(".h language detection", () => {
     ['#ifdef __cplusplus\nextern "C" {\n#endif\nint f(void);\n#ifdef __cplusplus\n}\n#endif', false],
     ["/* this class of errors */\nint f(void); // see namespace docs", false],
     ['const char *s = "a::b";', false],
+    ['const char *s = "a \\" b::c";', false],
+    ["/* unterminated class Foo {", false],
+    ["char c = '\\'';\nnamespace app {}", true],
   ])("looksLikeCpp(%j) is %s", (content, expected) => {
     expect(looksLikeCpp(content)).toBe(expected);
+  });
+
+  it("scans adversarial headers in linear time", () => {
+    const inputs = ["/*" + "a/*".repeat(50_000), '"' + '\\"'.repeat(50_000), "'" + "\\'".repeat(50_000)];
+    const started = performance.now();
+    for (const content of inputs) expect(looksLikeCpp(content)).toBe(false);
+    expect(performance.now() - started).toBeLessThan(1000);
   });
 
   it("parses a .h header as C++ when content has C++ markers", async () => {
