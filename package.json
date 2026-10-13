@@ -34,6 +34,13 @@
     "test:e2e:ui": "pnpm --filter @stackprep/web test:e2e:ui",
     "check": "pnpm typecheck && pnpm typecheck:functions && pnpm typecheck:evals && pnpm lint && pnpm test && pnpm test:functions && pnpm test:evals && pnpm build"
   },
+  "pnpm": {
+    "overrides": {
+      "@modelcontextprotocol/sdk": ">=1.31.0",
+      "sharp": ">=0.35.5",
+      "source-map-js": ">=1.2.2"
+    }
+  },
   "devDependencies": {
     "@eslint/js": "^9.39.5",
     "eslint": "^9.39.5",

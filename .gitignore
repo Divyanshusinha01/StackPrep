@@ -37,6 +37,9 @@ evals/results/
 # load test: custom k6 build and per-run scratch (fixtures with tokens, smoke runs)
 loadtest/bin/
 loadtest/.tmp/
+# load test: raw per-run event streams (metrics.json and summary.md are committed)
+loadtest/results/**/k6-events.ndjson
+loadtest/results/**/edge-runtime-events.log
 
 # typescript
 *.tsbuildinfo

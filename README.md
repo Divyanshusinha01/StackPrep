@@ -6,6 +6,14 @@ A voice-first technical interview about **your own GitHub repository**: connect 
 [![E2E](https://github.com/Divyanshusinha01/StackPrep/actions/workflows/e2e.yml/badge.svg)](https://github.com/Divyanshusinha01/StackPrep/actions/workflows/e2e.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
+**Live demo:** [stackprep-eta.vercel.app](https://stackprep-eta.vercel.app)
+
+![StackPrep landing page](docs/assets/landing.png)
+
+| Interview | Report |
+| --- | --- |
+| ![Voice interview grounded in repository files](docs/assets/interview.png) | ![Evidence-linked interview report](docs/assets/report.png) |
+
 ## Overview
 
 Many developers ship code they cannot fully explain, especially when it was written with AI help, and a résumé link to a repository proves nothing about understanding it. StackPrep interviews a candidate about one repository they choose. The interview checks:
@@ -69,7 +77,7 @@ Request/response work runs in Supabase Edge Functions (`interviews`, `workspaces
 3. **Interview.** Creating an interview (in `workspaces`) queues `interview.planning.requested`. When the plan is ready, `POST /interviews/:id/realtime/session` mints a Realtime credential. The browser connects over WebRTC and relays each tool call to `POST /interviews/:id/tool-calls`. Transcript turns and session events go to `POST /interviews/:id/events`, and the browser follows `GET /interviews/:id/events` over SSE.
 4. **Report.** Ending the interview queues `interview.report.requested`. The report is stored in the workspace and a `report_ready` event is pushed to the browser.
 
-The full design is in [`architecture (2).md`](architecture%20%282%29.md).
+The full design is in [`architecture.md`](architecture.md).
 
 ## Tech stack
 
@@ -111,7 +119,8 @@ supabase/migrations/   30 SQL migrations (schema, RLS, SQL functions)
 supabase/tests/        pgTAP tests (database/) and concurrency tests (concurrency/)
 evals/                 Eval harness: core runner plus the StackPrep project, datasets and recordings
 loadtest/              k6 SSE load test, decision criteria and committed results
-.github/workflows/     CI: check.yml and e2e.yml
+.github/               CI (workflows/check.yml, workflows/e2e.yml), Dependabot, issue and PR templates
+docs/assets/           README screenshots
 ```
 
 ## Prerequisites
@@ -274,8 +283,12 @@ The suites run over a synthetic corpus and a snapshot of this repository. `pnpm 
 ## Documentation
 
 - [`PRD.md`](PRD.md): product goals, flows, features and acceptance criteria
-- [`architecture (2).md`](architecture%20%282%29.md): system design, data flow, interview state and security
+- [`architecture.md`](architecture.md): system design, data flow, interview state and security
 - [`techstack.md`](techstack.md): technology choices and AI cost targets
+
+## Contributing and security
+
+Contributions are welcome; see [`CONTRIBUTING.md`](CONTRIBUTING.md) for setup, checks and PR expectations. Please report vulnerabilities privately as described in [`SECURITY.md`](SECURITY.md), not in public issues.
 
 ## Status and license
 

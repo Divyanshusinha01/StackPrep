@@ -12,7 +12,7 @@ Before planning, designing, or implementing anything, read the relevant project 
 | Doc | Use for |
 |---|---|
 | `PRD.md` | Product goals, flows, features, UX, acceptance criteria |
-| `architecture (2).md` | System design, services, data flow, boundaries |
+| `architecture.md` | System design, services, data flow, boundaries |
 | `techstack.md` | Allowed technologies and hosting choices |
 
 ## Rules
