@@ -3,6 +3,7 @@
 import { safeNextPath } from "@stackprep/shared";
 import { headers } from "next/headers";
 import { redirect } from "next/navigation";
+import { trackServer } from "@/lib/analytics-server";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 
 export async function signInWithGitHub(formData: FormData) {
@@ -24,5 +25,6 @@ export async function signInWithGitHub(formData: FormData) {
   if (error || !data.url) {
     redirect(`/login?error=oauth&next=${encodeURIComponent(next)}`);
   }
+  await trackServer("login_started", {});
   redirect(data.url);
 }

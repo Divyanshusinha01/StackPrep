@@ -6,7 +6,7 @@ import { Wordmark } from "@/components/landing/wordmark";
 import { Button } from "@/components/ui/button";
 
 export const metadata: Metadata = {
-  title: "Not found · StackPrep",
+  title: "Not found",
   robots: { index: false },
 };
 
@@ -26,6 +26,9 @@ export default function NotFound() {
         action={
           <>
             <Button asChild>
+              <Link href="/">Home</Link>
+            </Button>
+            <Button asChild variant="outline">
               <Link href="/workspaces">Go to workspaces</Link>
             </Button>
             <Button asChild variant="outline">

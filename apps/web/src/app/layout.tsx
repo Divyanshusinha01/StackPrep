@@ -1,5 +1,7 @@
 import type { Metadata, Viewport } from "next";
 import { Geist, Inter, JetBrains_Mono } from "next/font/google";
+import { Analytics } from "@vercel/analytics/next";
+import { DESCRIPTION, OPEN_GRAPH, SITE_NAME, SITE_URL, TITLE } from "@/lib/site";
 import "./globals.css";
 
 const geist = Geist({
@@ -20,20 +22,12 @@ const jetbrainsMono = JetBrains_Mono({
   display: "swap",
 });
 
-const TITLE = "StackPrep — Turn your codebase into an interview";
-const DESCRIPTION =
-  "Connect GitHub, pick a repository, and get interviewed by an AI that has read your code. Explain your architecture, defend your decisions, and get a detailed report.";
-
 export const metadata: Metadata = {
-  metadataBase: new URL(process.env.NEXT_PUBLIC_SITE_URL ?? "http://localhost:3000"),
-  title: TITLE,
+  metadataBase: new URL(SITE_URL),
+  title: { default: TITLE, template: `%s · ${SITE_NAME}` },
   description: DESCRIPTION,
-  openGraph: {
-    type: "website",
-    siteName: "StackPrep",
-    title: TITLE,
-    description: DESCRIPTION,
-  },
+  applicationName: SITE_NAME,
+  openGraph: OPEN_GRAPH,
   twitter: {
     card: "summary_large_image",
     title: TITLE,
@@ -51,7 +45,11 @@ export default function RootLayout({
 }: Readonly<{ children: React.ReactNode }>) {
   return (
     <html lang="en" className={`${inter.variable} ${geist.variable} ${jetbrainsMono.variable}`}>
-      <body>{children}</body>
+      <body>
+        {children}
+        {/* The insights script only exists on Vercel; elsewhere it would 404 on every page. */}
+        {process.env.VERCEL ? <Analytics /> : null}
+      </body>
     </html>
   );
 }

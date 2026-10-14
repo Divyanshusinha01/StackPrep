@@ -8,8 +8,7 @@ import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { useParallax } from "@/components/motion/parallax";
 import { useReducedMotion } from "@/components/motion/use-reduced-motion";
-import { CTA_GLOW, primaryCta } from "./constants";
-import { GitHubMark } from "./github-mark";
+import { AuthCta } from "./auth-cta";
 /** Progress [0, 1] maps to [0, -distance]: planes start at rest while the hero is fully in view. */
 const FROM_REST: [number, number] = [-1, 1];
 
@@ -24,6 +23,12 @@ const fadeUp = (reduced: boolean, delay: number) =>
         transition: { duration: 0.55, delay, ease: EASE },
       };
 
+/** Slide only: text that starts at opacity 0 stays invisible until hydration, which delays LCP. */
+const slideUp = (reduced: boolean, delay: number) =>
+  reduced
+    ? { initial: false as const, animate: { y: 0 } }
+    : { initial: { y: 14 }, animate: { y: 0 }, transition: { duration: 0.55, delay, ease: EASE } };
+
 const HERO_TREE = [
   { path: "src/auth/session.ts", lines: "L14–89", active: true },
   { path: "src/api/middleware.ts", lines: "L22–64", active: false },
@@ -32,8 +37,7 @@ const HERO_TREE = [
 
 const HERO_WAVE = [35, 70, 95, 55, 100, 65, 40, 85, 60, 90, 50, 75, 45, 65];
 
-export function Hero({ signedIn }: { signedIn: boolean }) {
-  const cta = primaryCta(signedIn);
+export function Hero() {
   const ref = useRef<HTMLElement>(null);
   const reduced = useReducedMotion();
   const { scrollYProgress } = useScroll({ target: ref, offset: ["start start", "end start"] });
@@ -70,16 +74,16 @@ export function Hero({ signedIn }: { signedIn: boolean }) {
               id="hero-heading"
               className="mt-6 font-display text-4xl tracking-[-0.04em] text-balance sm:text-5xl lg:text-[3.25rem] lg:leading-[1.06] xl:text-6xl xl:leading-[1.04]"
             >
-              <m.span className="block font-medium text-foreground/95" {...fadeUp(reduced, 0.08)}>
+              <m.span className="block font-medium text-foreground/95" {...slideUp(reduced, 0.08)}>
                 Defend the repo
               </m.span>
-              <m.span className="mt-1 block font-semibold" {...fadeUp(reduced, 0.14)}>
+              <m.span className="mt-1 block font-semibold" {...slideUp(reduced, 0.14)}>
                 you actually <span className="text-gradient-brand">ship.</span>
               </m.span>
             </h1>
             <m.p
               className="mx-auto mt-6 max-w-xl text-base leading-relaxed text-pretty text-muted-foreground sm:text-lg lg:mx-0"
-              {...fadeUp(reduced, 0.22)}
+              {...slideUp(reduced, 0.22)}
             >
               Connect GitHub, pick one repository, and talk through your architecture and
               trade-offs with an interviewer that cites your files—not a generic question bank.
@@ -88,12 +92,7 @@ export function Hero({ signedIn }: { signedIn: boolean }) {
               className="mt-9 flex flex-col items-center justify-center gap-3 sm:flex-row lg:justify-start"
               {...fadeUp(reduced, 0.3)}
             >
-              <Button asChild size="lg" className={cn("h-11 px-5 text-[15px]", CTA_GLOW)}>
-                <a href={cta.href}>
-                  <GitHubMark className="size-4" />
-                  {cta.label}
-                </a>
-              </Button>
+              <AuthCta location="hero" size="lg" className="h-11 px-5 text-[15px]" />
               <Button
                 asChild
                 variant="ghost"

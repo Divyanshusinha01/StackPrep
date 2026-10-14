@@ -64,6 +64,7 @@ export default defineConfig({
       NEXT_PUBLIC_SUPABASE_URL: env.supabaseUrl,
       NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY: env.anonKey,
       NEXT_PUBLIC_GITHUB_APP_SLUG: "stackprep-e2e",
+      NEXT_PUBLIC_SITE_URL: env.baseUrl,
       NEXT_PUBLIC_SENTRY_DSN: "",
       SENTRY_ORG: "",
       SENTRY_PROJECT: "",

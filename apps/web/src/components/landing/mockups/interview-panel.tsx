@@ -63,6 +63,7 @@ export function InterviewPanel({
 
   return (
     <Panel
+      label="Example live interview: the AI interviewer asks about specific repository files while the transcript updates"
       className={className}
       glow={glow}
       title="Interview 3 · acme/checkout-service"

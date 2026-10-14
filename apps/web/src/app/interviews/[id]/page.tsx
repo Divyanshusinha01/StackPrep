@@ -8,7 +8,7 @@ import { getInterview } from "@/lib/api";
 import { requireUser } from "@/lib/auth";
 
 export const metadata: Metadata = {
-  title: "Interview · StackPrep",
+  title: "Interview",
   robots: { index: false },
 };
 

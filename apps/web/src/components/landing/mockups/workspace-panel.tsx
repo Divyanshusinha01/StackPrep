@@ -11,6 +11,7 @@ const INTERVIEWS = [
 export function WorkspacePanel({ className, glow }: { className?: string; glow?: boolean }) {
   return (
     <Panel
+      label="Example workspace that is ready for an interview, with a repository summary and past interview reports"
       className={className}
       glow={glow}
       title="acme/checkout-service"

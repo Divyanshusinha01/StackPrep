@@ -56,6 +56,7 @@ export function RepoTree({
 
   return (
     <Panel
+      label="Example repository file tree with the files the analysis highlighted"
       className={className}
       title="acme/checkout-service"
       meta={

@@ -12,7 +12,7 @@ import { getInterviewHistory, type InterviewHistoryEntry, listWorkspaces } from 
 import { requireUser } from "@/lib/auth";
 
 export const metadata: Metadata = {
-  title: "Workspaces · StackPrep",
+  title: "Workspaces",
   robots: { index: false },
 };
 

@@ -14,6 +14,7 @@ const REPOS = [
 export function RepoPicker({ className }: { className?: string }) {
   return (
     <Panel
+      label="Example repository picker listing GitHub repositories to choose from"
       className={className}
       title="Choose a repository"
       meta={

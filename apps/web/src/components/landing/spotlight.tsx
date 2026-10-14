@@ -2,13 +2,10 @@
 
 import { cn } from "@/lib/utils";
 
-type SpotlightProps = {
-  children: React.ReactNode;
-  className?: string;
-};
+type SpotlightProps = Omit<React.ComponentProps<"div">, "onPointerMove">;
 
 /** Soft brand light that follows the pointer while hovering; hover-capable devices only. */
-export function Spotlight({ children, className }: SpotlightProps) {
+export function Spotlight({ children, className, ...props }: SpotlightProps) {
   const onPointerMove = (event: React.PointerEvent<HTMLDivElement>) => {
     const rect = event.currentTarget.getBoundingClientRect();
     event.currentTarget.style.setProperty("--spot-x", `${event.clientX - rect.left}px`);
@@ -16,7 +13,7 @@ export function Spotlight({ children, className }: SpotlightProps) {
   };
 
   return (
-    <div onPointerMove={onPointerMove} className={cn("group/spot relative", className)}>
+    <div {...props} onPointerMove={onPointerMove} className={cn("group/spot relative", className)}>
       {children}
       <span
         aria-hidden
