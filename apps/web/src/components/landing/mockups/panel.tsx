@@ -2,6 +2,8 @@ import { cn } from "@/lib/utils";
 import { Spotlight } from "../spotlight";
 
 export type PanelProps = {
+  /** Screen-reader description; the mockup's sample content is presentational, not real data. */
+  label: string;
   title: React.ReactNode;
   meta?: React.ReactNode;
   children: React.ReactNode;
@@ -12,9 +14,11 @@ export type PanelProps = {
 };
 
 /** Window chrome shared by every product mockup on the landing page. */
-export function Panel({ title, meta, children, className, bodyClassName, glow }: PanelProps) {
+export function Panel({ label, title, meta, children, className, bodyClassName, glow }: PanelProps) {
   return (
     <Spotlight
+      role="img"
+      aria-label={label}
       className={cn(
         "overflow-hidden rounded-xl border border-white/5 bg-panel text-left shadow-[inset_0_1px_0_0_oklch(1_0_0/0.06),0_24px_64px_-24px_rgb(0_0_0/0.7)]",
         glow &&

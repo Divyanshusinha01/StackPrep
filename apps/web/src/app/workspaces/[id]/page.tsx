@@ -19,7 +19,7 @@ import { cn } from "@/lib/utils";
 import { retryAnalysis, startInterview } from "./actions";
 
 export const metadata: Metadata = {
-  title: "Workspace · StackPrep",
+  title: "Workspace",
   robots: { index: false },
 };
 

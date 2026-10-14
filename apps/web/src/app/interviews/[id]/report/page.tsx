@@ -12,6 +12,7 @@ import { ReportPending } from "@/components/app/report-pending";
 import { ReportToc } from "@/components/app/report-toc";
 import { REPORT_SECTIONS, ReportView } from "@/components/app/report-view";
 import { SubmitButton } from "@/components/app/submit-button";
+import { TrackReportViewed } from "@/components/app/track-report-viewed";
 import { TranscriptDisclosure } from "@/components/app/transcript-disclosure";
 import { Button } from "@/components/ui/button";
 import { type ApiResult, getInterview, getInterviewReport, getInterviewTranscript } from "@/lib/api";
@@ -19,7 +20,7 @@ import { requireUser } from "@/lib/auth";
 import { retryReport } from "./actions";
 
 export const metadata: Metadata = {
-  title: "Interview report · StackPrep",
+  title: "Interview report",
   robots: { index: false },
 };
 
@@ -152,6 +153,7 @@ export default async function InterviewReportPage({ params, searchParams }: Page
             </div>
           </aside>
           <div className="min-w-0">
+            <TrackReportViewed />
             <ReportView report={ready.report} />
             {transcriptSection}
           </div>

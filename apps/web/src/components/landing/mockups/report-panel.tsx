@@ -39,6 +39,7 @@ const AREAS = [
 export function ReportPanel({ className, glow }: { className?: string; glow?: boolean }) {
   return (
     <Panel
+      label="Example interview report with category notes, strengths and areas to improve, linked to repository files"
       className={className}
       glow={glow}
       title="Interview 3 · Report"

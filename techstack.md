@@ -26,6 +26,7 @@
 | Validation          | **Zod**                      | Lightweight schema validation                        |
 | Testing             | **Vitest + Playwright**      | Unit + E2E testing                                   |
 | Monitoring          | **Sentry**                   | Error tracking; free tier initially                  |
+| Analytics           | **Vercel Web Analytics** (`@vercel/analytics`) | Cookieless and aggregate, so no consent banner; same platform as hosting. Page views on all plans; custom events (`cta_click`, `login_started`, `workspace_created`, `interview_started`, `report_viewed`, via `lib/analytics.ts`) need a paid Vercel plan, otherwise the CTA-to-`/login` funnel is read from path views. Event properties never carry repository names, paths or transcript text |
 | UI                  | **Tailwind + shadcn/ui**     | Fast product development                             |
 | Animation           | **Framer Motion**            | UI/landing-page animations                           |
 | AI cost tracking    | **`ai_usage` table in Supabase PostgreSQL** | Per-call token and cost log; no external cost tool |

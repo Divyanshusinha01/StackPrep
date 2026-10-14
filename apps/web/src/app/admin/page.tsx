@@ -11,7 +11,7 @@ import { cn } from "@/lib/utils";
 export const dynamic = "force-dynamic";
 
 export const metadata: Metadata = {
-  title: "Admin · StackPrep",
+  title: "Admin",
   robots: { index: false },
 };
 

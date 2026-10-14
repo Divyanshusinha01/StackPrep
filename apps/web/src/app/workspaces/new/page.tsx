@@ -17,7 +17,7 @@ import { cn } from "@/lib/utils";
 import { selectWorkspace } from "./actions";
 
 export const metadata: Metadata = {
-  title: "Choose a repository · StackPrep",
+  title: "Choose a repository",
   robots: { index: false },
 };
 

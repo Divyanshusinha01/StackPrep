@@ -12,6 +12,8 @@ export const webEnvSchema = z.object({
   NODE_ENV: nodeEnv,
   NEXT_PUBLIC_SUPABASE_URL: httpUrl,
   NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY: secret,
+  /** Public origin used for canonical URLs, social images, robots.txt and the sitemap. */
+  NEXT_PUBLIC_SITE_URL: httpUrl.optional(),
 });
 
 export const webSentryEnvSchema = z.object({

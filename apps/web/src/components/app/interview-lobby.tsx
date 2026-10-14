@@ -219,6 +219,15 @@ export function InterviewLobby({
           </CheckItem>
         </ol>
         {error ? <Notice tone="error">{DEVICE_ERRORS[error]}</Notice> : null}
+        <p data-testid="media-disclosure" className="mt-4 text-xs leading-relaxed text-muted-foreground">
+          During the interview, one low-detail camera frame is analyzed about every 10 seconds for integrity
+          signals. Frames are discarded; only the signals are saved, never the images. Your audio is processed
+          in real time and not retained. Both are processed by a third-party AI provider (OpenAI). See the{" "}
+          <Link href="/privacy" className="focus-ring rounded-sm text-foreground/85 underline underline-offset-4 hover:text-foreground">
+            Privacy Policy
+          </Link>
+          .
+        </p>
       </section>
 
       <aside className="surface-inset flex flex-col divide-y self-start overflow-hidden rounded-xl border bg-panel/60">

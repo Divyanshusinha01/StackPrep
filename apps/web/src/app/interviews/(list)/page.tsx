@@ -11,7 +11,7 @@ import { getInterviewHistory } from "@/lib/api";
 import { requireUser } from "@/lib/auth";
 
 export const metadata: Metadata = {
-  title: "Interviews · StackPrep",
+  title: "Interviews",
   robots: { index: false },
 };
 

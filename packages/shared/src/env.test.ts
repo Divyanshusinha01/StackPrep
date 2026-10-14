@@ -48,6 +48,14 @@ describe("parseEnv", () => {
     ).toThrowError(/NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY/);
   });
 
+  it("accepts an optional site url for web and rejects a non-http one", () => {
+    const withSite = { ...validWeb, NEXT_PUBLIC_SITE_URL: "https://stackprep.dev" };
+    expect(parseEnv("web", webEnvSchema, withSite)).toEqual(withSite);
+    expect(() =>
+      parseEnv("web", webEnvSchema, { ...validWeb, NEXT_PUBLIC_SITE_URL: "stackprep.dev" }),
+    ).toThrowError(/NEXT_PUBLIC_SITE_URL/);
+  });
+
   it("requires WEB_ORIGIN for edge functions", () => {
     expect(() => parseEnv("edge", edgeEnvSchema, {})).toThrowError(/WEB_ORIGIN/);
   });

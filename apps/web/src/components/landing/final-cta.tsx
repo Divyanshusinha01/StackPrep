@@ -1,11 +1,7 @@
-import { cn } from "@/lib/utils";
-import { Button } from "@/components/ui/button";
 import { ScrollReveal } from "@/components/motion/scroll-reveal";
-import { CTA_GLOW, primaryCta } from "./constants";
-import { GitHubMark } from "./github-mark";
+import { AuthCta } from "./auth-cta";
 
-export function FinalCta({ signedIn }: { signedIn: boolean }) {
-  const cta = primaryCta(signedIn);
+export function FinalCta() {
   return (
     <section aria-labelledby="cta-heading" className="relative overflow-hidden border-t py-28 sm:py-40">
       <div aria-hidden className="pointer-events-none absolute inset-0 bg-grid mask-radial opacity-70" />
@@ -26,16 +22,7 @@ export function FinalCta({ signedIn }: { signedIn: boolean }) {
           Connect a repository and find out how well you can explain what you built, before
           someone else asks.
         </p>
-        <Button
-          asChild
-          size="lg"
-          className={cn("mt-10 h-12 px-6 text-[15px]", CTA_GLOW)}
-        >
-          <a href={cta.href}>
-            <GitHubMark className="size-4" />
-            {cta.label}
-          </a>
-        </Button>
+        <AuthCta location="final-cta" size="lg" className="mt-10 h-12 px-6 text-[15px]" />
       </ScrollReveal>
     </section>
   );

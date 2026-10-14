@@ -8,6 +8,6 @@ export function proxy(request: NextRequest) {
 export const config = {
   matcher: [
     // Skip static assets and metadata images; everything else gets its session refreshed.
-    "/((?!_next/static|_next/image|favicon.ico|icon|apple-icon|opengraph-image|.*\\.(?:svg|png|jpg|jpeg|gif|webp|ico)$).*)",
+    "/((?!_next/static|_next/image|favicon.ico|icon|apple-icon|opengraph-image|robots.txt|sitemap.xml|.*\\.(?:svg|png|jpg|jpeg|gif|webp|ico)$).*)",
   ],
 };

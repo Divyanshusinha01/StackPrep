@@ -1065,6 +1065,12 @@ Key requirements:
 - Treat repository files as untrusted input
 - Prevent prompt injection from repository content from overriding system instructions
 
+### Data deletion
+
+- **Interviews.** Soft delete only (`DELETE /interviews/:id`, see [API Structure](#7-api-structure)); the row stays for the usage limit, numbering and planning memory.
+- **Accounts.** There is no self-service account deletion. Users request it through the contact channel on `/privacy`, and an operator deletes the user in Supabase Auth (Authentication > Users). Every user-owned table references `profiles`, which references `auth.users` with `on delete cascade`, so this removes workspaces, repository memory, the code index, interviews, transcripts, events, evaluations, reports, jobs, `ai_usage` and GitHub connection rows. The GitHub App installation lives on GitHub and must be uninstalled by the user.
+- **Not yet designed:** a "Delete my account" action. It needs an authenticated Edge Function endpoint (service-role `auth.admin.deleteUser`), a decision on in-flight Inngest jobs for the user's workspaces, and a confirmation UI. Design it here before implementing.
+
 ---
 
 ## 14. Deployment
@@ -1107,7 +1113,7 @@ Each integration has its own Zod schema in `@stackprep/shared` (`packages/shared
 
 | Schema                  | Variables                                                                    |
 | ----------------------- | ---------------------------------------------------------------------------- |
-| `webEnvSchema` (required) | `NODE_ENV`, `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY` |
+| `webEnvSchema` (required) | `NODE_ENV`, `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY`; `NEXT_PUBLIC_SITE_URL` (public origin for canonical/OG URLs, robots and sitemap; required when `VERCEL_ENV=production`) |
 | `webSentryEnvSchema`    | `NEXT_PUBLIC_SENTRY_DSN`; build-time `SENTRY_ORG`, `SENTRY_PROJECT`, `SENTRY_AUTH_TOKEN` |
 | `webGithubAppEnvSchema` | `NEXT_PUBLIC_GITHUB_APP_SLUG` (install link only)                            |
 | `adminEnvSchema`        | `ADMIN_USER_IDS` (server-only; `/admin` allowlist, fails closed)             |

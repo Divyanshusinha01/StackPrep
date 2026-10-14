@@ -95,6 +95,7 @@ The full design is in [`architecture.md`](architecture.md).
 | Validation | Zod 4 (shared between web and Edge Functions) |
 | Testing | Vitest, Deno test, pgTAP, Playwright |
 | Monitoring | Sentry (`@sentry/nextjs`, `@sentry/deno`) |
+| Analytics | Vercel Web Analytics (`@vercel/analytics`), cookieless; enable it in the Vercel project |
 
 The reasoning behind each choice is in [`techstack.md`](techstack.md).
 
@@ -176,6 +177,7 @@ Every variable is validated with Zod at startup (`packages/shared/src/env.ts`). 
 | --- | --- | --- |
 | `NEXT_PUBLIC_SUPABASE_URL` | Yes | Supabase API URL |
 | `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY` | Yes | Supabase publishable key |
+| `NEXT_PUBLIC_SITE_URL` | Yes, for production | Public origin (no trailing slash) for canonical URLs, social images, `robots.txt` and the sitemap. A Vercel production build fails without it |
 | `NEXT_PUBLIC_GITHUB_APP_SLUG` | Yes, for repository connection | GitHub App slug, used to build the install link |
 | `ADMIN_USER_IDS` | No | Comma-separated Supabase Auth user UUIDs allowed to open `/admin` (server-only) |
 | `NEXT_PUBLIC_SENTRY_DSN` | No | Sentry DSN; empty disables Sentry |
@@ -215,6 +217,24 @@ For production, copy the file without the local-only block and run `supabase sec
 
 - `supabase/functions/.env.e2e.example` holds dummy credentials only; E2E never reaches GitHub or OpenAI.
 - `apps/web/.env.e2e.example` is optional. Without it, Supabase keys are read from `supabase status`.
+
+## Production checklist
+
+Before and after each production deploy:
+
+- **Vercel env vars:** `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY`, `NEXT_PUBLIC_SITE_URL` (the build fails without it), `NEXT_PUBLIC_GITHUB_APP_SLUG`, `ADMIN_USER_IDS`, and optionally `NEXT_PUBLIC_SENTRY_DSN` plus the Sentry build variables.
+- **Vercel Web Analytics:** enabled in the Vercel project (Analytics tab).
+- **Supabase Auth URLs** (Authentication > URL Configuration): Site URL set to the production origin, and `<origin>/auth/callback` in Redirect URLs. `supabase/config.toml` only configures the local stack.
+- **GitHub OAuth App (sign-in):** callback `<SUPABASE_URL>/auth/v1/callback`.
+- **GitHub App:** Callback URL `<origin>/github/callback`; webhook URL `<SUPABASE_URL>/functions/v1/github-webhooks` with `GITHUB_APP_WEBHOOK_SECRET`.
+- **Edge Function secrets** (`supabase secrets set`): `WEB_ORIGIN` equal to the production origin, `ADMIN_USER_IDS`, the Inngest keys, OpenAI and GitHub App credentials, and `SENTRY_DSN`/`SENTRY_ENVIRONMENT`.
+- **Inngest:** app synced to `<SUPABASE_URL>/functions/v1/inngest` with production event and signing keys.
+- **After deploy (smoke test):** `/status` reports the API as healthy; `/robots.txt` and `/sitemap.xml` return 200 with production URLs; the page source of `/` has an absolute, non-localhost `og:image` and canonical; response headers include `Content-Security-Policy-Report-Only` and `Cross-Origin-Opener-Policy`.
+- **CSP:** watch Sentry for CSP reports from the report-only policy. Once a full interview (camera, microphone, WebRTC to OpenAI) produces none, promote the policy from `buildFullCsp` to the enforced `Content-Security-Policy` in `apps/web/next.config.ts`.
+
+### Data deletion requests
+
+Users request full deletion through GitHub issues, as described on `/privacy`. Confirm the requester controls the GitHub account, then delete the user in Supabase (Authentication > Users > Delete user). Every user table cascades from `auth.users`; see [Data deletion](architecture.md#data-deletion). Close the issue once done.
 
 ## Development commands
 

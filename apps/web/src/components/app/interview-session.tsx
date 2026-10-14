@@ -9,6 +9,7 @@ import { InterviewPaused } from "@/components/app/interview-paused";
 import { InterviewRoom } from "@/components/app/interview-room";
 import { useIntegrityMonitor } from "@/components/app/use-integrity-monitor";
 import { useInterviewEvents } from "@/components/app/use-interview-events";
+import { track } from "@/lib/analytics";
 import { useInterviewMedia } from "@/components/app/use-interview-media";
 import { useRealtimeInterview } from "@/components/app/use-realtime-interview";
 import { endInterview, pauseInterview, resumeInterview } from "@/lib/interview-events";
@@ -221,7 +222,10 @@ export function InterviewSession({
             end: pausedEnd,
             workspaceId,
           }}
-          onEnter={() => void resume()}
+          onEnter={() => {
+            track("interview_started", { resumed: true });
+            void resume();
+          }}
         />
       );
     }
@@ -246,6 +250,7 @@ export function InterviewSession({
         planning={planning}
         media={media}
         onEnter={() => {
+          track("interview_started", { resumed: false });
           setEntered(true);
           start();
         }}

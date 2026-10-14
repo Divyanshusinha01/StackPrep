@@ -2,6 +2,7 @@
 
 import { createWorkspaceRequestSchema } from "@stackprep/shared";
 import { redirect } from "next/navigation";
+import { trackServer } from "@/lib/analytics-server";
 import { createWorkspace } from "@/lib/api";
 import { requireUser } from "@/lib/auth";
 
@@ -20,5 +21,6 @@ export async function selectWorkspace(formData: FormData) {
   if (!result.ok) {
     redirect(`/workspaces/new?workspace_error=${result.code}`);
   }
+  await trackServer("workspace_created", {});
   redirect(`/workspaces/${result.data.workspace.id}`);
 }

@@ -1,3 +1,4 @@
+import "./zod-config.ts";
 export * from "./admin.ts";
 export * from "./ai-usage.ts";
 export * from "./auth.ts";
