@@ -13,6 +13,11 @@ for (const width of [360, 390]) {
       await expect(cta).toBeVisible();
       expect((await cta.boundingBox())?.height).toBeGreaterThanOrEqual(40);
       expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(width);
+      const overflow = await header.locator("> div").first().evaluate((row) => {
+        const contentRight = row.getBoundingClientRect().right - parseFloat(getComputedStyle(row).paddingRight);
+        return Math.max(...[...row.children].map((child) => child.getBoundingClientRect().right)) - contentRight;
+      });
+      expect(overflow).toBeLessThanOrEqual(0);
 
       const menuButton = header.getByRole("button", { name: "Open menu" });
       expect((await menuButton.boundingBox())?.height).toBeGreaterThanOrEqual(40);

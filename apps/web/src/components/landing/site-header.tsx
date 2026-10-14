@@ -113,7 +113,7 @@ export function SiteHeader() {
           : "border-transparent bg-transparent",
       )}
     >
-      <div className="mx-auto flex h-16 max-w-6xl items-center gap-3 px-4 sm:px-6 md:gap-6">
+      <div className="mx-auto flex h-16 max-w-6xl items-center gap-2 px-4 sm:gap-3 sm:px-6 md:gap-6">
         <a
           href="#top"
           className="rounded-md outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50"
@@ -170,7 +170,7 @@ export function SiteHeader() {
           location="site-header"
           size="sm"
           className="ml-auto h-10 max-[380px]:px-2.5 md:ml-0 md:h-8"
-          iconClassName="size-3.5"
+          iconClassName="size-3.5 max-[380px]:hidden"
         />
         <MobileMenu active={active} />
       </div>
