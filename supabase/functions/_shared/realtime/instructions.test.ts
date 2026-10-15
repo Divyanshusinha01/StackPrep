@@ -51,6 +51,18 @@ Deno.test("sections appear in the fixed cacheable order", () => {
   }
 });
 
+Deno.test("the rules include delivery guidance and no identifiers", () => {
+  const start = INTERVIEWER_RULES.indexOf("How you sound:");
+  const end = INTERVIEWER_RULES.indexOf("How you run the interview:");
+  assert(start > INTERVIEWER_RULES.indexOf("How you speak:") && end > start, "delivery block sits between speech and interview rules");
+  const delivery = INTERVIEWER_RULES.slice(start, end);
+  for (const phrase of ["measured pace", "file paths", "at most once per turn", "repeat instead of guessing", "do not fill the silence"]) {
+    assertStringIncludes(delivery, phrase);
+  }
+  assert(!/[0-9a-f]{8}-[0-9a-f]{4}-|[0-9a-f]{40}/i.test(INTERVIEWER_RULES), "rules must not contain ids or hashes");
+  assert(!/\balways\b/i.test(delivery), "delivery guidance avoids absolute wording");
+});
+
 Deno.test("the prefix is byte-identical across sessions of the same interview", () => {
   const first = buildRealtimeInstructions(input({ elapsedVoiceSeconds: 0 }));
   const resumed = buildRealtimeInstructions(input({ elapsedVoiceSeconds: 600 }));

@@ -355,9 +355,16 @@ Deno.test("mints a credential with server-side instructions and tools", async ()
   assertEquals(session.model, "gpt-realtime-2.1-mini");
   assertEquals(session.tool_choice, "auto");
   assertEquals(session.truncation, "auto");
-  const audio = session.audio as { input: Record<string, Record<string, unknown>> };
+  const audio = session.audio as { input: Record<string, Record<string, unknown>>; output: Record<string, unknown> };
   assertEquals("transcription" in audio.input, false, "the voice session must not transcribe the candidate");
-  assertEquals(audio.input.turn_detection.interrupt_response, true);
+  assertEquals(audio.input.noise_reduction, { type: "near_field" });
+  assertEquals(audio.input.turn_detection, {
+    type: "server_vad",
+    silence_duration_ms: 700,
+    create_response: true,
+    interrupt_response: true,
+  });
+  assertEquals(audio.output, { voice: "marin", speed: 1.05 });
 
   const transcription = sessionRequest(openaiRequests, "transcription").body.session as Record<string, unknown>;
   assertEquals(transcription, {
