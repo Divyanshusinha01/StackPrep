@@ -287,6 +287,8 @@ export function useRealtimeInterview(interviewId: string, media: InterviewMedia)
     let transcriptionChannel: RTCDataChannel | null = null;
     let transcriptionRetryTimer = 0;
     let transcriptionRetries = 0;
+    /** Removes the gesture listeners that retry playback after the browser blocked autoplay. */
+    let releasePlaybackUnlock: (() => void) | null = null;
     const link = createTranscriptionLink();
     const closeTranscription = () => {
       if (transcriptionChannel) {
@@ -309,6 +311,7 @@ export function useRealtimeInterview(interviewId: string, media: InterviewMedia)
       window.clearTimeout(closingTimer);
       window.clearTimeout(idleTimer);
       window.clearTimeout(transcriptionRetryTimer);
+      releasePlaybackUnlock?.();
       closeTranscription();
       detach.splice(0).forEach((off) => off());
       if (connected) {
@@ -480,9 +483,41 @@ export function useRealtimeInterview(interviewId: string, media: InterviewMedia)
       pc = new RTCPeerConnection();
       audio = new Audio();
       audio.autoplay = true;
+      audio.setAttribute("playsinline", "");
       const audioEl = audio;
+      /** Autoplay can be blocked (e.g. no recent user gesture); playback then starts on the next click or key press. */
+      const playAudio = () => {
+        audioEl.play().catch((err: unknown) => {
+          const name = err instanceof DOMException ? err.name : "";
+          if (tornDown || name === "AbortError") {
+            return;
+          }
+          if (name !== "NotAllowedError") {
+            console.warn("Interviewer audio could not start", err);
+            return;
+          }
+          if (releasePlaybackUnlock) {
+            return;
+          }
+          console.warn("The browser blocked interviewer audio; it starts on the next click or key press");
+          const retry = () => {
+            releasePlaybackUnlock?.();
+            playAudio();
+          };
+          window.addEventListener("pointerdown", retry);
+          window.addEventListener("keydown", retry);
+          releasePlaybackUnlock = () => {
+            window.removeEventListener("pointerdown", retry);
+            window.removeEventListener("keydown", retry);
+            releasePlaybackUnlock = null;
+          };
+        });
+      };
       pc.ontrack = (e) => {
         audioEl.srcObject = e.streams[0] ?? null;
+        if (audioEl.srcObject) {
+          playAudio();
+        }
       };
       for (const track of stream.getAudioTracks()) {
         pc.addTrack(track, stream);

@@ -6,6 +6,10 @@ const DEFAULT_TIMEOUT_MS = 15_000;
 /** Only needs to outlive the browser's SDP exchange; reconnects mint a new one. */
 export const CREDENTIAL_TTL_SECONDS = 60;
 const VOICE = "marin";
+/** Post-processed by OpenAI; quality degrades well above ~1.15. */
+const VOICE_SPEED = 1.05;
+/** Above the 500 ms default so mid-thought pauses do not end the candidate's turn. */
+const SILENCE_DURATION_MS = 700;
 
 export interface RealtimeSessionInput {
   model: string;
@@ -57,9 +61,14 @@ export function buildClientSecretRequest(session: RealtimeSessionInput): Record<
       audio: {
         input: {
           noise_reduction: { type: "near_field" },
-          turn_detection: { type: "server_vad", create_response: true, interrupt_response: true },
+          turn_detection: {
+            type: "server_vad",
+            silence_duration_ms: SILENCE_DURATION_MS,
+            create_response: true,
+            interrupt_response: true,
+          },
         },
-        output: { voice: VOICE },
+        output: { voice: VOICE, speed: VOICE_SPEED },
       },
       tools: session.tools,
       tool_choice: "auto",
