@@ -68,6 +68,10 @@ export const NOT_RETRYABLE: ReadonlySet<RealtimeErrorCode> = new Set([
   "unauthorized",
   "interview_preparing",
   "microphone_denied",
+  "openai_key_required",
+  "openai_key_invalid",
+  "openai_key_permission_denied",
+  "openai_quota_exhausted",
 ]);
 
 export interface VoiceClock {

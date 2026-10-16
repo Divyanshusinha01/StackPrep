@@ -10,6 +10,8 @@ export interface PushSyncWorkspace {
   /** Null when the repository's GitHub connection was removed. */
   installation_id: number | null;
   suspended: boolean;
+  /** Whether the owner has a stored OpenAI key whose status is `valid`. */
+  openai_key_valid: boolean;
 }
 
 export interface PushGenerations {
@@ -43,12 +45,13 @@ export interface PushSyncStore {
   listPending(limit: number): Promise<PendingPushWorkspace[]>;
 }
 
-const WORKSPACE_COLUMNS = "id, status, repository_id, " +
+const WORKSPACE_COLUMNS = "id, user_id, status, repository_id, " +
   "repository:repositories!workspaces_repository_id_user_id_fkey(owner, name, " +
   "connection:github_connections!repositories_github_connection_id_user_id_fkey(installation_id, suspended_at))";
 
 interface WorkspaceRow {
   id: string;
+  user_id: string;
   status: WorkspaceStatus;
   repository_id: string;
   repository: {
@@ -79,6 +82,12 @@ export function createPushSyncStore(serviceClient: SupabaseClient): PushSyncStor
       if (!row || !row.repository) {
         return null;
       }
+      const { data: key, error: keyError } = await serviceClient
+        .from("openai_credentials")
+        .select("status")
+        .eq("user_id", row.user_id)
+        .maybeSingle();
+      check("load push sync key status", keyError);
       return {
         workspace_id: row.id,
         repository_id: row.repository_id,
@@ -87,6 +96,7 @@ export function createPushSyncStore(serviceClient: SupabaseClient): PushSyncStor
         name: row.repository.name,
         installation_id: row.repository.connection?.installation_id ?? null,
         suspended: row.repository.connection?.suspended_at != null,
+        openai_key_valid: key?.status === "valid",
       };
     },
 

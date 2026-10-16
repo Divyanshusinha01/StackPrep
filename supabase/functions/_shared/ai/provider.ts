@@ -84,12 +84,39 @@ export class AIUnavailableError extends AIError {
   }
 }
 
-/** The request itself was rejected (bad schema, auth, quota); retrying will not help. */
+/** The request itself was rejected (bad schema, auth, quota); retrying will not help. Subclasses name key failures. */
 export class AIRequestError extends AIError {
   override name = "AIRequestError";
 
   constructor(readonly status: number) {
     super(`AI provider rejected the request (${status})`);
+  }
+}
+
+/** 401: the API key is invalid or revoked. */
+export class AIAuthError extends AIRequestError {
+  override name = "AIAuthError";
+
+  constructor() {
+    super(401);
+  }
+}
+
+/** 403, or 404 `model_not_found`: the key cannot use the model or endpoint. */
+export class AIPermissionError extends AIRequestError {
+  override name = "AIPermissionError";
+
+  constructor(status: number, readonly reason: "permission_denied" | "model_unavailable") {
+    super(status);
+  }
+}
+
+/** 429 `insufficient_quota`: the account has no remaining credit or hit its spend limit; retrying will not help. */
+export class AIQuotaError extends AIRequestError {
+  override name = "AIQuotaError";
+
+  constructor() {
+    super(429);
   }
 }
 

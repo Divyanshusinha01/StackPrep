@@ -1,6 +1,6 @@
 import { expect, test as setup } from "@playwright/test";
 import { AUTH_FILE, loadE2EEnv } from "./support/env";
-import { ensureUser } from "./support/seed";
+import { ensureUser, seedOpenAIKey } from "./support/seed";
 import { createAdminClient, signInContext } from "./support/supabase";
 
 /**
@@ -9,7 +9,10 @@ import { createAdminClient, signInContext } from "./support/supabase";
  */
 setup("sign in the shared E2E user", async ({ page }) => {
   const env = loadE2EEnv();
-  await ensureUser(createAdminClient(), env.userEmail, env.userPassword);
+  const admin = createAdminClient();
+  const id = await ensureUser(admin, env.userEmail, env.userPassword);
+  // A working key lets the shared user past the first-run key step, like a returning user.
+  await seedOpenAIKey(admin, { id, email: env.userEmail, password: env.userPassword, login: env.userEmail.split("@")[0] });
   await signInContext(page.context(), env.userEmail, env.userPassword);
 
   await page.goto("/workspaces");

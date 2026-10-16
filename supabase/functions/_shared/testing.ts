@@ -1,4 +1,5 @@
 import { assert } from "@std/assert";
+import type { OpenAIClients, UserOpenAIClients } from "./ai/clients.ts";
 import type { AIProvider, AIUsage, EmbeddingProvider, EmbeddingRequest, StructuredRequest } from "./ai/provider.ts";
 
 export interface FakeAIProvider extends AIProvider {
@@ -61,6 +62,53 @@ export function createFakeEmbeddingProvider(
         throw value;
       }
       return { embeddings: value, usage: { input_tokens: 7 * request.input.length } };
+    },
+  };
+}
+
+export const FAKE_CREDENTIAL_ID = "c0c0c0c0-0000-4000-8000-00000000c0de";
+
+function refused(kind: string): Error {
+  return new Error(`${kind} was not expected in this test`);
+}
+
+/** One user's clients; anything not given refuses every call. */
+export function fakeUserOpenAIClients(parts: Partial<UserOpenAIClients> = {}): UserOpenAIClients {
+  return {
+    credentialId: FAKE_CREDENTIAL_ID,
+    ai: createFakeAIProvider(() => refused("an AI call")),
+    embeddings: createFakeEmbeddingProvider(() => refused("an embedding call")),
+    realtime: {
+      createClientSecret: () => Promise.reject(refused("a Realtime mint")),
+      createTranscriptionClientSecret: () => Promise.reject(refused("a transcription mint")),
+    },
+    ...parts,
+  };
+}
+
+export interface FakeOpenAIClients extends OpenAIClients {
+  /** User ids `forUser` was called with, in order. */
+  calls: string[];
+}
+
+/**
+ * Serves `clients` (or the error it returns) for `ownerId` only. Any other user id throws a plain
+ * Error, so a test fails loudly if the wrong account's key would be used.
+ */
+export function createFakeOpenAIClients(
+  ownerId: string,
+  clients: UserOpenAIClients | Error | (() => UserOpenAIClients | Error) = fakeUserOpenAIClients(),
+): FakeOpenAIClients {
+  const calls: string[] = [];
+  return {
+    calls,
+    forUser(userId) {
+      calls.push(userId);
+      if (userId !== ownerId) {
+        return Promise.reject(new Error(`forUser called for ${userId}, expected the owner ${ownerId}`));
+      }
+      const value = typeof clients === "function" ? clients() : clients;
+      return value instanceof Error ? Promise.reject(value) : Promise.resolve(value);
     },
   };
 }

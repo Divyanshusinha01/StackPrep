@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { failureOf, type OpenAIFailure, retryAfterSeconds } from "../ai/openai-errors.ts";
 import type { RealtimeFunctionTool } from "./tools.ts";
 
 const CLIENT_SECRETS_URL = "https://api.openai.com/v1/realtime/client_secrets";
@@ -27,17 +28,30 @@ export interface RealtimeCredential {
   expiresAt: Date;
 }
 
+/** Stable, non-reversible end-user id for OpenAI's `OpenAI-Safety-Identifier` header. */
+export async function safetyIdentifier(userId: string): Promise<string> {
+  const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(`stackprep:${userId}`));
+  return Array.from(new Uint8Array(digest), (b) => b.toString(16).padStart(2, "0")).join("");
+}
+
 export interface RealtimeClient {
   /** `safetyIdentifier` is a stable, non-reversible id for the end user. */
   createClientSecret(session: RealtimeSessionInput, safetyIdentifier: string): Promise<RealtimeCredential>;
   createTranscriptionClientSecret(session: TranscriptionSessionInput, safetyIdentifier: string): Promise<RealtimeCredential>;
 }
 
-/** Carries the upstream status only, never the response body or the API key. */
+/**
+ * Carries the upstream status and its classification only, never the response body or the API key.
+ * `failure` is absent for network errors, timeouts, and malformed success bodies.
+ */
 export class RealtimeUnavailableError extends Error {
   override readonly name = "RealtimeUnavailableError";
 
-  constructor(readonly status?: number) {
+  constructor(
+    readonly status?: number,
+    readonly failure?: OpenAIFailure,
+    readonly retryAfterSeconds?: number,
+  ) {
     super(status === undefined ? "Realtime request failed" : `Realtime request failed with status ${status}`);
   }
 }
@@ -118,8 +132,8 @@ export function createRealtimeClient(
       throw new RealtimeUnavailableError();
     }
     if (!res.ok) {
-      await res.body?.cancel();
-      throw new RealtimeUnavailableError(res.status);
+      const failure = await failureOf(res);
+      throw new RealtimeUnavailableError(res.status, failure, failure === "rate_limited" ? retryAfterSeconds(res) : undefined);
     }
     const parsed = clientSecretResponseSchema.safeParse(await res.json().catch(() => null));
     if (!parsed.success) {

@@ -2,13 +2,18 @@
 
 import { useRef } from "react";
 import { m, useScroll } from "framer-motion";
-import { ArrowDown, FileCode2, FolderGit2, GitBranch, Mic } from "lucide-react";
+import { ArrowDown, FileCode2, FolderGit2, GitBranch, KeyRound, Mic } from "lucide-react";
 
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { useParallax } from "@/components/motion/parallax";
 import { useReducedMotion } from "@/components/motion/use-reduced-motion";
 import { AuthCta } from "./auth-cta";
+import { ONBOARDING_STEPS } from "./constants";
+import { Panel } from "./mockups/panel";
+import { PILL_CLASS, Pill } from "./pill";
+import { WaveBars } from "./wave-bars";
+
 /** Progress [0, 1] maps to [0, -distance]: planes start at rest while the hero is fully in view. */
 const FROM_REST: [number, number] = [-1, 1];
 
@@ -63,10 +68,7 @@ export function Hero() {
       <div className="relative mx-auto max-w-6xl px-6">
         <div className="lg:grid lg:grid-cols-[minmax(0,1fr)_minmax(0,1.05fr)] lg:items-center lg:gap-12">
           <div className="text-center lg:text-left">
-            <m.p
-              className="mx-auto inline-flex items-center gap-2 rounded-full border border-border-strong/80 bg-panel/80 px-3 py-1 font-mono text-xs text-muted-foreground lg:mx-0"
-              {...fadeUp(reduced, 0)}
-            >
+            <m.p className={cn(PILL_CLASS, "mx-auto gap-2 lg:mx-0")} {...fadeUp(reduced, 0)}>
               <span className="size-1.5 rounded-full bg-brand" aria-hidden />
               30-minute voice session · grounded in your files
             </m.p>
@@ -88,22 +90,48 @@ export function Hero() {
               Connect GitHub, pick one repository, and talk through your architecture and
               trade-offs with an interviewer that cites your files—not a generic question bank.
             </m.p>
+            <m.p
+              className="mx-auto mt-3 max-w-xl text-sm leading-relaxed text-pretty text-muted-foreground lg:mx-0"
+              {...slideUp(reduced, 0.26)}
+            >
+              <KeyRound className="mr-1.5 inline size-3.5 -translate-y-px text-brand" aria-hidden />
+              Bring your own OpenAI API key. AI usage is billed by OpenAI directly to your account.
+            </m.p>
             <m.div
               className="mt-9 flex flex-col items-center justify-center gap-3 sm:flex-row lg:justify-start"
               {...fadeUp(reduced, 0.3)}
             >
-              <AuthCta location="hero" size="lg" className="h-11 px-5 text-[15px]" />
+              <AuthCta location="hero" size="lg" className="h-11 px-5" />
               <Button
                 asChild
                 variant="ghost"
                 size="lg"
-                className="h-11 px-5 text-[15px] text-muted-foreground"
+                className="h-11 px-5 text-muted-foreground"
               >
                 <a href="#how-it-works">
                   See how it works
                   <ArrowDown aria-hidden />
                 </a>
               </Button>
+            </m.div>
+            <m.div {...fadeUp(reduced, 0.36)}>
+              <p className="mt-4 text-xs text-muted-foreground">
+                You&apos;ll add your OpenAI key right after signing in.
+              </p>
+              <ol
+                aria-label="How it starts"
+                className="mt-4 flex flex-wrap items-center justify-center gap-x-2 gap-y-2 font-mono text-[11px] text-muted-foreground lg:justify-start"
+              >
+                {ONBOARDING_STEPS.map((step, i) => (
+                  <li key={step} className="inline-flex items-center gap-2">
+                    {i > 0 ? <span aria-hidden className="h-px w-3 bg-border-strong" /> : null}
+                    <Pill className="px-2.5 text-[11px]">
+                      <span className="text-brand">{i + 1}</span>
+                      {step}
+                    </Pill>
+                  </li>
+                ))}
+              </ol>
             </m.div>
           </div>
 
@@ -112,21 +140,26 @@ export function Hero() {
             className="mt-12 lg:mt-0"
             {...fadeUp(reduced, 0.2)}
           >
-            <div className="surface-inset relative overflow-hidden rounded-xl border border-border-strong/70 bg-panel/90 shadow-2xl">
-              <div className="flex items-center justify-between border-b px-4 py-3 text-xs">
-                <span className="flex items-center gap-2 font-mono text-foreground/90">
+            <Panel
+              glow
+              label="Sample interview on the acme/payments-service repository"
+              bodyClassName="p-0"
+              title={
+                <span className="flex items-center gap-2">
                   <FolderGit2 className="size-3.5 text-brand" />
                   <span className="text-muted-foreground">acme /</span> payments-service
                 </span>
-                <span className="flex items-center gap-2 font-mono text-[11px] text-muted-foreground">
+              }
+              meta={
+                <>
                   <GitBranch className="size-3" />
                   main · 8f3a19c
-                </span>
-              </div>
-
+                </>
+              }
+            >
               <div className="divide-y">
                 <div className="bg-background/40 px-4 py-3">
-                  <p className="font-mono text-[10px] tracking-wider text-muted-foreground uppercase">
+                  <p className="font-mono text-[11px] tracking-wider text-muted-foreground uppercase">
                     Indexed scope
                   </p>
                   <ul className="mt-2 space-y-1.5 font-mono text-xs">
@@ -160,7 +193,7 @@ export function Hero() {
                       <span className="size-1.5 rounded-full bg-brand motion-safe:animate-pulse" />
                       Examining src/auth/session.ts
                     </span>
-                    <span className="font-mono text-[11px] text-muted-foreground tabular-nums">12:40 / 30:00</span>
+                    <span className="font-mono text-[11px] text-muted-foreground tabular-nums">12:40 elapsed</span>
                   </div>
 
                   <div className="mt-3.5 border-l-2 border-brand/60 pl-3.5">
@@ -175,19 +208,11 @@ export function Hero() {
                       <Mic className="size-3.5 text-brand" />
                       Voice channel active
                     </span>
-                    <span className="flex h-4 items-center gap-[3px]">
-                      {HERO_WAVE.map((h, i) => (
-                        <span
-                          key={i}
-                          className="w-[2.5px] rounded-full bg-brand/75 motion-safe:animate-[wave_1.2s_ease-in-out_infinite]"
-                          style={{ height: `${h}%`, animationDelay: `${i * 80}ms` }}
-                        />
-                      ))}
-                    </span>
+                    <WaveBars heights={HERO_WAVE} className="h-4" barClassName="w-[2.5px] bg-brand/75" stepMs={80} />
                   </div>
                 </div>
               </div>
-            </div>
+            </Panel>
           </m.div>
         </div>
       </div>

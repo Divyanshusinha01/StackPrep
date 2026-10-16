@@ -6,9 +6,11 @@ import { EmptyState } from "@/components/app/empty-state";
 import { deleteInterviewErrorMessage, InterviewHistoryRow } from "@/components/app/interview-history-row";
 import { Notice } from "@/components/app/notice";
 import { PageHeader } from "@/components/app/page-header";
+import { SurfaceList } from "@/components/app/surface";
 import { Button } from "@/components/ui/button";
 import { getInterviewHistory } from "@/lib/api";
 import { requireUser } from "@/lib/auth";
+import { currentKeySetupCode } from "@/lib/openai-key-gate";
 
 export const metadata: Metadata = {
   title: "Interviews",
@@ -19,10 +21,10 @@ export default async function InterviewsPage({ searchParams }: PageProps<"/inter
   const query = await searchParams;
   const deleteError = deleteInterviewErrorMessage(query.delete_error);
   const user = await requireUser("/interviews");
-  const groups = await getInterviewHistory();
+  const [groups, keyCode] = await Promise.all([getInterviewHistory(), currentKeySetupCode()]);
 
   return (
-    <AppShell user={user}>
+    <AppShell user={user} keyAlert={keyCode !== null}>
       <PageHeader title="Interviews" description="Every interview across your repositories, newest first." />
       {deleteError ? <Notice tone="error">{deleteError}</Notice> : null}
       {groups.length === 0 ? (
@@ -54,14 +56,11 @@ export default async function InterviewsPage({ searchParams }: PageProps<"/inter
                   {group.interviews.length} {group.interviews.length === 1 ? "session" : "sessions"}
                 </span>
               </div>
-              <ul
-                className="surface-inset mt-3 divide-y overflow-hidden rounded-xl border bg-panel/60"
-                data-testid="interview-history"
-              >
+              <SurfaceList className="mt-3" data-testid="interview-history">
                 {group.interviews.map((interview) => (
                   <InterviewHistoryRow key={interview.id} interview={interview} returnTo="/interviews" />
                 ))}
-              </ul>
+              </SurfaceList>
             </section>
           ))}
         </div>

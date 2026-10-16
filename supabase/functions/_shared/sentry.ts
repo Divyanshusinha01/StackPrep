@@ -1,5 +1,5 @@
 import * as Sentry from "@sentry/deno";
-import { type ApiErrorCode, edgeSentryEnvSchema } from "@stackprep/shared";
+import { type ApiErrorCode, edgeSentryEnvSchema, redactOpenAIKeys } from "@stackprep/shared";
 import { readEnv } from "./env.ts";
 import type { LogContext } from "./github-errors.ts";
 import { json } from "./http.ts";
@@ -24,7 +24,10 @@ function stripQuery(url: string): string {
   return end === -1 ? url : url.slice(0, end);
 }
 
-/** Keeps only the request method and query-less URL: never headers, cookies, query strings, or bodies. */
+/**
+ * Keeps only the request method and query-less URL: never headers, cookies, query strings, or bodies.
+ * Anything shaped like an OpenAI secret key is redacted from every remaining string.
+ */
 export function scrubEvent<T extends Sentry.Event>(event: T): T {
   if (event.request) {
     const { method, url } = event.request;
@@ -33,7 +36,7 @@ export function scrubEvent<T extends Sentry.Event>(event: T): T {
       ...(url !== undefined ? { url: stripQuery(url) } : {}),
     };
   }
-  return event;
+  return redactOpenAIKeys(event);
 }
 
 /** No-op when SENTRY_DSN is unset, so Sentry stays optional. */

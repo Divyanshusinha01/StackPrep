@@ -8,13 +8,21 @@ import { AppShell } from "@/components/app/app-shell";
 import { EmptyState } from "@/components/app/empty-state";
 import { deleteInterviewErrorMessage, InterviewHistoryRow } from "@/components/app/interview-history-row";
 import { Notice } from "@/components/app/notice";
+import { OpenAIKeyNotice } from "@/components/app/openai-key-notice";
 import { PageHeader } from "@/components/app/page-header";
 import { SubmitButton } from "@/components/app/submit-button";
+import { SurfaceList } from "@/components/app/surface";
 import { WorkspaceStatusBadge } from "@/components/app/workspace-status";
 import { CTA_GLOW } from "@/components/landing/constants";
 import { Button } from "@/components/ui/button";
-import { getInterviewHistory, getWorkspace } from "@/lib/api";
+import { getInterviewHistory, getOpenAIKeyStatus, getWorkspace } from "@/lib/api";
 import { requireUser } from "@/lib/auth";
+import {
+  isOpenAIKeySetupCode,
+  keyStatusSetupCode,
+  OPENAI_TRANSIENT_MESSAGES,
+  type OpenAIKeySetupCode,
+} from "@/lib/openai-key-setup";
 import { cn } from "@/lib/utils";
 import { retryAnalysis, startInterview } from "./actions";
 
@@ -27,14 +35,29 @@ const RETRY_ERROR_MESSAGES: Partial<Record<ApiErrorCode, string>> = {
   analysis_not_retryable: "This analysis is already running or has finished.",
   connection_not_found: "Reconnect GitHub to retry the analysis.",
   installation_suspended: "The GitHub App installation is suspended. Re-enable it on GitHub to retry.",
+  ...OPENAI_TRANSIENT_MESSAGES,
 };
 
 const INTERVIEW_ERROR_MESSAGES: Partial<Record<ApiErrorCode, string>> = {
   workspace_not_ready: "The repository analysis has to finish before you can start an interview.",
   interview_limit_reached: "You have started 5 interviews in the last 24 hours.",
+  ...OPENAI_TRANSIENT_MESSAGES,
 };
 
 const dateTimeFormat = new Intl.DateTimeFormat("en", { dateStyle: "medium", timeStyle: "short", timeZone: "UTC" });
+
+/** A key code from either action redirect wins over the live status: it is what just failed. */
+function keySetupCode(
+  query: Record<string, string | string[] | undefined>,
+  status: Awaited<ReturnType<typeof getOpenAIKeyStatus>>,
+): OpenAIKeySetupCode | null {
+  for (const value of [query.interview_error, query.retry_error]) {
+    if (isOpenAIKeySetupCode(value)) {
+      return value;
+    }
+  }
+  return status.ok ? keyStatusSetupCode(status.data) : null;
+}
 
 function errorCode(value: string | string[] | undefined): ApiErrorCode | "unknown" | null {
   if (typeof value !== "string") {
@@ -46,7 +69,7 @@ function errorCode(value: string | string[] | undefined): ApiErrorCode | "unknow
 
 function retryErrorMessage(value: string | string[] | undefined): string | null {
   const code = errorCode(value);
-  if (code === null) {
+  if (code === null || isOpenAIKeySetupCode(code)) {
     return null;
   }
   return (code !== "unknown" && RETRY_ERROR_MESSAGES[code]) || "Could not retry the analysis. Try again.";
@@ -57,7 +80,7 @@ function interviewErrorMessage(
   nextAvailableAt: string | string[] | undefined,
 ): string | null {
   const code = errorCode(value);
-  if (code === null) {
+  if (code === null || isOpenAIKeySetupCode(code)) {
     return null;
   }
   const message = (code !== "unknown" && INTERVIEW_ERROR_MESSAGES[code]) || "Could not start the interview. Try again.";
@@ -95,11 +118,22 @@ export default async function WorkspacePage({ params, searchParams }: PageProps<
   }
 
   const { workspace, repository } = result.data;
+  const [history, keyStatus] = await Promise.all([getInterviewHistory(workspace.id), getOpenAIKeyStatus()]);
+  const interviews = history[0]?.interviews ?? [];
+  const keyCode = keySetupCode(query, keyStatus);
+  const keyAlert = keyStatus.ok && keyStatusSetupCode(keyStatus.data) !== null;
   const ready = workspace.status === "ready";
-  const interviews = (await getInterviewHistory(workspace.id))[0]?.interviews ?? [];
+  const canStart = ready && keyCode === null;
+  const startBlocker = keyCode
+    ? "Add a working OpenAI key to start."
+    : workspace.status === "failed"
+      ? "Retry the analysis to start."
+      : !ready
+        ? "Available when the analysis finishes."
+        : null;
 
   return (
-    <AppShell user={user}>
+    <AppShell user={user} keyAlert={keyAlert}>
       <PageHeader
         back={{ href: "/workspaces", label: "Workspaces" }}
         title={repository.full_name}
@@ -125,6 +159,7 @@ export default async function WorkspacePage({ params, searchParams }: PageProps<
           >
             <ExternalLink className="size-3.5" aria-hidden />
             View on GitHub
+            <span className="sr-only">(opens in a new tab)</span>
           </a>
         </div>
       </PageHeader>
@@ -136,7 +171,7 @@ export default async function WorkspacePage({ params, searchParams }: PageProps<
           ready
             ? "border-brand/30 bg-linear-to-br from-panel-raised/90 via-panel/80 to-panel/60"
             : workspace.status === "failed"
-              ? "border-red-500/25 bg-panel/70"
+              ? "border-danger/25 bg-panel/70"
               : "border-border-strong/60 bg-panel/60",
         )}
       >
@@ -169,18 +204,25 @@ export default async function WorkspacePage({ params, searchParams }: PageProps<
               You can start up to 5 interviews in any 24 hours, across all workspaces.
             </p>
           </div>
-          <form action={startInterview} className="shrink-0">
+          <form action={startInterview} className="flex shrink-0 flex-col gap-2 sm:items-end">
             <input type="hidden" name="workspace_id" value={workspace.id} />
             <SubmitButton
-              disabled={!ready}
+              disabled={!canStart}
               pendingLabel="Starting…"
               size="lg"
-              className={cn("w-full sm:w-auto", ready && CTA_GLOW)}
+              aria-describedby={startBlocker ? "start-interview-blocker" : undefined}
+              className={cn("w-full sm:w-auto", canStart && CTA_GLOW)}
             >
               Start Interview
             </SubmitButton>
+            {startBlocker ? (
+              <p id="start-interview-blocker" className="text-xs text-muted-foreground sm:text-right">
+                {startBlocker}
+              </p>
+            ) : null}
           </form>
         </div>
+        {keyCode ? <OpenAIKeyNotice code={keyCode} returnTo={`/workspaces/${workspace.id}`} /> : null}
         {interviewError ? <Notice tone="error">{interviewError}</Notice> : null}
         {retryError ? <Notice tone="error">{retryError}</Notice> : null}
         <AnalysisProgress
@@ -212,14 +254,11 @@ export default async function WorkspacePage({ params, searchParams }: PageProps<
             description="Each interview and its report will be listed here."
           />
         ) : (
-          <ul
-            className="surface-inset mt-4 divide-y overflow-hidden rounded-xl border bg-panel/60"
-            data-testid="interview-history"
-          >
+          <SurfaceList className="mt-4" data-testid="interview-history">
             {interviews.map((interview) => (
               <InterviewHistoryRow key={interview.id} interview={interview} returnTo={`/workspaces/${workspace.id}`} />
             ))}
-          </ul>
+          </SurfaceList>
         )}
       </section>
     </AppShell>

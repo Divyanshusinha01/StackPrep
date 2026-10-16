@@ -10,8 +10,8 @@
  * and the cosine match is exact, not the pgvector HNSW index.
  */
 import type { SearchRepositoryOutput } from "@stackprep/shared";
-import type { EmbeddingProvider } from "../../../../supabase/functions/_shared/ai/provider.ts";
-import { createFakeAIProvider } from "../../../../supabase/functions/_shared/testing.ts";
+import type { AIProvider, EmbeddingProvider } from "../../../../supabase/functions/_shared/ai/provider.ts";
+import { createFakeAIProvider, fakeUserOpenAIClients } from "../../../../supabase/functions/_shared/testing.ts";
 import { buildEmbeddingInput } from "../../../../supabase/functions/inngest/memory-embedding.ts";
 import type { FakeToolStore } from "../../../../supabase/functions/interviews/testing.ts";
 import { createTreeCache } from "../../../../supabase/functions/interviews/tools/get-file.ts";
@@ -44,24 +44,36 @@ export interface MemoryVector {
   vector: number[];
 }
 
-/** A ToolContext over an indexed corpus. Model calls are refused: retrieval makes none. */
+/** The query embedder and vector-fill settings for a hybrid search. */
+export interface CorpusEmbeddings {
+  provider: EmbeddingProvider;
+  model: string;
+  budgetMs?: number;
+}
+
+/** A ToolContext over an indexed corpus. Model calls are refused unless `ai` is given: retrieval makes none. */
 export function corpusToolContext(
   corpus: IndexedCorpus,
   store: FakeToolStore,
-  options: { embeddings?: ToolContext["embeddings"]; log?: ToolContext["log"] } = {},
+  options: { ai?: AIProvider; embeddings?: CorpusEmbeddings; log?: ToolContext["log"] } = {},
 ): ToolContext {
+  const embeddings = options.embeddings;
+  const clients = fakeUserOpenAIClients({
+    ...(options.ai ? { ai: options.ai } : { ai: createFakeAIProvider(() => new Error("retrieval makes no model calls")) }),
+    ...(embeddings ? { embeddings: embeddings.provider } : {}),
+  });
   return {
     interview: { id: "eval-interview", workspace_id: CORPUS_WORKSPACE_ID, repository_commit_sha: corpus.commitSha },
     userId: "eval-user",
     store,
     github: createCorpusGithub(corpus.files),
     trees: createTreeCache(),
-    ai: createFakeAIProvider(() => new Error("retrieval makes no model calls")),
+    openai: () => Promise.resolve(clients),
     evaluationModel: "none",
     elapsedSeconds: 0,
     requestReport: () => Promise.resolve(),
     log: options.log ?? (() => {}),
-    ...(options.embeddings ? { embeddings: options.embeddings } : {}),
+    ...(embeddings ? { embeddings: { model: embeddings.model, budgetMs: embeddings.budgetMs } } : {}),
   };
 }
 
@@ -156,7 +168,7 @@ export interface SearchOptions {
 /** Runs one query through the real `searchRepository` in the given configuration, on a fresh store. */
 export async function runSearch(corpus: IndexedCorpus, config: RetrievalConfig, query: string, options: SearchOptions): Promise<SearchRun> {
   const store = createCorpusToolStore(corpus, config === "keyword" ? { symbols: [] } : {});
-  let embeddings: ToolContext["embeddings"];
+  let embeddings: CorpusEmbeddings | undefined;
   if (config === "hybrid") {
     const { vectors, queryEmbeddings } = options;
     if (!vectors || !queryEmbeddings) {

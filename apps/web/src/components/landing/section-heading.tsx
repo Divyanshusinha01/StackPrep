@@ -1,4 +1,5 @@
 import { cn } from "@/lib/utils";
+import { Eyebrow } from "@/components/ui/eyebrow";
 
 type SectionHeadingProps = {
   id: string;
@@ -19,7 +20,7 @@ export function SectionHeading({
 }: SectionHeadingProps) {
   return (
     <div className={cn(align === "center" && "mx-auto text-center", "max-w-2xl", className)}>
-      <p className="font-mono text-xs uppercase tracking-[0.18em] text-brand">{eyebrow}</p>
+      <Eyebrow>{eyebrow}</Eyebrow>
       <h2
         id={id}
         className="mt-4 font-display text-3xl font-semibold tracking-[-0.03em] text-balance text-foreground sm:text-4xl lg:leading-[1.12]"

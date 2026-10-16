@@ -20,7 +20,9 @@ import { AIUnavailableError, type StructuredRequest } from "../_shared/ai/provid
 import { aiUsageCost } from "../_shared/ai-usage.ts";
 import type { Authenticate } from "../_shared/auth.ts";
 import { CREDENTIAL_TTL_SECONDS, createRealtimeClient } from "../_shared/realtime/openai-realtime.ts";
-import { createFakeAIProvider } from "../_shared/testing.ts";
+import { createOpenAIClients } from "../_shared/ai/clients.ts";
+import { OpenAIKeyMissingError, OpenAIKeyUnusableError } from "../_shared/ai/credentials.ts";
+import { createFakeAIProvider, createFakeEmbeddingProvider, FAKE_CREDENTIAL_ID } from "../_shared/testing.ts";
 import { INTEGRITY_WARNING_MESSAGES } from "./integrity.ts";
 import {
   createFakeGithub,
@@ -91,6 +93,8 @@ interface Setup {
   resumeResult?: ResumeResult;
   endResult?: EndResult;
   deleteResult?: DeleteResult;
+  /** Thrown by the credential resolver instead of returning the caller's key. */
+  keyError?: Error;
 }
 
 function at(offsetSeconds: number): string {
@@ -115,6 +119,7 @@ function setup({
   resumeResult = "resumed",
   endResult = { status: "completed", disconnectedSequence: null },
   deleteResult = "deleted",
+  keyError,
 }: Setup = {}) {
   const clock = { now: NOW };
   const rlsClient = { rls: true } as unknown as SupabaseClient;
@@ -187,23 +192,56 @@ function setup({
     openaiRequests.push({ url: req.url, headers: req.headers, body: await req.clone().json() });
     return openai(req);
   };
+  const resolved: string[] = [];
+  const marks: { userId: string; credentialId: string; status: string; code: string | null }[] = [];
+  const openaiClients = createOpenAIClients(
+    {
+      resolve: (uid) => {
+        resolved.push(uid);
+        assertEquals(uid, userId, "the key must be resolved for the authenticated user");
+        return keyError ? Promise.reject(keyError) : Promise.resolve({ apiKey: API_KEY, credentialId: FAKE_CREDENTIAL_ID });
+      },
+      markStatus: (uid, credentialId, status, code) => {
+        marks.push({ userId: uid, credentialId, status, code });
+        return Promise.resolve(true);
+      },
+    },
+    {
+      ai: () => ai,
+      embeddings: () => createFakeEmbeddingProvider(),
+      realtime: (apiKey) => createRealtimeClient({ apiKey, fetch: fakeFetch }),
+    },
+  );
   const handler = createInterviewsHandler({
     webOrigin,
     authenticate,
     reader,
     store,
-    realtime: createRealtimeClient({ apiKey: API_KEY, fetch: fakeFetch }),
+    openai: openaiClients,
     model: "gpt-realtime-2.1-mini",
     transcriptionModel: "gpt-live-transcribe",
     github: createFakeGithub({}),
-    ai,
     evaluationModel: "gpt-eval",
     visionModel: "gpt-vision",
     jobs,
     reportJobs,
     now: () => clock.now,
   });
-  return { handler, openaiRequests, turns, voiceEvents, pauseCalls, jobs, reportJobs, integrity, ai, clock, usage: toolStore.usage };
+  return {
+    handler,
+    openaiRequests,
+    turns,
+    voiceEvents,
+    pauseCalls,
+    jobs,
+    reportJobs,
+    integrity,
+    ai,
+    clock,
+    usage: toolStore.usage,
+    resolved,
+    marks,
+  };
 }
 
 type OpenAIRequest = ReturnType<typeof setup>["openaiRequests"][number];
@@ -454,17 +492,56 @@ Deno.test("a reconnect after a saved answer tells the interviewer it was receive
   assert(instructions.includes("may have been cut off"));
 });
 
-const OPENAI_FAILURES: (() => Response | Promise<Response>)[] = [
-  () => new Response(`{"error":{"message":"bad key ${API_KEY}"}}`, { status: 401 }),
+const KEY_REJECTED = () => new Response(`{"error":{"message":"bad key ${API_KEY}","code":"invalid_api_key"}}`, { status: 401 });
+
+/** Failures that say nothing about the key. */
+const TRANSIENT_FAILURES: (() => Response | Promise<Response>)[] = [
   () => new Response("upstream", { status: 503 }),
   () => Response.json({ unexpected: true }),
   () => Promise.reject(new TypeError("network down")),
 ];
 
+const OPENAI_FAILURES = [KEY_REJECTED, ...TRANSIENT_FAILURES];
+
 const mintedSecret = () => Response.json({ value: "ek_test_123", expires_at: NOW.getTime() / 1000 + 60, session: {} });
 
+Deno.test("a missing or unusable key is reported before any mint, with the setup code", async () => {
+  const cases: [Error, number, string][] = [
+    [new OpenAIKeyMissingError(), 409, "openai_key_required"],
+    [new OpenAIKeyUnusableError("invalid"), 409, "openai_key_invalid"],
+    [new OpenAIKeyUnusableError("permission_denied"), 409, "openai_key_permission_denied"],
+    [new OpenAIKeyUnusableError("quota_exhausted"), 409, "openai_quota_exhausted"],
+  ];
+  for (const [keyError, status, code] of cases) {
+    const { handler, openaiRequests, resolved } = setup({ keyError });
+    const { result: res } = await captureLogs(() => handler(post()));
+    await expectError(res, status, code);
+    assertEquals(openaiRequests, []);
+    assertEquals(resolved, [userId]);
+  }
+});
+
+Deno.test("a voice mint rejected for the key marks it invalid and returns openai_key_invalid without leaking it", async () => {
+  const { handler, marks } = setup({ openai: KEY_REJECTED });
+  const { result: res, lines } = await captureLogs(() => handler(post()));
+  const text = await res.clone().text();
+  assert(!text.includes(API_KEY) && !text.includes("bad key"));
+  await expectError(res, 409, "openai_key_invalid");
+  assert(marks.some((m) => m.status === "invalid" && m.credentialId === FAKE_CREDENTIAL_ID && m.userId === userId));
+  assert(!lines.join("\n").includes(API_KEY));
+});
+
+Deno.test("an OpenAI rate limit on the voice mint returns openai_rate_limited with Retry-After", async () => {
+  const limited = () => new Response(`{"error":{"code":"rate_limit_exceeded"}}`, { status: 429, headers: { "retry-after": "12" } });
+  const { handler, marks } = setup({ openai: limited });
+  const res = await handler(post());
+  assertEquals(res.headers.get("retry-after"), "12");
+  await expectError(res, 429, "openai_rate_limited");
+  assertEquals(marks, []);
+});
+
 Deno.test("OpenAI failures map to realtime_unavailable without leaking details", async () => {
-  for (const fail of OPENAI_FAILURES) {
+  for (const fail of TRANSIENT_FAILURES) {
     // The voice mint decides the outcome whether or not the transcription mint succeeds.
     for (const openai of [fail, bySessionType(fail, mintedSecret)]) {
       const { handler } = setup({ openai });
@@ -869,6 +946,23 @@ Deno.test("report retry: a retry that cannot be queued reports the current state
   assert(!lines.join("\n").includes("inngest down"), "logs carry codes, not raw errors");
 });
 
+Deno.test("report retry: without a usable key nothing is queued and the setup code is returned", async () => {
+  const cases: [Error, string][] = [
+    [new OpenAIKeyMissingError(), "openai_key_required"],
+    [new OpenAIKeyUnusableError("quota_exhausted"), "openai_quota_exhausted"],
+  ];
+  for (const [keyError, code] of cases) {
+    const { handler, jobs, reportJobs } = setup({
+      interview: completed,
+      reportJob: { status: "failed", error_code: "openai_key_unavailable" },
+      keyError,
+    });
+    const { result } = await captureLogs(() => handler(reportRequest("report/retry", "POST")));
+    await expectError(result, 409, code);
+    assertEquals([jobs.sent.length, reportJobs.requests.length], [0, 0]);
+  }
+});
+
 Deno.test("events: pause keeps its reason and resume is acknowledged like other voice events", async () => {
   const { handler, voiceEvents } = setup({ voiceResult: { status: "created", sequence: 11 } });
   const occurredAt = NOW.toISOString();
@@ -967,6 +1061,7 @@ Deno.test("frames: a clear frame is analyzed at low detail with the vision model
     source: "provider",
     tokens: { input_tokens: 100, cached_input_tokens: 0, output_tokens: 50 },
     idempotencyKey: `vision:${[...integrity.checks.keys()][0]}`,
+    openaiCredentialId: FAKE_CREDENTIAL_ID,
   }]);
   assertAlmostEquals(aiUsageCost({ ...usage[0], model: "gpt-5.6-luna" })!, (100 * 0.2 + 50 * 1.2) / 1_000_000, 1e-15);
 });
@@ -1035,6 +1130,22 @@ Deno.test("frames: a vision failure fails open but still counts toward the rate 
   assert(lines.some((line) => JSON.parse(line).event === "integrity_check_failed"));
   clock.now = new Date(clock.now.getTime() + 5_000);
   await expectError(await handler(postFrame({ image: FRAME })), 429, "rate_limited");
+});
+
+Deno.test("frames: a missing key records no signal, so the candidate is never penalized", async () => {
+  const { handler, integrity, ai } = setup({ interview: inProgress, keyError: new OpenAIKeyMissingError() });
+  const { result, lines } = await captureAllLogs(() => handler(postFrame({ image: FRAME })));
+  assertEquals(await frameBody(result), { status: "ok" });
+  assertEquals([...integrity.checks.values()], [{ status: "clear", warningNumber: null }]);
+  assertEquals(ai.calls.length, 0);
+  const failed = lines.map((line) => JSON.parse(line)).find((e) => e.event === "integrity_check_failed");
+  assertEquals(failed?.reason, "openai_key_unavailable");
+});
+
+Deno.test("frames: usage is attributed to the credential that paid for it", async () => {
+  const { handler, usage } = setup({ interview: inProgress });
+  await captureAllLogs(() => handler(postFrame({ image: FRAME })));
+  assertEquals(usage.map((u) => [u.task, u.openaiCredentialId]), [["vision", FAKE_CREDENTIAL_ID]]);
 });
 
 Deno.test("frames: an interview that ends while the frame is analyzed records nothing", async () => {

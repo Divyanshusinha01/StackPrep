@@ -5,6 +5,7 @@ import { Bot, Mic, PhoneOff, Search, Video } from "lucide-react";
 
 import { cn } from "@/lib/utils";
 import { useReducedMotion } from "@/components/motion/use-reduced-motion";
+import { WaveBars } from "../wave-bars";
 import { FileChip, Panel } from "./panel";
 
 type Message = { role: "ai" | "user"; text: string; evidence?: string };
@@ -138,15 +139,7 @@ export function InterviewPanel({
       </div>
 
       <div className="flex items-center gap-2 border-t px-3 py-2.5 sm:px-4">
-        <span className="flex h-5 items-center gap-[3px]" aria-hidden>
-          {WAVE.map((h, i) => (
-            <span
-              key={i}
-              className="w-[3px] origin-center rounded-full bg-brand/70 motion-safe:animate-[wave_1.2s_ease-in-out_infinite]"
-              style={{ height: `${h}%`, animationDelay: `${i * 90}ms` }}
-            />
-          ))}
-        </span>
+        <WaveBars heights={WAVE} className="h-5" />
         <div className="mx-auto flex items-center gap-2" aria-hidden>
           <ControlButton>
             <Mic className="size-3.5" />

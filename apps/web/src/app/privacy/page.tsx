@@ -13,7 +13,7 @@ export const metadata: Metadata = {
 const PROCESSORS = [
   ["Supabase", "Database, sign-in and backend functions. Stores your account, workspaces, transcripts and reports."],
   ["Vercel", "Hosts the web app and provides cookieless, aggregate page analytics."],
-  ["OpenAI", "Runs the voice interviewer, transcribes your speech, analyzes camera frames and repository context, and writes reports."],
+  ["OpenAI", "Runs the voice interviewer, transcribes your speech, analyzes camera frames and repository context, and writes reports. All of these requests use your own OpenAI API key, so they fall under your OpenAI account and its terms."],
   ["Inngest", "Runs background jobs (repository analysis, interview planning, reports)."],
   ["GitHub", "Sign-in and read-only repository access through the StackPrep GitHub App."],
   ["Sentry", "Error monitoring, with personal data scrubbed before sending."],
@@ -21,7 +21,7 @@ const PROCESSORS = [
 
 export default function PrivacyPage() {
   return (
-    <LegalLayout title="Privacy Policy" updated="October 14, 2026">
+    <LegalLayout title="Privacy Policy" updated="October 16, 2026">
       <p>
         StackPrep is an open-source project that interviews you, by voice, about a GitHub repository you
         choose. This page explains what data that involves. It is written to match how the product actually
@@ -43,6 +43,14 @@ export default function PrivacyPage() {
         excerpts and AI-written summaries. Secrets such as API keys and passwords are scrubbed before
         analysis. We do not keep a persistent clone of your repository.
       </p>
+      <h3>Your OpenAI API key</h3>
+      <p>
+        StackPrep uses the OpenAI API key you add in Settings for every AI feature, and OpenAI bills your
+        account directly. Before storing the key we check it with one small request to OpenAI. It is then
+        stored <strong>encrypted</strong>, used only on our servers to make requests for your workspaces and
+        interviews, and never shown again or sent to your browser: you only see its last four characters and
+        whether it works. Replacing or deleting the key in Settings removes the previous one.
+      </p>
       <h3>Interviews</h3>
       <ul>
         <li>
@@ -60,8 +68,8 @@ export default function PrivacyPage() {
           never the images. Signals are not proof of misconduct.
         </li>
         <li>
-          <strong>Usage records.</strong> We log AI usage (token and audio counts, cost) per interview to
-          enforce the usage limit and control costs.
+          <strong>Usage records.</strong> We log AI usage (token and audio counts, estimated cost, and which
+          of your keys was used) per interview to enforce the usage limit and to show spend on your key.
         </li>
       </ul>
       <h3>Analytics and errors</h3>
@@ -125,7 +133,8 @@ export default function PrivacyPage() {
       <h2>Security</h2>
       <p>
         Data is protected with row-level security so only you can read your workspaces and interviews.
-        Server credentials never reach your browser; the voice session uses a short-lived credential.
+        Server credentials and your OpenAI API key never reach your browser; the voice session uses a
+        short-lived credential.
         Please report vulnerabilities privately through our <a href={SECURITY_URL}>security policy</a>.
       </p>
 

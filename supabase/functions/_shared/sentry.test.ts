@@ -1,5 +1,5 @@
 import type { Event } from "@sentry/deno";
-import { assertEquals, assertStrictEquals } from "@std/assert";
+import { assert, assertEquals, assertStrictEquals } from "@std/assert";
 import { apiErrorSchema } from "@stackprep/shared";
 import { reportUnexpected, scrubEvent, type SentryReporter, withSentry } from "./sentry.ts";
 
@@ -141,4 +141,19 @@ Deno.test("scrubEvent keeps only the method and a query-less URL", () => {
     },
   });
   assertEquals(event.request, { method: "POST", url: "https://x.supabase.co/functions/v1/github" });
+});
+
+Deno.test("scrubEvent redacts OpenAI secret keys everywhere but keeps hints", () => {
+  const key = "sk-proj-abcdefghijklmnopqrstuvwxyz0123";
+  const event = scrubEvent<Event>({
+    message: `failed with ${key}`,
+    exception: { values: [{ type: "Error", value: `Bearer ${key}` }] },
+    breadcrumbs: [{ message: "saved sk-...0123", data: { nested: [key] } }],
+    request: { method: "PUT", url: "https://x.supabase.co/functions/v1/me/openai-key", data: { api_key: key } },
+  });
+  const json = JSON.stringify(event);
+  assert(!json.includes(key));
+  assertEquals(event.message, "failed with sk-[redacted]");
+  assertEquals(event.breadcrumbs?.[0].message, "saved sk-...0123");
+  assertEquals(event.request, { method: "PUT", url: "https://x.supabase.co/functions/v1/me/openai-key" });
 });

@@ -52,7 +52,8 @@ export function GitHubWorkspace() {
         <ScrollReveal>
           <SectionHeading id="workspace-heading" eyebrow="01 — Connect" title="One repository. One workspace." align="center">
             Pick a repository and StackPrep opens a permanent workspace for it. Every interview
-            and report you do on that codebase lives there, ready when you come back.
+            and report you do on that codebase lives there, ready when you come back. Your OpenAI
+            key is set up first, right after you sign in.
           </SectionHeading>
         </ScrollReveal>
 

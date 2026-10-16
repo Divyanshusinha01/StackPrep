@@ -67,4 +67,24 @@ describe("scrubBreadcrumb", () => {
       method: "GET",
     });
   });
+
+  it("redacts OpenAI secret keys from breadcrumb messages and data", () => {
+    const key = "sk-proj-abcdefghijklmnopqrstuvwxyz0123";
+    const crumb = scrubBreadcrumb({ message: `console ${key}`, data: { arguments: [key] } });
+    expect(JSON.stringify(crumb)).not.toContain(key);
+    expect(crumb.message).toBe("console sk-[redacted]");
+  });
+});
+
+describe("scrubEvent key redaction", () => {
+  it("redacts OpenAI secret keys from exception values but keeps hints", () => {
+    const key = "sk-proj-abcdefghijklmnopqrstuvwxyz0123";
+    const event = scrubEvent({
+      type: undefined,
+      message: "hint sk-...0123",
+      exception: { values: [{ type: "Error", value: `bad ${key}` }] },
+    } as ErrorEvent);
+    expect(JSON.stringify(event)).not.toContain(key);
+    expect(event.message).toBe("hint sk-...0123");
+  });
 });

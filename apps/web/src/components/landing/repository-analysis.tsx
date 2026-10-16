@@ -108,7 +108,8 @@ export function RepositoryAnalysis() {
           <ScrollReveal>
             <SectionHeading id="analysis-heading" eyebrow="02 — Analyze" title="Your interview starts with your code.">
               StackPrep maps the structure of your repository: its modules, frameworks, and how
-              the pieces connect. Every question is grounded in something you actually built.
+              the pieces connect, using your OpenAI key. Every question is grounded in something
+              you actually built.
             </SectionHeading>
           </ScrollReveal>
 

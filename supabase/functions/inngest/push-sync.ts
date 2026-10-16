@@ -34,7 +34,7 @@ export interface PushSyncStepRunner extends StepRunner {
 }
 
 export type PushSyncResult =
-  | { outcome: "skipped"; reason: "not_ready" | "installation_unavailable" }
+  | { outcome: "skipped"; reason: "not_ready" | "installation_unavailable" | "key_unavailable" }
   | { outcome: "up_to_date" }
   | { outcome: "queued"; job_id: string; commit_sha: string }
   | { outcome: "enqueue_failed"; job_id: string }
@@ -77,6 +77,10 @@ export async function runPushSync(
       }
       if (ws.installation_id === null || ws.suspended || ws.installation_id !== event.installation_id) {
         return { skip: "installation_unavailable" as const };
+      }
+      // Following the head queues deep analysis and embeddings, which need the owner's key.
+      if (!ws.openai_key_valid) {
+        return { skip: "key_unavailable" as const };
       }
       return { skip: null, workspace: { ...ws, installation_id: ws.installation_id } };
     }));

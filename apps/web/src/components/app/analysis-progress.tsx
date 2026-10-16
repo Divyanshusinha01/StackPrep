@@ -84,7 +84,7 @@ export function AnalysisProgress({
               aria-current={current ? "step" : undefined}
               className={cn(
                 "relative flex items-center gap-3 rounded-lg border px-3.5 py-2.5 transition-colors",
-                done && "border-emerald-500/30 bg-emerald-500/[0.06] text-foreground",
+                done && "border-success/30 bg-success/[0.06] text-foreground",
                 current && "border-brand/40 bg-brand-muted/50 text-foreground",
                 !done && !current && "border-border/70 bg-background/40 text-muted-foreground",
               )}
@@ -93,7 +93,7 @@ export function AnalysisProgress({
                 aria-hidden
                 className={cn(
                   "grid size-6 shrink-0 place-items-center rounded-full border font-mono text-[11px] font-semibold tabular-nums transition-colors",
-                  done && "border-emerald-500/40 bg-emerald-500/15 text-emerald-300",
+                  done && "border-success/40 bg-success/15 text-success",
                   current && "border-brand/50 bg-brand-muted text-brand",
                   !done && !current && "border-border text-muted-foreground",
                 )}

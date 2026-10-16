@@ -4,6 +4,7 @@ import { cn } from "@/lib/utils";
 import { Wordmark } from "./wordmark";
 
 const LINK = "focus-ring rounded-sm text-muted-foreground transition-colors hover:text-foreground";
+const NEW_TAB = <span className="sr-only"> (opens in a new tab)</span>;
 
 /** Legal and contact links shared by the landing page, legal pages and sign-in. */
 export function FooterLinks({ className }: { className?: string }) {
@@ -23,16 +24,19 @@ export function FooterLinks({ className }: { className?: string }) {
         <li>
           <a href={REPO_URL} className={LINK} rel="noopener noreferrer" target="_blank">
             GitHub
+            {NEW_TAB}
           </a>
         </li>
         <li>
           <a href={SECURITY_URL} className={LINK} rel="noopener noreferrer" target="_blank">
             Security
+            {NEW_TAB}
           </a>
         </li>
         <li>
           <a href={CONTACT_URL} className={LINK} rel="noopener noreferrer" target="_blank">
             Contact
+            {NEW_TAB}
           </a>
         </li>
       </ul>

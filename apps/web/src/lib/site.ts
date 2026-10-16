@@ -12,7 +12,7 @@ export const SITE_NAME = "StackPrep";
 export const TITLE = "StackPrep · Turn your codebase into an interview";
 
 export const DESCRIPTION =
-  "Connect GitHub, pick a repository, and get interviewed by an AI that has read your code. Explain your architecture, defend your decisions, and get a detailed report.";
+  "Connect GitHub, pick a repository, and get interviewed by an AI that has read your code. Explain your architecture, defend your decisions, and get a detailed report. Runs on your own OpenAI API key.";
 
 /** Next replaces, not merges, a parent's `openGraph`, so pages that set one spread this in. */
 export const OPEN_GRAPH = {

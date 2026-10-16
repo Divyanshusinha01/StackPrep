@@ -1,11 +1,14 @@
 import { describe, expect, it } from "vitest";
+import { Buffer } from "node:buffer";
 import {
+  byokEnvSchema,
   edgeEnvSchema,
   edgeSentryEnvSchema,
   edgeSupabaseEnvSchema,
   githubAppEnvSchema,
   inngestEnvSchema,
-  openAIEnvSchema,
+  openAIModelEnvSchema,
+  parseEncryptionKeyring,
   parseEnv,
   webEnvSchema,
   webGithubAppEnvSchema,
@@ -101,9 +104,8 @@ describe("integration env schemas", () => {
     );
   });
 
-  it("parses and rejects OpenAI env", () => {
-    expect(parseEnv("openai", openAIEnvSchema, { OPENAI_API_KEY: "sk-test" })).toEqual({
-      OPENAI_API_KEY: "sk-test",
+  it("parses and rejects OpenAI model env, which carries no API key", () => {
+    expect(parseEnv("openai", openAIModelEnvSchema, {})).toEqual({
       OPENAI_PLANNING_MODEL: "gpt-6.1-sol",
       OPENAI_EVALUATION_MODEL: "gpt-6-luna",
       OPENAI_REALTIME_MODEL: "gpt-realtime-2.1-mini",
@@ -116,44 +118,74 @@ describe("integration env schemas", () => {
       OPENAI_REPORT_REASONING_EFFORT: "low",
       OPENAI_VISION_REASONING_EFFORT: "low",
     });
+    expect(parseEnv("openai", openAIModelEnvSchema, { OPENAI_VISION_MODEL: "gpt-vision" }).OPENAI_VISION_MODEL).toBe(
+      "gpt-vision",
+    );
+    expect(() => parseEnv("openai", openAIModelEnvSchema, { OPENAI_REALTIME_MODEL: "" })).toThrowError(
+      /OPENAI_REALTIME_MODEL/,
+    );
     expect(
-      parseEnv("openai", openAIEnvSchema, { OPENAI_API_KEY: "sk-test", OPENAI_VISION_MODEL: "gpt-vision" })
-        .OPENAI_VISION_MODEL,
-    ).toBe("gpt-vision");
-    expect(() =>
-      parseEnv("openai", openAIEnvSchema, { OPENAI_API_KEY: "sk-test", OPENAI_REALTIME_MODEL: "" })
-    ).toThrowError(/OPENAI_REALTIME_MODEL/);
-    expect(
-      parseEnv("openai", openAIEnvSchema, { OPENAI_API_KEY: "sk-test", OPENAI_PLANNING_MODEL: "gpt-custom" })
-        .OPENAI_PLANNING_MODEL,
+      parseEnv("openai", openAIModelEnvSchema, { OPENAI_PLANNING_MODEL: "gpt-custom" }).OPENAI_PLANNING_MODEL,
     ).toBe("gpt-custom");
-    expect(() => parseEnv("openai", openAIEnvSchema, { OPENAI_API_KEY: "" })).toThrowError(/OPENAI_API_KEY/);
-    expect(() =>
-      parseEnv("openai", openAIEnvSchema, { OPENAI_API_KEY: "sk-test", OPENAI_PLANNING_MODEL: " " })
-    ).toThrowError(/OPENAI_PLANNING_MODEL/);
+    expect(() => parseEnv("openai", openAIModelEnvSchema, { OPENAI_PLANNING_MODEL: " " })).toThrowError(
+      /OPENAI_PLANNING_MODEL/,
+    );
+    expect("OPENAI_API_KEY" in openAIModelEnvSchema.shape).toBe(false);
   });
 
   it("accepts per-task reasoning effort and rejects unknown values", () => {
     expect(
-      parseEnv("openai", openAIEnvSchema, { OPENAI_API_KEY: "sk-test", OPENAI_EVALUATION_REASONING_EFFORT: "default" })
+      parseEnv("openai", openAIModelEnvSchema, { OPENAI_EVALUATION_REASONING_EFFORT: "default" })
         .OPENAI_EVALUATION_REASONING_EFFORT,
     ).toBe("default");
-    expect(() =>
-      parseEnv("openai", openAIEnvSchema, { OPENAI_API_KEY: "sk-test", OPENAI_PLANNING_REASONING_EFFORT: "max" })
-    ).toThrowError(/OPENAI_PLANNING_REASONING_EFFORT/);
+    expect(() => parseEnv("openai", openAIModelEnvSchema, { OPENAI_PLANNING_REASONING_EFFORT: "max" })).toThrowError(
+      /OPENAI_PLANNING_REASONING_EFFORT/,
+    );
   });
 
   it("defaults the embedding model and rejects an empty one", () => {
-    expect(parseEnv("openai", openAIEnvSchema, { OPENAI_API_KEY: "sk-test" }).OPENAI_EMBEDDING_MODEL).toBe(
-      "text-embedding-3-small",
-    );
+    expect(parseEnv("openai", openAIModelEnvSchema, {}).OPENAI_EMBEDDING_MODEL).toBe("text-embedding-3-small");
     expect(
-      parseEnv("openai", openAIEnvSchema, { OPENAI_API_KEY: "sk-test", OPENAI_EMBEDDING_MODEL: "embed-custom" })
-        .OPENAI_EMBEDDING_MODEL,
+      parseEnv("openai", openAIModelEnvSchema, { OPENAI_EMBEDDING_MODEL: "embed-custom" }).OPENAI_EMBEDDING_MODEL,
     ).toBe("embed-custom");
+    expect(() => parseEnv("openai", openAIModelEnvSchema, { OPENAI_EMBEDDING_MODEL: "" })).toThrowError(
+      /OPENAI_EMBEDDING_MODEL/,
+    );
+  });
+
+  const key1 = Buffer.alloc(32, 1).toString("base64");
+  const key2 = Buffer.alloc(32, 2).toString("base64");
+
+  it("parses a versioned BYOK keyring", () => {
+    expect(
+      parseEnv("byok", byokEnvSchema, {
+        OPENAI_KEY_ENCRYPTION_KEYS: `1:${key1},2:${key2}`,
+        OPENAI_KEY_ENCRYPTION_ACTIVE_VERSION: "2",
+      }),
+    ).toEqual({ OPENAI_KEY_ENCRYPTION_KEYS: `1:${key1},2:${key2}`, OPENAI_KEY_ENCRYPTION_ACTIVE_VERSION: 2 });
+    expect(parseEncryptionKeyring(`1:${key1}, 2:${key2}`)).toEqual(new Map([[1, key1], [2, key2]]));
+  });
+
+  it.each([
+    ["missing", undefined],
+    ["unversioned", key1],
+    ["short", `1:${Buffer.alloc(16, 1).toString("base64")}`],
+    ["not base64", "1:not-base64!"],
+    ["duplicate versions", `1:${key1},1:${key2}`],
+    ["version zero", `0:${key1}`],
+  ])("rejects a %s BYOK keyring", (_label, keys) => {
     expect(() =>
-      parseEnv("openai", openAIEnvSchema, { OPENAI_API_KEY: "sk-test", OPENAI_EMBEDDING_MODEL: "" })
-    ).toThrowError(/OPENAI_EMBEDDING_MODEL/);
+      parseEnv("byok", byokEnvSchema, { OPENAI_KEY_ENCRYPTION_KEYS: keys, OPENAI_KEY_ENCRYPTION_ACTIVE_VERSION: "1" })
+    ).toThrowError(/OPENAI_KEY_ENCRYPTION_KEYS/);
+  });
+
+  it("rejects a non-numeric active version", () => {
+    expect(() =>
+      parseEnv("byok", byokEnvSchema, {
+        OPENAI_KEY_ENCRYPTION_KEYS: `1:${key1}`,
+        OPENAI_KEY_ENCRYPTION_ACTIVE_VERSION: "latest",
+      })
+    ).toThrowError(/OPENAI_KEY_ENCRYPTION_ACTIVE_VERSION/);
   });
 
   it("parses and rejects GitHub App env", () => {

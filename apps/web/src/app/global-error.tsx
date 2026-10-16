@@ -34,6 +34,7 @@ export default function GlobalError({ error }: { error: Error & { digest?: strin
       <head>
         <title>Something went wrong · StackPrep</title>
         <meta name="robots" content="noindex" />
+        <style>{`.ge-action:focus-visible{outline:2px solid ${BRAND};outline-offset:3px}`}</style>
       </head>
       <body
         style={{
@@ -88,6 +89,7 @@ export default function GlobalError({ error }: { error: Error & { digest?: strin
           <div style={{ marginTop: 24, display: "flex", gap: 12, justifyContent: "center", flexWrap: "wrap" }}>
             <button
               type="button"
+              className="ge-action"
               onClick={() => window.location.reload()}
               style={{ ...button, border: "none", background: BRAND, color: BACKGROUND }}
             >
@@ -95,7 +97,7 @@ export default function GlobalError({ error }: { error: Error & { digest?: strin
             </button>
             {/* A plain link forces a full document load, which a broken client router needs. */}
             {/* eslint-disable-next-line @next/next/no-html-link-for-pages */}
-            <a href="/" style={{ ...button, border: `1px solid ${BORDER}`, color: FOREGROUND }}>
+            <a href="/" className="ge-action" style={{ ...button, border: `1px solid ${BORDER}`, color: FOREGROUND }}>
               Home
             </a>
           </div>

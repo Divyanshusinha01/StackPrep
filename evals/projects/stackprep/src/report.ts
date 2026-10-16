@@ -5,6 +5,7 @@
  */
 import type { InterviewPlanningOutput, InterviewReport } from "@stackprep/shared";
 import type { AIProvider, StructuredRequest } from "../../../../supabase/functions/_shared/ai/provider.ts";
+import { createFakeOpenAIClients, fakeUserOpenAIClients } from "../../../../supabase/functions/_shared/testing.ts";
 import { runInterviewReport } from "../../../../supabase/functions/inngest/report.ts";
 import type { ReportContext, ReportEvidence, ReportStore } from "../../../../supabase/functions/inngest/report-store.ts";
 import { type EvaluationRecord, topLevelArea, type TranscriptMessage } from "../../../../supabase/functions/interviews/tools/types.ts";
@@ -101,7 +102,13 @@ export async function runReport(
     failReport: done,
   };
   await runInterviewReport(
-    { ai: capturing, model: task.model, reasoningEffort: task.reasoningEffort, store, log: () => {} },
+    {
+      openai: createFakeOpenAIClients(EVAL_USER_ID, fakeUserOpenAIClients({ ai: capturing })),
+      model: task.model,
+      reasoningEffort: task.reasoningEffort,
+      store,
+      log: () => {},
+    },
     { data: ids, runId: "eval", step: stepRunner },
   );
   if (ungrounded === null || grounded === null) throw new Error("the report run saved no report");

@@ -28,6 +28,7 @@ export type Database = {
           input_tokens: number
           interview_id: string | null
           model: string
+          openai_credential_id: string | null
           output_tokens: number
           source: Database["public"]["Enums"]["ai_usage_source"]
           task: Database["public"]["Enums"]["ai_task"]
@@ -48,6 +49,7 @@ export type Database = {
           input_tokens?: number
           interview_id?: string | null
           model: string
+          openai_credential_id?: string | null
           output_tokens?: number
           source: Database["public"]["Enums"]["ai_usage_source"]
           task: Database["public"]["Enums"]["ai_task"]
@@ -68,6 +70,7 @@ export type Database = {
           input_tokens?: number
           interview_id?: string | null
           model?: string
+          openai_credential_id?: string | null
           output_tokens?: number
           source?: Database["public"]["Enums"]["ai_usage_source"]
           task?: Database["public"]["Enums"]["ai_task"]
@@ -819,6 +822,85 @@ export type Database = {
           },
         ]
       }
+      openai_credentials: {
+        Row: {
+          ciphertext: string
+          created_at: string
+          credential_id: string
+          enc_key_version: number
+          iv: string
+          key_hint: string
+          last_error_at: string | null
+          last_error_code: string | null
+          status: Database["public"]["Enums"]["openai_credential_status"]
+          updated_at: string
+          user_id: string
+          validated_at: string | null
+        }
+        Insert: {
+          ciphertext: string
+          created_at?: string
+          credential_id: string
+          enc_key_version: number
+          iv: string
+          key_hint: string
+          last_error_at?: string | null
+          last_error_code?: string | null
+          status?: Database["public"]["Enums"]["openai_credential_status"]
+          updated_at?: string
+          user_id: string
+          validated_at?: string | null
+        }
+        Update: {
+          ciphertext?: string
+          created_at?: string
+          credential_id?: string
+          enc_key_version?: number
+          iv?: string
+          key_hint?: string
+          last_error_at?: string | null
+          last_error_code?: string | null
+          status?: Database["public"]["Enums"]["openai_credential_status"]
+          updated_at?: string
+          user_id?: string
+          validated_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "openai_credentials_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: true
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      openai_key_attempts: {
+        Row: {
+          attempted_at: string
+          id: number
+          user_id: string
+        }
+        Insert: {
+          attempted_at?: string
+          id?: never
+          user_id: string
+        }
+        Update: {
+          attempted_at?: string
+          id?: never
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "openai_key_attempts_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       profiles: {
         Row: {
           avatar_url: string | null
@@ -1184,6 +1266,7 @@ export type Database = {
         Args: { p_interview_id: string; p_user_id: string }
         Returns: string
       }
+      delete_openai_credential: { Args: { p_user_id: string }; Returns: boolean }
       end_interview_by_user: {
         Args: { p_interview_id: string; p_user_id: string }
         Returns: {
@@ -1349,6 +1432,15 @@ export type Database = {
         Args: { p_files: Json; p_parser_version: string; p_workspace_id: string }
         Returns: Json
       }
+      mark_openai_credential_status: {
+        Args: {
+          p_credential_id: string
+          p_error_code: string
+          p_status: Database["public"]["Enums"]["openai_credential_status"]
+          p_user_id: string
+        }
+        Returns: boolean
+      }
       mark_push_received: {
         Args: { p_github_repo_id: number; p_installation_id: number }
         Returns: string[]
@@ -1367,6 +1459,15 @@ export type Database = {
           metadata: Json
           similarity: number
           structured: Json
+        }[]
+      }
+      openai_credential_status: {
+        Args: { p_user_id: string }
+        Returns: {
+          key_hint: string
+          last_error_code: string
+          status: Database["public"]["Enums"]["openai_credential_status"]
+          validated_at: string
         }[]
       }
       prune_code_index: {
@@ -1483,6 +1584,10 @@ export type Database = {
           status: string
         }[]
       }
+      reserve_openai_key_attempt: {
+        Args: { p_max: number; p_user_id: string; p_window: string }
+        Returns: boolean
+      }
       resume_interview: {
         Args: { p_interview_id: string; p_user_id: string }
         Returns: {
@@ -1559,6 +1664,17 @@ export type Database = {
         }
         Returns: number
       }
+      upsert_openai_credential: {
+        Args: {
+          p_ciphertext: string
+          p_credential_id: string
+          p_enc_key_version: number
+          p_iv: string
+          p_key_hint: string
+          p_user_id: string
+        }
+        Returns: undefined
+      }
     }
     Enums: {
       ai_task:
@@ -1598,6 +1714,11 @@ export type Database = {
         | "interview_planning"
         | "code_indexing"
       message_role: "ai" | "user" | "system"
+      openai_credential_status:
+        | "valid"
+        | "invalid"
+        | "quota_exhausted"
+        | "permission_denied"
       termination_reason:
         | "integrity_violation"
         | "completed_early"
@@ -1774,6 +1895,12 @@ export const Constants = {
         "code_indexing",
       ],
       message_role: ["ai", "user", "system"],
+      openai_credential_status: [
+        "valid",
+        "invalid",
+        "quota_exhausted",
+        "permission_denied",
+      ],
       termination_reason: [
         "integrity_violation",
         "completed_early",

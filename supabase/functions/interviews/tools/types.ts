@@ -5,7 +5,8 @@ import type {
   ToolError,
   ToolErrorCode,
 } from "@stackprep/shared";
-import type { AIProvider, EmbeddingProvider, ReasoningEffort } from "../../_shared/ai/provider.ts";
+import type { UserOpenAIClients } from "../../_shared/ai/clients.ts";
+import type { ReasoningEffort } from "../../_shared/ai/provider.ts";
 import type { AiUsageRecorder } from "../../_shared/ai-usage.ts";
 import type { FileSymbol, SymbolSearchHit } from "../../_shared/code-index/reader.ts";
 import type { GithubApp } from "../../_shared/github-app.ts";
@@ -90,7 +91,7 @@ export interface TranscriptMessage {
   content: string;
 }
 
-export type VectorFallbackReason = "deadline" | "embed_error" | "rpc_error" | "no_results" | "disabled";
+export type VectorFallbackReason = "deadline" | "embed_error" | "rpc_error" | "no_results" | "disabled" | "key_unavailable";
 
 /** The search_repository vector fill: total time, and why it fell back to keyword hits, if it did. */
 export interface VectorFillTiming {
@@ -150,7 +151,6 @@ export interface ToolStore extends AiUsageRecorder, ToolMetricsRecorder {
 }
 
 export interface SearchEmbeddings {
-  provider: EmbeddingProvider;
   model: string;
   /** Total budget for the vector fill (query embedding plus match); defaults to VECTOR_SEARCH_BUDGET_MS. */
   budgetMs?: number;
@@ -162,7 +162,8 @@ export interface ToolContext {
   store: ToolStore;
   github: GithubApp;
   trees: TreeCache;
-  ai: AIProvider;
+  /** The owner's OpenAI clients, resolved once per request; rejects with an OpenAIKeyError when unusable. */
+  openai: () => Promise<UserOpenAIClients>;
   evaluationModel: string;
   evaluationReasoningEffort?: ReasoningEffort;
   /** Enables the vector fill in search_repository; keyword search alone without it. */

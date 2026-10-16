@@ -7,6 +7,7 @@ export function EmptyState({
   description,
   action,
   headingLevel = 2,
+  size = "section",
   className,
 }: {
   icon: React.ReactNode;
@@ -15,6 +16,8 @@ export function EmptyState({
   action?: React.ReactNode;
   /** Use 1 when it is the whole page, 3 when it sits inside a section that already has an h2. */
   headingLevel?: 1 | 2 | 3;
+  /** `page` gives the heading page-title weight for full-page states such as 404. */
+  size?: "section" | "page";
   className?: string;
 }) {
   const Heading = (["h1", "h2", "h3"] as const)[headingLevel - 1];
@@ -31,7 +34,14 @@ export function EmptyState({
       >
         {icon}
       </div>
-      <Heading className="mt-4 font-display text-base font-semibold tracking-tight">{title}</Heading>
+      <Heading
+        className={cn(
+          "mt-4 font-display font-semibold tracking-tight",
+          size === "page" ? "text-2xl text-balance" : "text-base",
+        )}
+      >
+        {title}
+      </Heading>
       {description ? <p className="mt-1.5 max-w-md text-sm leading-relaxed text-muted-foreground">{description}</p> : null}
       {action ? <div className="mt-6 flex flex-wrap justify-center gap-3">{action}</div> : null}
     </div>

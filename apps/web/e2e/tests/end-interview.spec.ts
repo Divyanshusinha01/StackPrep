@@ -29,7 +29,8 @@ test("ending from the live room saves the last answer and generates a report", a
   await recordEvaluation(admin, user, interviewId);
 
   await page.getByRole("button", { name: "End interview" }).click();
-  const confirm = page.getByRole("status").filter({ hasText: "Your report will be generated from the answers so far." });
+  const confirm = page.getByRole("alertdialog");
+  await expect(confirm).toContainText("Your report will be generated from the answers so far.");
   await confirm.getByRole("button", { name: "End interview" }).click();
 
   await expect(page.getByText("The interview is complete.")).toBeVisible();
@@ -63,12 +64,12 @@ test("ending from the paused screen before any answer was evaluated gives no rep
   await realtime.waitForOpen(page);
 
   await page.getByRole("button", { name: "Stop interview" }).click();
-  await page.getByRole("status").getByRole("button", { name: "Stop interview" }).click();
+  await page.getByRole("alertdialog").getByRole("button", { name: "Stop interview" }).click();
   const paused = page.getByRole("region", { name: "Interview paused" });
   await expect(paused).toBeVisible();
 
   await paused.getByRole("button", { name: "End interview" }).click();
-  await paused.getByRole("status").getByRole("button", { name: "End interview" }).click();
+  await page.getByRole("alertdialog").getByRole("button", { name: "End interview" }).click();
 
   await expect(paused.getByText("there is no report for it")).toBeVisible();
   await expect(paused.getByRole("button", { name: "Resume interview" })).toHaveCount(0);

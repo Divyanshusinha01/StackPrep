@@ -7,20 +7,20 @@ const ICONS = { error: CircleAlert, warning: TriangleAlert, info: Info, success:
 
 const TONES: Record<NoticeTone, { box: string; icon: string }> = {
   error: {
-    box: "border-border border-l-2 border-l-red-400 bg-red-500/[0.07] text-red-100",
-    icon: "text-red-300",
+    box: "border-border border-l-2 border-l-danger bg-danger/[0.07] text-danger-foreground",
+    icon: "text-danger",
   },
   warning: {
-    box: "border-border border-l-2 border-l-amber-400 bg-amber-500/[0.07] text-amber-100",
-    icon: "text-amber-300",
+    box: "border-border border-l-2 border-l-warning bg-warning/[0.07] text-warning-foreground",
+    icon: "text-warning",
   },
   info: {
     box: "border-border border-l-2 border-l-brand/70 bg-panel/80 text-muted-foreground",
     icon: "text-brand",
   },
   success: {
-    box: "border-border border-l-2 border-l-emerald-400 bg-emerald-500/[0.07] text-emerald-100",
-    icon: "text-emerald-300",
+    box: "border-border border-l-2 border-l-success bg-success/[0.07] text-success-foreground",
+    icon: "text-success",
   },
 };
 

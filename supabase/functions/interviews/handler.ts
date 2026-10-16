@@ -29,7 +29,9 @@ import {
   VOICE_LIMIT_SECONDS,
 } from "@stackprep/shared";
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { AIError, type AIProvider, type AIUsage, type ReasoningEffort } from "../_shared/ai/provider.ts";
+import { openAIKeyApiErrorCode, type OpenAIClients, type UserOpenAIClients } from "../_shared/ai/clients.ts";
+import { OpenAIKeyError } from "../_shared/ai/credentials.ts";
+import { AIError, type AIUsage, type ReasoningEffort } from "../_shared/ai/provider.ts";
 import { providerTokens } from "../_shared/ai-usage.ts";
 import type { Authenticate } from "../_shared/auth.ts";
 import { NON_SUMMARY_KINDS } from "../_shared/code-index/memory.ts";
@@ -38,7 +40,7 @@ import { apiError, logGithubError } from "../_shared/github-errors.ts";
 import { createCors, json } from "../_shared/http.ts";
 import type { JobQueue } from "../_shared/jobs.ts";
 import { buildRealtimeInstructions, type InstructionsMemory } from "../_shared/realtime/instructions.ts";
-import type { RealtimeClient } from "../_shared/realtime/openai-realtime.ts";
+import { type RealtimeClient, RealtimeUnavailableError, safetyIdentifier } from "../_shared/realtime/openai-realtime.ts";
 import { buildRealtimeTools } from "../_shared/realtime/tools.ts";
 import {
   createInterviewStream,
@@ -189,11 +191,11 @@ export interface InterviewsHandlerOptions {
   streamReader?: (client: SupabaseClient) => InterviewStreamReader;
   streamTiming?: StreamTiming;
   store: InterviewStore;
-  realtime: RealtimeClient;
+  /** Per-user clients; always resolved for the authenticated user, never an id from the request. */
+  openai: OpenAIClients;
   model: string;
   transcriptionModel: string;
   github: GithubApp;
-  ai: AIProvider;
   evaluationModel: string;
   evaluationReasoningEffort?: ReasoningEffort;
   /** Vector fill for search_repository; omitted means keyword search only. */
@@ -416,11 +418,6 @@ export function voiceSecondsUsed(events: VoiceEvent[], now: Date): number {
   return Math.floor(total / 1000);
 }
 
-async function safetyIdentifier(userId: string): Promise<string> {
-  const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(`stackprep:${userId}`));
-  return Array.from(new Uint8Array(digest), (b) => b.toString(16).padStart(2, "0")).join("");
-}
-
 /** Key-order-independent JSON, to compare stored (jsonb) and replayed tool arguments. */
 function stableJson(value: unknown): string {
   if (Array.isArray(value)) {
@@ -455,11 +452,10 @@ export function createInterviewsHandler({
   streamReader = createInterviewStreamReader,
   streamTiming = DEFAULT_STREAM_TIMING,
   store,
-  realtime,
+  openai,
   model,
   transcriptionModel,
   github,
-  ai,
   evaluationModel,
   evaluationReasoningEffort,
   embeddings,
@@ -475,6 +471,22 @@ export function createInterviewsHandler({
 
   function toolResponse(body: ToolCallResponse): Response {
     return json(toolCallResponseSchema.parse(body), { status: 200, headers: cors.headers });
+  }
+
+  /** Resolves the user's clients at most once per request, and only if something needs them. */
+  function lazyClients(userId: string): () => Promise<UserOpenAIClients> {
+    let clients: Promise<UserOpenAIClients> | undefined;
+    return () => (clients ??= openai.forUser(userId));
+  }
+
+  /** The API response for a missing/unusable key or an OpenAI key failure; null for anything else. */
+  function keyErrorResponse(err: unknown, interviewId: string): Response | null {
+    const code = openAIKeyApiErrorCode(err);
+    if (!code) {
+      return null;
+    }
+    console.log(JSON.stringify({ fn: FN, event: "openai_key_unavailable", code, interview_id: interviewId }));
+    return apiError(code, cors);
   }
 
   function queueReport(interview: ReportInterview, userId: string) {
@@ -578,6 +590,15 @@ export function createInterviewsHandler({
     if ((await reportStatus(userReader, interview.id)).status !== "failed") {
       return apiError("report_not_retryable", cors);
     }
+    try {
+      await openai.forUser(userId);
+    } catch (err) {
+      const keyError = keyErrorResponse(err, interview.id);
+      if (keyError) {
+        return keyError;
+      }
+      throw err;
+    }
     const outcome = await queueReport(interview, userId);
     const body = interviewReportResponseSchema.parse(
       outcome === "queued" ? { status: "pending" } : await reportStatus(userReader, interview.id),
@@ -653,7 +674,7 @@ export function createInterviewsHandler({
       store,
       github,
       trees,
-      ai,
+      openai: lazyClients(ctx.user.id),
       evaluationModel,
       evaluationReasoningEffort,
       embeddings,
@@ -757,6 +778,7 @@ export function createInterviewsHandler({
       console.log(JSON.stringify({ fn: FN, interview_id: interview.id, ...entry }));
     let kind: Awaited<ReturnType<typeof analyzeFrame>> = null;
     try {
+      const { ai, credentialId } = await openai.forUser(ctx.user.id);
       const recordUsage = (usage: AIUsage) =>
         store.recordAiUsage({
           userId: ctx.user.id,
@@ -767,16 +789,18 @@ export function createInterviewsHandler({
           source: "provider",
           tokens: providerTokens(usage),
           idempotencyKey: `vision:${reservation.checkId}`,
+          openaiCredentialId: credentialId,
         });
       kind = await analyzeFrame(
         { ai, model: visionModel, reasoningEffort: visionReasoningEffort, log, recordUsage },
         frame.data.image,
       );
     } catch (err) {
-      if (!(err instanceof AIError)) {
+      if (!(err instanceof AIError || err instanceof OpenAIKeyError)) {
         throw err;
       }
-      log({ event: "integrity_check_failed", reason: err.name });
+      // No signal either way: the candidate is never penalized for a key or provider failure.
+      log({ event: "integrity_check_failed", reason: openAIKeyApiErrorCode(err) ? "openai_key_unavailable" : err.name });
     }
 
     const result = await store.recordIntegritySignal(interview.id, ctx.user.id, reservation.checkId, kind);
@@ -831,6 +855,17 @@ export function createInterviewsHandler({
       return apiError("interview_not_active", cors);
     }
 
+    let realtime: RealtimeClient;
+    try {
+      ({ realtime } = await openai.forUser(ctx.user.id));
+    } catch (err) {
+      const keyError = keyErrorResponse(err, interview.id);
+      if (keyError) {
+        return keyError;
+      }
+      throw err;
+    }
+
     const [context, messages, state] = await Promise.all([
       store.getRepositoryContext(interview.workspace_id, interview.repository_commit_sha),
       store.listRecentMessages(interview.id, RESUME_MESSAGES),
@@ -857,7 +892,15 @@ export function createInterviewsHandler({
       realtime.createTranscriptionClientSecret({ model: transcriptionModel }, safetyId),
     ]);
     if (voice.status === "rejected") {
-      logGithubError(FN, voice.reason, { event: "realtime_session_failed", code: "realtime_unavailable", interview_id: interview.id });
+      const keyError = keyErrorResponse(voice.reason, interview.id);
+      if (keyError) {
+        return keyError;
+      }
+      const reason = voice.reason;
+      if (reason instanceof RealtimeUnavailableError && reason.failure === "rate_limited") {
+        return apiError("openai_rate_limited", cors, { "Retry-After": String(reason.retryAfterSeconds ?? 30) });
+      }
+      logGithubError(FN, reason, { event: "realtime_session_failed", code: "realtime_unavailable", interview_id: interview.id });
       return apiError("realtime_unavailable", cors);
     }
     const elapsedMs = Date.now() - mintStartedAt;

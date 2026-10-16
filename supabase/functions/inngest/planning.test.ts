@@ -8,7 +8,8 @@ import {
   AIUnavailableError,
 } from "../_shared/ai/provider.ts";
 import { type AiUsageEntry, aiUsageCost } from "../_shared/ai-usage.ts";
-import { createFakeAIProvider } from "../_shared/testing.ts";
+import { OpenAIKeyMissingError, OpenAIKeyUnusableError } from "../_shared/ai/credentials.ts";
+import { createFakeAIProvider, createFakeOpenAIClients, FAKE_CREDENTIAL_ID, fakeUserOpenAIClients } from "../_shared/testing.ts";
 import type { StepRunner } from "./function.ts";
 import {
   buildPlanningInput,
@@ -152,8 +153,9 @@ function setup({
   };
 
   const provider = createFakeAIProvider(() => ai());
-  const deps: PlanningDeps = { ai: provider, model: "gpt-test", store, log: (line) => logs.push(line) };
-  return { deps, provider, calls, completed, failures, logs, usage };
+  const openai = createFakeOpenAIClients(USER_ID, fakeUserOpenAIClients({ ai: provider }));
+  const deps: PlanningDeps = { openai, model: "gpt-test", store, log: (line) => logs.push(line) };
+  return { deps, provider, openai, calls, completed, failures, logs, usage };
 }
 
 /** Records step outputs; memoizes completed steps across runs like Inngest's durable replay. */
@@ -215,6 +217,7 @@ Deno.test("a successful run loads memory and prior outcomes, plans, and writes t
     model: "gpt-test",
     source: "provider",
     tokens: { input_tokens: 100, cached_input_tokens: 0, output_tokens: 50 },
+    openaiCredentialId: FAKE_CREDENTIAL_ID,
   });
   assert(idempotencyKey.startsWith(`planning:${event.job_id}:run-1:`));
 });
@@ -497,4 +500,27 @@ Deno.test("onFailure records a fixed code and message, never the raw error", asy
   await handlePlanningFailure(invalid.deps, { data: { nope: true }, error: new Error("x") });
   assertEquals(invalid.failures, []);
   assertEquals(JSON.parse(invalid.logs[0]).recorded, false);
+});
+
+Deno.test("planning resolves the owner's key loaded from the job, and key failures are non-retriable", async () => {
+  const { deps, openai } = setup();
+  await runInterviewPlanning(deps, { data: event, runId: "r", step: stepRunner().step });
+  assertEquals(openai.calls, [USER_ID]);
+
+  const cases: [Error, string][] = [
+    [new OpenAIKeyMissingError(), "openai_key_unavailable"],
+    [new OpenAIKeyUnusableError("invalid"), "openai_key_invalid"],
+    [new OpenAIKeyUnusableError("permission_denied"), "openai_key_invalid"],
+    [new OpenAIKeyUnusableError("quota_exhausted"), "openai_quota_exhausted"],
+  ];
+  for (const [error, code] of cases) {
+    const s = setup();
+    s.deps.openai = createFakeOpenAIClients(USER_ID, error);
+    const err = await assertRejects(() => runInterviewPlanning(s.deps, { data: event, runId: "r", step: stepRunner().step }));
+    assertInstanceOf(err, NonRetriableError);
+    assertEquals(err.message, code);
+    assertEquals(s.completed, []);
+    await handlePlanningFailure(s.deps, { data: event, error: err });
+    assertEquals(s.failures.at(-1), [code, PLANNING_FAILURE_MESSAGES[code as keyof typeof PLANNING_FAILURE_MESSAGES]]);
+  }
 });

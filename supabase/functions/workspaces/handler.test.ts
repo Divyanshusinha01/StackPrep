@@ -4,6 +4,7 @@ import {
   createInterviewResponseSchema,
   createWorkspaceResponseSchema,
   type InterviewHistoryItem,
+  type OpenAIKeyStatus,
   retryAnalysisResponseSchema,
   workspaceDetailResponseSchema,
   workspaceListResponseSchema,
@@ -92,6 +93,8 @@ interface Setup {
   interviews?: InterviewHistoryItem[];
   /** What the atomic start_interview RPC decides; defaults to creating interview 1. */
   startResult?: StartInterviewResult;
+  /** The caller's stored OpenAI key status; null means no key. Defaults to valid. */
+  keyStatus?: OpenAIKeyStatus | null;
 }
 
 const INTERVIEW_ID = "ffffffff-0000-4000-8000-000000000001";
@@ -117,6 +120,7 @@ function setup({
   readerError = false,
   interviews = [],
   startResult = { ok: true, interview: startedInterview },
+  keyStatus = "valid",
 }: Setup = {}) {
   const state = { workspaces: [...workspaces] };
   const writes: unknown[][] = [];
@@ -220,6 +224,10 @@ function setup({
       assertEquals(uid, userId);
       writes.push(["failPlanningJob", jobId, code]);
       return Promise.resolve();
+    },
+    getOpenAIKeyStatus(uid) {
+      assertEquals(uid, userId);
+      return Promise.resolve(keyStatus);
     },
   };
 
@@ -799,5 +807,44 @@ Deno.test("a failed planning enqueue marks the job failed and still returns the 
     assert(!lines.join("\n").includes("evt_secret"));
   } finally {
     restoreConsole();
+  }
+});
+
+// OpenAI key gate ---------------------------------------------------------------------
+
+const KEY_GATE_CASES = [
+  [null, "openai_key_required"],
+  ["invalid", "openai_key_invalid"],
+  ["permission_denied", "openai_key_permission_denied"],
+  ["quota_exhausted", "openai_quota_exhausted"],
+] as const;
+
+Deno.test("creating a workspace without a usable OpenAI key is rejected before any commit lookup or write", async () => {
+  for (const [keyStatus, code] of KEY_GATE_CASES) {
+    const { handler, writes, githubCalls, enqueued } = setup({ keyStatus });
+    await expectError(await post(handler, validBody), 409, code);
+    assertEquals(writes, []);
+    assertEquals(githubCalls, ["list:7"]);
+    assertEquals(enqueued, []);
+  }
+});
+
+Deno.test("an existing workspace is still returned without a usable key", async () => {
+  const existing = workspaceRow(1, 42);
+  const { handler, writes } = setup({ workspaces: [existing], keyStatus: null });
+  const res = await post(handler, validBody);
+  assertEquals(res.status, 200);
+  assertEquals(writes, []);
+});
+
+Deno.test("starting an interview or retrying analysis without a usable key queues nothing", async () => {
+  for (const [keyStatus, code] of KEY_GATE_CASES) {
+    const ready = setup({ workspaces: [readyRow()], keyStatus });
+    await expectError(await startInterview(ready.handler, readyRow().id), 409, code);
+    assertEquals([ready.writes, ready.enqueued], [[], []]);
+
+    const failed = setup({ workspaces: [failedRow()], keyStatus });
+    await expectError(await retry(failed.handler, failedRow().id), 409, code);
+    assertEquals([failed.writes, failed.enqueued], [[], []]);
   }
 });

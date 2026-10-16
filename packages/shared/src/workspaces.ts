@@ -110,6 +110,9 @@ export const planningErrorCodeSchema = z.enum([
   "ai_rate_limited",
   "ai_unavailable",
   "ai_invalid_output",
+  "openai_key_unavailable",
+  "openai_key_invalid",
+  "openai_quota_exhausted",
   "enqueue_failed",
   "internal_error",
 ]);
@@ -133,6 +136,9 @@ export const deepAnalysisErrorCodeSchema = z.enum([
   "ai_rate_limited",
   "ai_unavailable",
   "ai_invalid_output",
+  "openai_key_unavailable",
+  "openai_key_invalid",
+  "openai_quota_exhausted",
   "enqueue_failed",
   "internal_error",
 ]);

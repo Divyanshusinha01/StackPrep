@@ -1,5 +1,5 @@
 import type { Breadcrumb, ErrorEvent, init } from "@sentry/nextjs";
-import { parseEnv, webSentryEnvSchema } from "@stackprep/shared";
+import { parseEnv, redactOpenAIKeys, webSentryEnvSchema } from "@stackprep/shared";
 
 type SentryOptions = Parameters<typeof init>[0];
 
@@ -33,7 +33,7 @@ export function scrubEvent<T extends Pick<ErrorEvent, "request" | "contexts">>(e
       );
     }
   }
-  return event;
+  return redactOpenAIKeys(event);
 }
 
 export function scrubBreadcrumb(breadcrumb: Breadcrumb): Breadcrumb {
@@ -45,7 +45,7 @@ export function scrubBreadcrumb(breadcrumb: Breadcrumb): Breadcrumb {
       }
     }
   }
-  return breadcrumb;
+  return redactOpenAIKeys(breadcrumb);
 }
 
 /** Shared options for every runtime; `null` (Sentry disabled) when the DSN is empty. */

@@ -4,6 +4,7 @@ import { AnimatePresence, m } from "framer-motion";
 
 import { cn } from "@/lib/utils";
 import { useReducedMotion } from "@/components/motion/use-reduced-motion";
+import { WaveBars } from "../wave-bars";
 
 const EASE = [0.22, 1, 0.36, 1] as const;
 const WAVE = [35, 60, 90, 50, 100, 70, 40, 80, 55, 95, 45, 65, 30];
@@ -49,18 +50,13 @@ export function VoiceOrb({ speaker, className }: { speaker: "ai" | "user"; class
         </span>
       </div>
 
-      <span className="mt-4 flex h-6 items-center gap-[3px]">
-        {WAVE.map((h, i) => (
-          <span
-            key={i}
-            className={cn(
-              "w-[3px] origin-center rounded-full transition-colors duration-700 motion-safe:animate-[wave_1.1s_ease-in-out_infinite]",
-              tone === "brand" ? "bg-brand/80" : "bg-success/80",
-            )}
-            style={{ height: `${h}%`, animationDelay: `${i * 80}ms` }}
-          />
-        ))}
-      </span>
+      <WaveBars
+        heights={WAVE}
+        className="mt-4 h-6"
+        barClassName={cn("transition-colors duration-700", tone === "brand" ? "bg-brand/80" : "bg-success/80")}
+        stepMs={80}
+        duration="1.1s"
+      />
 
       <span className="relative mt-3 h-4 w-44 font-mono text-[11px] uppercase tracking-wider text-muted-foreground">
         <AnimatePresence mode="wait" initial={false}>

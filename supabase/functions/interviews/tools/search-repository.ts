@@ -4,6 +4,7 @@ import {
   type SearchRepositoryInput,
   type SearchRepositoryOutput,
 } from "@stackprep/shared";
+import { openAIKeyApiErrorCode } from "../../_shared/ai/clients.ts";
 import { assertEmbeddingDimensions } from "../../_shared/ai/provider.ts";
 import { scrubSecrets } from "../../_shared/analysis/scrub.ts";
 import {
@@ -223,7 +224,8 @@ async function vectorHits(
   const { interview } = ctx;
   let vector: number[];
   try {
-    const result = await embeddings.provider.embed({ model: embeddings.model, input: [query], signal });
+    const clients = await ctx.openai();
+    const result = await clients.embeddings.embed({ model: embeddings.model, input: [query], signal });
     onUsage(ctx.store.recordAiUsage({
       userId: ctx.userId,
       workspaceId: interview.workspace_id,
@@ -233,14 +235,17 @@ async function vectorHits(
       source: "provider",
       tokens: { input_tokens: result.usage.input_tokens },
       idempotencyKey: `embedding:${interview.id}:${crypto.randomUUID()}`,
+      openaiCredentialId: clients.credentialId,
     }));
     if (result.embeddings.length !== 1) {
       throw new Error("unexpected embedding count");
     }
     assertEmbeddingDimensions(result.embeddings, REPOSITORY_MEMORY_EMBEDDING_DIMENSIONS);
     vector = result.embeddings[0];
-  } catch {
-    throw new VectorFallback(signal.aborted ? "deadline" : "embed_error");
+  } catch (err) {
+    throw new VectorFallback(
+      openAIKeyApiErrorCode(err) ? "key_unavailable" : signal.aborted ? "deadline" : "embed_error",
+    );
   }
 
   let matches: MemoryMatch[];

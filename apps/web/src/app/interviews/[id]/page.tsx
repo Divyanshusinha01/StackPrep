@@ -6,6 +6,7 @@ import { InterviewSession } from "@/components/app/interview-session";
 import { PageHeader } from "@/components/app/page-header";
 import { getInterview } from "@/lib/api";
 import { requireUser } from "@/lib/auth";
+import { currentKeySetupCode } from "@/lib/openai-key-gate";
 
 export const metadata: Metadata = {
   title: "Interview",
@@ -15,7 +16,7 @@ export const metadata: Metadata = {
 export default async function InterviewPage({ params }: PageProps<"/interviews/[id]">) {
   const { id } = await params;
   const user = await requireUser(`/interviews/${encodeURIComponent(id)}`);
-  const interview = await getInterview(id);
+  const [interview, keyCode] = await Promise.all([getInterview(id), currentKeySetupCode()]);
   if (!interview) {
     notFound();
   }
@@ -24,7 +25,7 @@ export default async function InterviewPage({ params }: PageProps<"/interviews/[
   }
 
   return (
-    <AppShell user={user}>
+    <AppShell user={user} keyAlert={keyCode !== null}>
       <PageHeader
         back={{
           href: `/workspaces/${interview.workspace_id}`,

@@ -57,7 +57,7 @@ export function InterviewHistoryRow({ interview, returnTo }: { interview: Interv
             </Link>
             <InterviewStatusBadge status={interview.status} terminationReason={interview.termination_reason} />
             {integrityTerminated ? (
-              <span className="inline-flex items-center gap-1 text-xs font-medium text-red-300">
+              <span className="inline-flex items-center gap-1 text-xs font-medium text-danger">
                 <ShieldAlert className="size-3.5" aria-hidden />
                 Ended for integrity
               </span>
@@ -65,7 +65,7 @@ export function InterviewHistoryRow({ interview, returnTo }: { interview: Interv
           </div>
           <p className="mt-1 font-mono text-[11px] text-muted-foreground tabular-nums">
             <time dateTime={interview.created_at}>{dateTimeFormat.format(new Date(interview.created_at))} UTC</time>
-            {interview.pause === "expired" ? <span className="text-amber-300/90"> · Pause expired</span> : null}
+            {interview.pause === "expired" ? <span className="text-warning"> · Pause expired</span> : null}
           </p>
         </div>
       </div>

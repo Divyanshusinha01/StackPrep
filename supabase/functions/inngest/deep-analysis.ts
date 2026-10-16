@@ -10,8 +10,8 @@ import {
 } from "@stackprep/shared";
 import { type Inngest, NonRetriableError, RetryAfterError } from "inngest";
 import { z } from "zod";
+import { type OpenAIClients, openAIKeyJobErrorCode } from "../_shared/ai/clients.ts";
 import {
-  type AIProvider,
   AIInvalidOutputError,
   AIRateLimitedError,
   AIRequestError,
@@ -58,10 +58,14 @@ export const DEEP_ANALYSIS_FAILURE_MESSAGES: Record<DeepAnalysisErrorCode, strin
   ai_invalid_output: "AI provider returned an invalid analysis",
   enqueue_failed: "Deep analysis could not be queued",
   internal_error: "Deep analysis failed",
+  openai_key_unavailable: "The owner has no usable OpenAI key",
+  openai_key_invalid: "The owner's OpenAI key was rejected",
+  openai_quota_exhausted: "The owner's OpenAI account has no remaining quota",
 };
 
 export interface DeepAnalysisDeps {
-  ai: AIProvider;
+  /** Resolved inside the AI step for the owner loaded from the database; never from the event. */
+  openai: OpenAIClients;
   model: string;
   reasoningEffort?: ReasoningEffort;
   store: DeepAnalysisStore;
@@ -107,6 +111,10 @@ function nonRetriable(code: DeepAnalysisErrorCode): NonRetriableError {
 export function classifyDeepAnalysisError(err: unknown): Error {
   if (err instanceof NonRetriableError || err instanceof RetryAfterError) {
     return err;
+  }
+  const keyCode = openAIKeyJobErrorCode(err);
+  if (keyCode) {
+    return nonRetriable(keyCode);
   }
   if (err instanceof AIRateLimitedError) {
     return new RetryAfterError("ai_rate_limited", err.retryAfterSeconds * 1000);
@@ -334,7 +342,8 @@ export async function runDeepAnalysis(
   const result = await step.run("analyze", () =>
     classified(async () => {
       await deps.store.markStage(event.job_id, 30, runId);
-      const { output, usage } = await deps.ai.generateStructured({
+      const { ai, credentialId } = await deps.openai.forUser(target.user_id);
+      const { output, usage } = await ai.generateStructured({
         model: deps.model,
         system: DEEP_ANALYSIS_SYSTEM_PROMPT,
         input: buildDeepAnalysisInput(event.commit_sha, memory.rows),
@@ -362,6 +371,7 @@ export async function runDeepAnalysis(
         source: "provider",
         tokens: providerTokens(usage),
         idempotencyKey: `deep_analysis:${event.job_id}:${runId}:${crypto.randomUUID()}`,
+        openaiCredentialId: credentialId,
       });
       return validateDeepAnalysis(output, memory.evidence_paths);
     }));
