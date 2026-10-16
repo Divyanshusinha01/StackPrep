@@ -7,12 +7,24 @@ import { deleteInterview } from "@/app/interviews/actions";
 import { ConfirmDialog } from "@/components/app/confirm-dialog";
 import { Button } from "@/components/ui/button";
 
-function DeleteControl({ interviewNumber, onConfirm }: { interviewNumber: number; onConfirm: () => void }) {
+function DeleteControl({
+  interviewNumber,
+  ended,
+  onConfirm,
+}: {
+  interviewNumber: number;
+  ended: boolean;
+  onConfirm: () => void;
+}) {
   const { pending } = useFormStatus();
   return (
     <ConfirmDialog
       title={`Delete Interview ${interviewNumber}?`}
-      description="It will be removed from your history. It still counts toward your daily interview limit."
+      description={
+        ended
+          ? "It will be removed from your history. It still counts toward your daily interview limit."
+          : "It will be ended without a report and removed from your history. It still counts toward your daily interview limit."
+      }
       confirmLabel="Delete interview"
       onConfirm={onConfirm}
       trigger={
@@ -32,14 +44,16 @@ function DeleteControl({ interviewNumber, onConfirm }: { interviewNumber: number
   );
 }
 
-/** Deletes an ended interview from history after a confirmation dialog. */
+/** Deletes an interview from history after a confirmation dialog, ending it first if needed. */
 export function DeleteInterviewButton({
   interviewId,
   interviewNumber,
+  ended,
   returnTo,
 }: {
   interviewId: string;
   interviewNumber: number;
+  ended: boolean;
   returnTo: string;
 }) {
   const formRef = useRef<HTMLFormElement>(null);
@@ -47,7 +61,11 @@ export function DeleteInterviewButton({
     <form ref={formRef} action={deleteInterview}>
       <input type="hidden" name="interview_id" value={interviewId} />
       <input type="hidden" name="return_to" value={returnTo} />
-      <DeleteControl interviewNumber={interviewNumber} onConfirm={() => formRef.current?.requestSubmit()} />
+      <DeleteControl
+        interviewNumber={interviewNumber}
+        ended={ended}
+        onConfirm={() => formRef.current?.requestSubmit()}
+      />
     </form>
   );
 }

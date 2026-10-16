@@ -754,14 +754,12 @@ History should preserve:
 
 A terminated interview remains in history.
 
-The user can delete an ended interview (completed, terminated or failed) from history, after a confirmation. A deleted interview:
+The user can delete any interview from history, in any status, after a confirmation. An interview that is pending, in progress or paused is first ended without a report (terminated as abandoned, closing any open voice session), and the confirmation says so. A deleted interview:
 
 - disappears from the workspace and global history, and its report and transcript are no longer accessible to the user
 - still counts toward the 5-interviews-per-24-hours limit
 - keeps its interview number, which is never reused
 - can still inform planning of later interviews in the same workspace, so previous coverage is remembered
-
-An interview that is pending, in progress or paused cannot be deleted.
 
 ---
 

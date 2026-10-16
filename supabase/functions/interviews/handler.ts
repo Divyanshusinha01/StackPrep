@@ -154,7 +154,11 @@ export interface PauseResult {
 
 export type ResumeResult = "resumed" | "already_active" | "expired" | "not_active";
 
-export type DeleteResult = "deleted" | "already_deleted" | "not_ended" | "not_found";
+export interface DeleteResult {
+  status: "deleted" | "already_deleted" | "not_found";
+  /** Sequence of the `disconnected` written to close an open voice segment. */
+  disconnectedSequence: number | null;
+}
 
 export interface EndResult {
   status: "completed" | "no_report" | "already_completed" | "already_terminated" | "not_active";
@@ -179,7 +183,10 @@ export interface InterviewStore extends ToolStore, IntegrityStore {
   pauseInterview(interviewId: string, userId: string): Promise<PauseResult>;
   resumeInterview(interviewId: string, userId: string): Promise<ResumeResult>;
   endInterview(interviewId: string, userId: string): Promise<EndResult>;
-  /** Soft delete: sets deleted_at, so RLS hides the interview from its owner. */
+  /**
+   * Soft delete: sets deleted_at, so RLS hides the interview from its owner. A pending, active or
+   * paused interview is terminated first.
+   */
   deleteInterview(interviewId: string, userId: string): Promise<DeleteResult>;
 }
 
@@ -380,9 +387,10 @@ export function createInterviewStore(serviceClient: SupabaseClient): InterviewSt
       const { data, error } = await serviceClient.rpc("delete_interview", {
         p_interview_id: interviewId,
         p_user_id: userId,
-      });
+      }).single();
       check("delete interview", error);
-      return data as DeleteResult;
+      const row = data as { status: DeleteResult["status"]; disconnected_sequence: number | null };
+      return { status: row.status, disconnectedSequence: row.disconnected_sequence };
     },
     async reserveIntegrityCheck(interviewId, userId) {
       const { data, error } = await serviceClient.rpc("reserve_integrity_check", {
@@ -1068,8 +1076,9 @@ export function createInterviewsHandler({
   }
 
   /**
-   * Removes an ended interview from the candidate's history. The row is kept, so it still counts
-   * toward the interview limit. A deleted interview is hidden by RLS and answers not found.
+   * Removes an interview from the candidate's history, terminating it first if it has not ended.
+   * The row is kept, so it still counts toward the interview limit. A deleted interview is hidden
+   * by RLS and answers not found.
    */
   async function deleteInterview(req: Request, id: string): Promise<Response> {
     const ctx = await authenticate(req);
@@ -1085,11 +1094,11 @@ export function createInterviewsHandler({
     }
 
     const result = await store.deleteInterview(interview.id, ctx.user.id);
-    if (result === "not_found") {
+    if (result.status === "not_found") {
       return apiError("interview_not_found", cors);
     }
-    if (result === "not_ended") {
-      return apiError("interview_not_ended", cors);
+    if (result.disconnectedSequence !== null) {
+      await recordVoiceEstimates(interview, ctx.user.id, { bySequence: result.disconnectedSequence });
     }
     const body = deleteInterviewResponseSchema.parse({ status: "deleted" });
     return json(body, { status: 200, headers: cors.headers });

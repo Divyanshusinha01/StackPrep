@@ -21,9 +21,6 @@ export function deleteInterviewErrorMessage(value: string | string[] | undefined
   if (typeof value !== "string") {
     return null;
   }
-  if (value === "interview_not_ended") {
-    return "Only ended interviews can be deleted.";
-  }
   if (value === "interview_not_found") {
     return "That interview no longer exists.";
   }
@@ -32,7 +29,7 @@ export function deleteInterviewErrorMessage(value: string | string[] | undefined
 
 /**
  * One interview in a history list: number, status, date/time, report or transcript link, and a
- * delete button once it has ended. `returnTo` is the page to come back to after deleting.
+ * delete button. `returnTo` is the page to come back to after deleting.
  */
 export function InterviewHistoryRow({ interview, returnTo }: { interview: InterviewHistoryEntry; returnTo: string }) {
   const reportHref = `/interviews/${interview.id}/report`;
@@ -97,13 +94,12 @@ export function InterviewHistoryRow({ interview, returnTo }: { interview: Interv
             </Link>
           </Button>
         ) : null}
-        {ended ? (
-          <DeleteInterviewButton
-            interviewId={interview.id}
-            interviewNumber={interview.interview_number}
-            returnTo={returnTo}
-          />
-        ) : null}
+        <DeleteInterviewButton
+          interviewId={interview.id}
+          interviewNumber={interview.interview_number}
+          ended={ended}
+          returnTo={returnTo}
+        />
       </div>
     </li>
   );

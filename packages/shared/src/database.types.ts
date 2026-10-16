@@ -1264,7 +1264,10 @@ export type Database = {
       }
       delete_interview: {
         Args: { p_interview_id: string; p_user_id: string }
-        Returns: string
+        Returns: {
+          disconnected_sequence: number
+          status: string
+        }[]
       }
       delete_openai_credential: { Args: { p_user_id: string }; Returns: boolean }
       end_interview_by_user: {
