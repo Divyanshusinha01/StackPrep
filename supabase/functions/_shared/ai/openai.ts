@@ -11,6 +11,8 @@ import {
   AIUnavailableError,
   type AIUsage,
   type EmbeddingProvider,
+  type WebCitation,
+  type WebSearchProvider,
 } from "./provider.ts";
 
 const RESPONSES_URL = "https://api.openai.com/v1/responses";
@@ -238,6 +240,113 @@ async function requestStructured<T>(
     usage.reasoning_tokens = reasoning;
   }
   return { output: output.data, usage };
+}
+
+const webSearchResponseSchema = z.object({
+  status: z.string(),
+  output: z.array(
+    z.object({
+      type: z.string(),
+      content: z.array(z.object({
+        type: z.string(),
+        text: z.string().optional(),
+        annotations: z.array(z.object({
+          type: z.string(),
+          url: z.string().optional(),
+          title: z.string().optional(),
+          start_index: z.int().min(0).optional(),
+          end_index: z.int().min(0).optional(),
+        })).optional(),
+      })).optional(),
+    }),
+  ).default([]),
+  usage: responseSchema.shape.usage,
+});
+
+const MAX_EXCERPT_CHARS = 400;
+
+/** The text just before a citation, back to the previous citation or paragraph break. */
+function excerptBefore(text: string, start: number, floor: number): string {
+  const before = text.slice(floor, start);
+  const paragraph = before.lastIndexOf("\n");
+  return before.slice(paragraph + 1).replace(/[\s([]+$/, "").trim().slice(-MAX_EXCERPT_CHARS);
+}
+
+/**
+ * OpenAI Responses API with the built-in `web_search` tool. Only URL citations from the tool's
+ * annotations are returned; URLs that merely appear in the model's text are ignored. Queries and
+ * URLs are never logged.
+ */
+export function createOpenAIWebSearchProvider({
+  apiKey,
+  fetch: fetchFn = fetch,
+  timeoutMs: defaultTimeoutMs = DEFAULT_TIMEOUT_MS,
+  log = defaultLog,
+}: OpenAIProviderOptions): WebSearchProvider {
+  return {
+    async searchWeb({ model, system, input, maxToolCalls, maxOutputTokens, reasoningEffort, timeoutMs }) {
+      const body = {
+        model,
+        instructions: system,
+        input: [{ role: "user", content: input }],
+        tools: [{ type: "web_search" }],
+        tool_choice: "required",
+        max_tool_calls: maxToolCalls,
+        ...(reasoningEffort && reasoningEffort !== "default" ? { reasoning: { effort: reasoningEffort } } : {}),
+        max_output_tokens: maxOutputTokens ?? DEFAULT_MAX_OUTPUT_TOKENS,
+        store: false,
+      };
+      const startedAt = Date.now();
+      const entry = { event: "ai_call", kind: "web_search", model };
+      try {
+        const raw = await postJson(fetchFn, RESPONSES_URL, apiKey, body, AbortSignal.timeout(timeoutMs ?? defaultTimeoutMs));
+        const parsed = webSearchResponseSchema.safeParse(raw);
+        if (!parsed.success) {
+          throw new AIInvalidOutputError("malformed");
+        }
+        const { output, usage: rawUsage, status } = parsed.data;
+        const content = output.filter((item) => item.type === "message").flatMap((item) => item.content ?? []);
+        if (content.some((c) => c.type === "refusal")) {
+          throw new AIInvalidOutputError("refusal");
+        }
+        if (status !== "completed") {
+          throw new AIInvalidOutputError("incomplete");
+        }
+        const citations: WebCitation[] = [];
+        for (const part of content) {
+          const text = part.text ?? "";
+          let floor = 0;
+          for (const a of part.annotations ?? []) {
+            if (a.type !== "url_citation" || !a.url) {
+              continue;
+            }
+            const start = Math.min(a.start_index ?? text.length, text.length);
+            citations.push({ url: a.url, title: (a.title ?? "").trim(), excerpt: excerptBefore(text, start, floor) });
+            floor = Math.max(floor, Math.min(a.end_index ?? start, text.length));
+          }
+        }
+        const usage: AIUsage = {
+          input_tokens: rawUsage?.input_tokens ?? 0,
+          cached_input_tokens: rawUsage?.input_tokens_details?.cached_tokens ?? 0,
+          output_tokens: rawUsage?.output_tokens ?? 0,
+        };
+        const searchCalls = output.filter((item) => item.type === "web_search_call").length;
+        log({
+          ...entry,
+          outcome: "ok",
+          elapsed_ms: Date.now() - startedAt,
+          input_tokens: usage.input_tokens,
+          output_tokens: usage.output_tokens,
+          search_calls: searchCalls,
+          citations: citations.length,
+        });
+        return { citations, searchCalls, usage };
+      } catch (err) {
+        log({ ...entry, outcome: errorReason(err), elapsed_ms: Date.now() - startedAt });
+        throw err;
+      }
+    },
+  };
 }
 
 const embeddingResponseSchema = z.object({

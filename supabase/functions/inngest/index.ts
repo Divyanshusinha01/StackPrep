@@ -90,6 +90,7 @@ Deno.serve(withSentry(
     createInterviewReportFunction(inngest, {
       openai,
       model: env.OPENAI_REPORT_MODEL,
+      searchModel: env.OPENAI_REPORT_SEARCH_MODEL ?? env.OPENAI_REPORT_MODEL,
       reasoningEffort: env.OPENAI_REPORT_REASONING_EFFORT,
       store: createReportStore(serviceClient),
     }),

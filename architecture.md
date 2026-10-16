@@ -163,6 +163,7 @@ Each task reads its model from an environment variable, so models can change wit
 | Deep analysis                          | `gpt-6.1-sol`                | `OPENAI_PLANNING_MODEL`  |
 | Answer evaluation                      | `gpt-6-luna`                 | `OPENAI_EVALUATION_MODEL` |
 | Report generation                      | `gpt-6-luna`                 | `OPENAI_REPORT_MODEL`    |
+| Report learning-resource web search    | `OPENAI_REPORT_MODEL` unless set | `OPENAI_REPORT_SEARCH_MODEL` (must support the Responses `web_search` tool) |
 | Integrity monitoring                   | `gpt-6-luna`                 | `OPENAI_VISION_MODEL`    |
 | Repository memory and search query embeddings | `text-embedding-3-small` | `OPENAI_EMBEDDING_MODEL` |
 
@@ -700,6 +701,19 @@ Interview Data
  → Workspace
 ```
 
+The `interview-report` Inngest function (`supabase/functions/inngest/report.ts`) runs these steps, each memoized by Inngest so a retry never repeats a finished step:
+
+1. `verify`: re-resolve the job, interview, and repository from the database.
+2. `load`: transcript, evaluations (including the 1–5 score), evidence, repository memory, coverage, prior outcomes.
+3. `generate`: one structured call (`interview_learning_report`) on the owner's key. The model writes the summary, categories, per-question reference answers, gap breakdown, improvement steps, concepts, learning plan, and recommendations. It references questions only by message id.
+4. Hydration (inside `generate`): the server fills every transcript-sourced field itself, the question text and the candidate's verbatim answer, and derives the assessment from the stored evaluation (no candidate turn: `unanswered`; score 4–5: `correct`; 3 or `insufficient_evidence`: `partially_correct`; 1–2: `incorrect`). Reviews for unknown or duplicate message ids are dropped, at most 10 are kept (weakest first), and every text field passes `scrubSecrets`.
+5. `resources`: for at most 6 concepts, a Responses API `web_search` call (`AIProvider.searchWeb`) on the owner's key. Only the concept's generic search query leaves the system; queries that are malformed or contain the repository name, an examined path or symbol, or a secret are refused. A link is kept only if it appears in the tool's `url_citation` annotations, uses `https`, has no credentials, non-default port, or private host, and is deduplicated after tracking parameters are stripped. A small structured call (`report_resource_notes`) then writes what each kept source teaches from its title only. A failed or empty search marks the concept `resources_status: "unavailable"` and never fails the report; key errors still fail the job.
+6. `save`: `save_report` upserts `reports.content` and marks the job succeeded in one transaction.
+
+`reports.content` is versioned. Learning reports carry `report_version: 2` (`learningReportSchema` in `packages/shared/src/reports.ts`), a superset of the original fields; older reports have no version and still parse with `legacyInterviewReportSchema`. `GET /interviews/:id/report` accepts either.
+
+`POST /interviews/:id/report/upgrade` regenerates an unversioned report on the owner's key (checked first, like retry). `request_report_upgrade` queues a new `report_generation` job only while the stored report has no `report_version` and no report job is active (`409 report_not_upgradable` otherwise); the same pipeline runs and `save_report` replaces the row. Until then the old report is served with `upgrade: { status: "pending" }`, or `{ status: "failed", error_code }` if that job failed.
+
 ---
 
 ## 9. Interview State & Auditability
@@ -1152,7 +1166,7 @@ Each integration has its own Zod schema in `@stackprep/shared` (`packages/shared
 | `edgeEnvSchema` (required) | `WEB_ORIGIN`                                                                                  |
 | `edgeSupabaseEnvSchema`    | `SUPABASE_URL`, `SUPABASE_ANON_KEY`, `SUPABASE_SERVICE_ROLE_KEY` (injected by the runtime)     |
 | `inngestEnvSchema`         | `INNGEST_EVENT_KEY`, `INNGEST_SIGNING_KEY`                                                    |
-| `openAIModelEnvSchema`     | `OPENAI_REALTIME_MODEL`, `OPENAI_REALTIME_TRANSCRIPTION_MODEL`, `OPENAI_PLANNING_MODEL`, `OPENAI_EVALUATION_MODEL`, `OPENAI_REPORT_MODEL`, `OPENAI_VISION_MODEL`, `OPENAI_EMBEDDING_MODEL` (default `text-embedding-3-small`; must natively output 1536 dimensions), and per-task `OPENAI_{PLANNING,EVALUATION,REPORT,VISION}_REASONING_EFFORT`. Models only: there is no platform API key. |
+| `openAIModelEnvSchema`     | `OPENAI_REALTIME_MODEL`, `OPENAI_REALTIME_TRANSCRIPTION_MODEL`, `OPENAI_PLANNING_MODEL`, `OPENAI_EVALUATION_MODEL`, `OPENAI_REPORT_MODEL`, `OPENAI_REPORT_SEARCH_MODEL` (optional; defaults to `OPENAI_REPORT_MODEL`), `OPENAI_VISION_MODEL`, `OPENAI_EMBEDDING_MODEL` (default `text-embedding-3-small`; must natively output 1536 dimensions), and per-task `OPENAI_{PLANNING,EVALUATION,REPORT,VISION}_REASONING_EFFORT`. Models only: there is no platform API key. |
 | `byokEnvSchema`            | `OPENAI_KEY_ENCRYPTION_KEYS` (comma-separated `version:base64` 32-byte keys; generate each with `openssl rand -base64 32`), `OPENAI_KEY_ENCRYPTION_ACTIVE_VERSION` (must be listed). Read by `me`, `interviews`, and `inngest`. Different per environment; never remove a version that stored keys still use. |
 | `githubAppEnvSchema`       | `GITHUB_APP_ID`, `GITHUB_APP_CLIENT_ID`, `GITHUB_APP_CLIENT_SECRET`, `GITHUB_APP_PRIVATE_KEY`, `GITHUB_APP_WEBHOOK_SECRET` (the `github-webhooks` function reads only the webhook secret) |
 | `edgeSentryEnvSchema`      | `SENTRY_DSN`, `SENTRY_ENVIRONMENT`                                                            |

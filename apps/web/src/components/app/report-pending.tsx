@@ -13,7 +13,7 @@ export function ReportPending() {
       className="flex items-center gap-3 rounded-lg border bg-panel-raised/70 px-4 py-3 text-sm"
     >
       <Loader2 className="size-4 shrink-0 motion-safe:animate-spin text-brand" aria-hidden />
-      Generating your report. This usually takes under a minute.
+      Generating your report. Finding learning resources can take a minute or two.
     </div>
   );
 }

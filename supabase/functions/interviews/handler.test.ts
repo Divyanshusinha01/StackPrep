@@ -8,6 +8,7 @@ import {
   interviewEventAckSchema,
   type InterviewPlan,
   type InterviewReport,
+  type LearningReport,
   interviewReportResponseSchema,
   pauseInterviewResponseSchema,
   type PlanningState,
@@ -22,7 +23,12 @@ import type { Authenticate } from "../_shared/auth.ts";
 import { CREDENTIAL_TTL_SECONDS, createRealtimeClient } from "../_shared/realtime/openai-realtime.ts";
 import { createOpenAIClients } from "../_shared/ai/clients.ts";
 import { OpenAIKeyMissingError, OpenAIKeyUnusableError } from "../_shared/ai/credentials.ts";
-import { createFakeAIProvider, createFakeEmbeddingProvider, FAKE_CREDENTIAL_ID } from "../_shared/testing.ts";
+import {
+  createFakeAIProvider,
+  createFakeEmbeddingProvider,
+  createFakeWebSearchProvider,
+  FAKE_CREDENTIAL_ID,
+} from "../_shared/testing.ts";
 import { INTEGRITY_WARNING_MESSAGES } from "./integrity.ts";
 import {
   createFakeGithub,
@@ -209,6 +215,7 @@ function setup({
     {
       ai: () => ai,
       embeddings: () => createFakeEmbeddingProvider(),
+      search: () => createFakeWebSearchProvider(() => new Error("a web search was not expected in this test")),
       realtime: (apiKey) => createRealtimeClient({ apiKey, fetch: fakeFetch }),
     },
   );
@@ -894,6 +901,49 @@ Deno.test("report: ready returns the validated report", async () => {
   assertEquals(await reportBody(await handler(reportRequest())), { status: "ready", report: storedReport, generated_at });
 });
 
+Deno.test("report: a learning report (version 2) is served alongside legacy reports", async () => {
+  const generated_at = "2026-10-05T12:00:00.123456+00:00";
+  const learning: LearningReport = {
+    report_version: 2,
+    ...storedReport,
+    question_reviews: [{
+      question_message_id: "44444444-0000-4000-8000-000000000004",
+      question: "How do migrations roll back?",
+      candidate_answer: "",
+      answer_truncated: false,
+      assessment: "unanswered",
+      evaluator_rating: "insufficient_evidence",
+      evaluator_strengths: [],
+      evaluator_gaps: [],
+      repository_area: "",
+      expected_answer: "With a corrective forward migration.",
+      ideal_answer: "Write a new migration that reverts the change.",
+      factual_errors: [],
+      missing_concepts: ["Forward-only migrations"],
+      communication: [],
+      valid_alternatives: [],
+      how_to_improve: ["Read the migration tool docs."],
+      concept_ids: [],
+    }],
+    concepts: [],
+    learning_plan: [],
+    final_recommendations: [],
+  };
+  const { handler } = setup({
+    interview: completed,
+    report: { content: learning, generated_at },
+    reportJob: { status: "succeeded", error_code: null },
+  });
+  assertEquals(await reportBody(await handler(reportRequest())), { status: "ready", report: learning, generated_at });
+
+  const mixed = setup({
+    interview: completed,
+    report: { content: { ...learning, report_version: 3 }, generated_at },
+    reportJob: { status: "succeeded", error_code: null },
+  });
+  assertEquals(await reportBody(await mixed.handler(reportRequest())), { status: "failed", error_code: "internal_error" });
+});
+
 Deno.test("report: failures carry a fixed code; unknown codes and invalid content are internal_error", async () => {
   const failed = setup({ interview: completed, reportJob: { status: "failed", error_code: "ai_unavailable" } });
   assertEquals(await reportBody(await failed.handler(reportRequest())), { status: "failed", error_code: "ai_unavailable" });
@@ -961,6 +1011,94 @@ Deno.test("report retry: without a usable key nothing is queued and the setup co
     await expectError(result, 409, code);
     assertEquals([jobs.sent.length, reportJobs.requests.length], [0, 0]);
   }
+});
+
+// POST /interviews/:id/report/upgrade -------------------------------------------------------------
+
+const learningReport: LearningReport = {
+  report_version: 2,
+  ...storedReport,
+  question_reviews: [],
+  concepts: [],
+  learning_plan: [],
+  final_recommendations: [],
+};
+
+Deno.test("report upgrade: a legacy report shows the state of its regeneration", async () => {
+  const generated_at = NOW.toISOString();
+  const legacy = { content: storedReport, generated_at };
+  const running = setup({ interview: completed, report: legacy, reportJob: { status: "running", error_code: null } });
+  assertEquals(await reportBody(await running.handler(reportRequest())), {
+    status: "ready",
+    report: storedReport,
+    generated_at,
+    upgrade: { status: "pending" },
+  });
+  const failed = setup({ interview: completed, report: legacy, reportJob: { status: "failed", error_code: "openai_quota_exhausted" } });
+  assertEquals(await reportBody(await failed.handler(reportRequest())), {
+    status: "ready",
+    report: storedReport,
+    generated_at,
+    upgrade: { status: "failed", error_code: "openai_quota_exhausted" },
+  });
+  const learning = setup({
+    interview: completed,
+    report: { content: learningReport, generated_at },
+    reportJob: { status: "running", error_code: null },
+  });
+  assertEquals(await reportBody(await learning.handler(reportRequest())), { status: "ready", report: learningReport, generated_at });
+});
+
+Deno.test("report upgrade: only a legacy report without an active regeneration can be upgraded", async () => {
+  const generated_at = NOW.toISOString();
+  const cases = [
+    setup({ interview: completed, reportJob: { status: "running", error_code: null } }),
+    setup({ interview: completed, reportJob: { status: "failed", error_code: "ai_unavailable" } }),
+    setup({ interview: completed, report: { content: learningReport, generated_at }, reportJob: { status: "succeeded", error_code: null } }),
+    setup({ interview: completed, report: { content: storedReport, generated_at }, reportJob: { status: "queued", error_code: null } }),
+  ];
+  for (const { handler, jobs, reportJobs } of cases) {
+    await expectError(await handler(reportRequest("report/upgrade", "POST")), 409, "report_not_upgradable");
+    assertEquals([jobs.sent.length, reportJobs.upgrades.length], [0, 0]);
+  }
+  await expectError(
+    await setup({ interview: { ...interviewRow, status: "in_progress" } }).handler(reportRequest("report/upgrade", "POST")),
+    409,
+    "interview_not_completed",
+  );
+});
+
+Deno.test("report upgrade: a legacy report is queued for regeneration on the owner's key, also after a failed attempt", async () => {
+  for (const reportJob of [
+    { status: "succeeded", error_code: null },
+    { status: "failed", error_code: "ai_unavailable" },
+  ] as const) {
+    const { handler, jobs, reportJobs } = setup({
+      interview: completed,
+      report: { content: storedReport, generated_at: NOW.toISOString() },
+      reportJob,
+    });
+    const res = await handler(reportRequest("report/upgrade", "POST"));
+    assertEquals(res.status, 202);
+    assertEquals(interviewReportResponseSchema.parse(await res.json()).status, "ready");
+    assertEquals([reportJobs.upgrades, reportJobs.requests], [[INTERVIEW_ID], []]);
+    assertEquals(jobs.sent, [{
+      name: "interview.report.requested",
+      payload: { interview_id: INTERVIEW_ID, workspace_id: WORKSPACE_ID, job_id: "job-1" },
+    }]);
+  }
+});
+
+Deno.test("report upgrade: without a usable key nothing is queued and the setup code is returned", async () => {
+  const { handler, jobs, reportJobs } = setup({
+    interview: completed,
+    report: { content: storedReport, generated_at: NOW.toISOString() },
+    reportJob: { status: "succeeded", error_code: null },
+    keyError: new OpenAIKeyMissingError(),
+  });
+  const { result } = await captureLogs(() => handler(reportRequest("report/upgrade", "POST")));
+  await expectError(result, 409, "openai_key_required");
+  assertEquals([jobs.sent.length, reportJobs.upgrades.length], [0, 0]);
 });
 
 Deno.test("events: pause keeps its reason and resume is acknowledged like other voice events", async () => {

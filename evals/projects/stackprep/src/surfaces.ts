@@ -65,7 +65,27 @@ export function evaluationUnits(at: string, turn: EvaluatedTurn): TextUnit[] {
   ];
 }
 
-export function reportUnits(surface: "report" | "report_ungrounded", at: string, report: InterviewReport): TextUnit[] {
+/**
+ * The checkable shape shared by the model's report output and saved reports. Legacy reports carry
+ * `struggled_questions`; learning reports and the model output carry the learning fields instead.
+ */
+export type ReportSurfaceInput = Omit<InterviewReport, "struggled_questions"> & {
+  struggled_questions?: InterviewReport["struggled_questions"];
+  question_reviews?: ReadonlyArray<{
+    expected_answer: string;
+    ideal_answer: string;
+    factual_errors: string[];
+    missing_concepts: string[];
+    communication: string[];
+    valid_alternatives: string[];
+    how_to_improve: string[];
+  }>;
+  concepts?: ReadonlyArray<{ name: string; explanation: string; why_it_matters: string }>;
+  learning_plan?: ReadonlyArray<{ exercise: string; success_check: string }>;
+  final_recommendations?: string[];
+};
+
+export function reportUnits(surface: "report" | "report_ungrounded", at: string, report: ReportSurfaceInput): TextUnit[] {
   const unit = (field: string, text: string, role: UnitRole, bound?: TextUnit["bound"]): TextUnit => ({
     surface,
     at,
@@ -85,13 +105,34 @@ export function reportUnits(surface: "report" | "report_ungrounded", at: string,
       unit(`report.repository_evidence[${i}].note`, e.note, "claim", { text: e.path, strict: true }),
     ]),
     ...report.areas_to_improve.map((a, i) => unit(`report.areas_to_improve[${i}]`, a, "text")),
-    ...report.struggled_questions.flatMap((q, i) => [
+    ...(report.struggled_questions ?? []).flatMap((q, i) => [
       unit(`report.struggled_questions[${i}].question`, q.question, "text"),
       unit(`report.struggled_questions[${i}].performance`, q.performance, "text"),
       unit(`report.struggled_questions[${i}].weakness`, q.weakness, "claim", { text: q.repository_area, strict: false }),
       unit(`report.struggled_questions[${i}].repository_area`, q.repository_area, "reference"),
       unit(`report.struggled_questions[${i}].learning_direction`, q.learning_direction, "text"),
     ]),
+    ...(report.question_reviews ?? []).flatMap((q, i) => {
+      const field = `report.question_reviews[${i}]`;
+      return [
+        unit(`${field}.expected_answer`, q.expected_answer, "claim"),
+        unit(`${field}.ideal_answer`, q.ideal_answer, "text"),
+        ...q.factual_errors.map((e, j) => unit(`${field}.factual_errors[${j}]`, e, "claim")),
+        ...q.missing_concepts.map((m, j) => unit(`${field}.missing_concepts[${j}]`, m, "text")),
+        ...q.communication.map((c, j) => unit(`${field}.communication[${j}]`, c, "text")),
+        ...q.valid_alternatives.map((v, j) => unit(`${field}.valid_alternatives[${j}]`, v, "text")),
+        ...q.how_to_improve.map((h, j) => unit(`${field}.how_to_improve[${j}]`, h, "text")),
+      ];
+    }),
+    ...(report.concepts ?? []).flatMap((c, i) => [
+      unit(`report.concepts[${i}].explanation`, c.explanation, "text"),
+      unit(`report.concepts[${i}].why_it_matters`, c.why_it_matters, "text"),
+    ]),
+    ...(report.learning_plan ?? []).flatMap((p, i) => [
+      unit(`report.learning_plan[${i}].exercise`, p.exercise, "text"),
+      unit(`report.learning_plan[${i}].success_check`, p.success_check, "text"),
+    ]),
+    ...(report.final_recommendations ?? []).map((r, i) => unit(`report.final_recommendations[${i}]`, r, "text")),
   ];
 }
 

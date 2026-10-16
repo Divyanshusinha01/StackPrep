@@ -15,8 +15,9 @@
  * Whether `discrepancy_detail` reaches the report model is measured too: `buildReportInput` passes only
  * the boolean, which is a finding reported here, not fixed.
  */
-import type { InterviewPlanningOutput, InterviewReport } from "@stackprep/shared";
+import type { InterviewPlanningOutput } from "@stackprep/shared";
 import { AIInvalidOutputError, type AIProvider, type StructuredRequest } from "../../../../supabase/functions/_shared/ai/provider.ts";
+import { REPORT_SCHEMA_NAME } from "../../../../supabase/functions/inngest/report.ts";
 import { ReplayMissError } from "../../../core/recording.ts";
 import { bootstrapCI } from "../../../core/stats.ts";
 import type { Metric, PinSpec, Recorder, Suite, SuiteResult } from "../../../core/types.ts";
@@ -51,7 +52,7 @@ import {
   sessionMessages,
   validateSessions,
 } from "../src/sessions.ts";
-import { claimCitations, reportUnits } from "../src/surfaces.ts";
+import { claimCitations, type ReportSurfaceInput, reportUnits } from "../src/surfaces.ts";
 
 export const CONTRADICTION_DATASET_FORMAT = 1;
 export const EVALUATION_SITE = "contradiction_evaluation";
@@ -421,7 +422,7 @@ async function runCase(
   const seen = { input: "", missed: false };
   const capturing: AIProvider = {
     async generateStructured<T>(request: StructuredRequest<T>) {
-      seen.input = request.input;
+      if (request.schemaName === REPORT_SCHEMA_NAME) seen.input = request.input;
       try {
         return await inner.generateStructured(request);
       } catch (err) {
@@ -450,7 +451,7 @@ function carries(input: string, detail: string): boolean {
 }
 
 /** Notes of the saved report that cite the rubric's location, own or bound (a repository_evidence note to its path). */
-function locatedNotes(corpus: IndexedCorpus, rubric: ConflictRubric, report: InterviewReport, at: string): ReportNote[] {
+function locatedNotes(corpus: IndexedCorpus, rubric: ConflictRubric, report: ReportSurfaceInput, at: string): ReportNote[] {
   const paths = [...corpus.files.keys()];
   return reportUnits("report", at, report).flatMap((unit) => {
     if (unit.role === "path") return [];

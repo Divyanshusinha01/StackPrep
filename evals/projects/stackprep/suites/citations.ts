@@ -154,6 +154,6 @@ function groundingCaveats(corpus: IndexedCorpus, run: PipelineRun, check: Citati
   const outsideEvidence = remaining.filter((c) => !c.unit.field.startsWith("report.repository_evidence")).length;
   return [
     `groundReport removed ${removed} of ${entries} repository_evidence entries across ${reports.length} report(s); ${removedInvalid} of the removed entries cited paths that do not exist.`,
-    `groundReport checks only repository_evidence paths: ${remaining.length} invalid citation(s) remain in the saved reports, ${outsideEvidence} of them in other fields (narratives, gaps, struggled questions).`,
+    `groundReport checks only repository_evidence paths: ${remaining.length} invalid citation(s) remain in the saved reports, ${outsideEvidence} of them in other fields (narratives, gaps, question reviews).`,
   ];
 }

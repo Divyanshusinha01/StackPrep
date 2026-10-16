@@ -14,6 +14,11 @@ export interface ReportJobStore {
    * already has a report, or already has an active report job.
    */
   requestReportJob(interviewId: string, userId: string): Promise<string | null>;
+  /**
+   * Queues a report_generation job that regenerates a legacy report. Null when there is no legacy
+   * report to regenerate or a report job is already active.
+   */
+  requestReportUpgradeJob(interviewId: string, userId: string): Promise<string | null>;
   setReportJobEventId(jobId: string, eventId: string): Promise<void>;
   failReportJob(jobId: string, code: ReportErrorCode, message: string): Promise<void>;
 }
@@ -40,6 +45,14 @@ export function createReportJobStore(serviceClient: SupabaseClient): ReportJobSt
         p_user_id: userId,
       });
       check("request report", error);
+      return typeof data === "string" ? data : null;
+    },
+    async requestReportUpgradeJob(interviewId, userId) {
+      const { data, error } = await serviceClient.rpc("request_report_upgrade", {
+        p_interview_id: interviewId,
+        p_user_id: userId,
+      });
+      check("request report upgrade", error);
       return typeof data === "string" ? data : null;
     },
     async setReportJobEventId(jobId, eventId) {
@@ -71,11 +84,14 @@ export async function requestReport(
   deps: { jobs: JobQueue; store: ReportJobStore },
   interview: ReportInterview,
   userId: string,
+  { upgrade = false }: { upgrade?: boolean } = {},
 ): Promise<ReportRequestOutcome> {
   const logCtx = { workspace_id: interview.workspace_id, interview_id: interview.id };
   let jobId: string | null;
   try {
-    jobId = await deps.store.requestReportJob(interview.id, userId);
+    jobId = upgrade
+      ? await deps.store.requestReportUpgradeJob(interview.id, userId)
+      : await deps.store.requestReportJob(interview.id, userId);
   } catch (err) {
     logGithubError(FN, err, { ...logCtx, event: "report_request_failed", code: "internal_error" });
     return "failed";

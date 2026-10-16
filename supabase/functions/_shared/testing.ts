@@ -1,6 +1,15 @@
 import { assert } from "@std/assert";
 import type { OpenAIClients, UserOpenAIClients } from "./ai/clients.ts";
-import type { AIProvider, AIUsage, EmbeddingProvider, EmbeddingRequest, StructuredRequest } from "./ai/provider.ts";
+import type {
+  AIProvider,
+  AIUsage,
+  EmbeddingProvider,
+  EmbeddingRequest,
+  StructuredRequest,
+  WebCitation,
+  WebSearchProvider,
+  WebSearchRequest,
+} from "./ai/provider.ts";
 
 export interface FakeAIProvider extends AIProvider {
   calls: StructuredRequest<unknown>[];
@@ -66,6 +75,36 @@ export function createFakeEmbeddingProvider(
   };
 }
 
+export interface FakeWebSearchProvider extends WebSearchProvider {
+  calls: WebSearchRequest[];
+}
+
+/** Returns `respond(request)` with fixed usage and one search call. A thrown or returned Error is rethrown. */
+export function createFakeWebSearchProvider(
+  respond: (request: WebSearchRequest) => WebCitation[] | Error,
+): FakeWebSearchProvider {
+  const calls: WebSearchRequest[] = [];
+  return {
+    calls,
+    searchWeb(request) {
+      calls.push(request);
+      try {
+        const value = respond(request);
+        if (value instanceof Error) {
+          return Promise.reject(value);
+        }
+        return Promise.resolve({
+          citations: value,
+          searchCalls: 1,
+          usage: { input_tokens: 40, cached_input_tokens: 0, output_tokens: 20 },
+        });
+      } catch (err) {
+        return Promise.reject(err);
+      }
+    },
+  };
+}
+
 export const FAKE_CREDENTIAL_ID = "c0c0c0c0-0000-4000-8000-00000000c0de";
 
 function refused(kind: string): Error {
@@ -78,6 +117,7 @@ export function fakeUserOpenAIClients(parts: Partial<UserOpenAIClients> = {}): U
     credentialId: FAKE_CREDENTIAL_ID,
     ai: createFakeAIProvider(() => refused("an AI call")),
     embeddings: createFakeEmbeddingProvider(() => refused("an embedding call")),
+    search: createFakeWebSearchProvider(() => refused("a web search")),
     realtime: {
       createClientSecret: () => Promise.reject(refused("a Realtime mint")),
       createTranscriptionClientSecret: () => Promise.reject(refused("a transcription mint")),

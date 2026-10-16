@@ -1,7 +1,7 @@
 import {
   coverageMapSchema,
-  type InterviewReport,
   type InterviewStatus,
+  type LearningReport,
   type ReportErrorCode,
 } from "@stackprep/shared";
 import type { SupabaseClient } from "@supabase/supabase-js";
@@ -39,6 +39,8 @@ export interface ReportMessage {
 export interface ReportEvaluation {
   message_id: string;
   category: string;
+  /** 1-5, recorded during the interview; null for rows without one. */
+  score: number | null;
   rating: string | null;
   strengths: string[];
   gaps: string[];
@@ -83,7 +85,7 @@ export interface ReportStore extends AiUsageRecorder {
   loadReportContext(target: ReportTarget): Promise<ReportContext>;
   markReportStage(jobId: string, progress: number, runId: string): Promise<void>;
   /** Upserts the report and marks the job succeeded in one transaction (`save_report`). */
-  saveReport(interviewId: string, jobId: string, report: InterviewReport): Promise<void>;
+  saveReport(interviewId: string, jobId: string, report: LearningReport): Promise<void>;
   failReport(jobId: string, code: ReportErrorCode, message: string): Promise<void>;
 }
 
@@ -151,7 +153,7 @@ export function createReportStore(serviceClient: SupabaseClient): ReportStore {
         serviceClient.from("interview_messages").select("id, sequence, role, content")
           .eq("interview_id", id).order("sequence").limit(MAX_MESSAGES),
         serviceClient.from("evaluations")
-          .select("message_id, category, rating, strengths, gaps, repo_evidence, discrepancy")
+          .select("message_id, category, score, rating, strengths, gaps, repo_evidence, discrepancy")
           .eq("interview_id", id).order("created_at"),
         serviceClient.from("interview_events").select("payload")
           .eq("interview_id", id).eq("event_type", "evidence_examined").order("sequence").limit(MAX_EVIDENCE),
@@ -173,6 +175,7 @@ export function createReportStore(serviceClient: SupabaseClient): ReportStore {
         evaluations: (evaluations.data ?? []).map((e) => ({
           message_id: e.message_id,
           category: e.category,
+          score: typeof e.score === "number" ? e.score : null,
           rating: e.rating,
           strengths: strings(e.strengths),
           gaps: strings(e.gaps),

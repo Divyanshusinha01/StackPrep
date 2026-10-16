@@ -1,6 +1,6 @@
 import { randomBytes, randomInt, randomUUID } from "node:crypto";
 import {
-  type InterviewReport,
+  type StoredInterviewReport,
   type Json,
   maskOpenAIKey,
   type OpenAIKeyErrorCode,
@@ -375,7 +375,7 @@ export async function saveReport(
   admin: AdminClient,
   interviewId: string,
   jobId: string,
-  report: InterviewReport,
+  report: StoredInterviewReport,
 ): Promise<void> {
   check(
     "save report",

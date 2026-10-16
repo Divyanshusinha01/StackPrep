@@ -7,14 +7,15 @@ import {
   OpenAIKeyUnusableError,
   unusableStatusOf,
 } from "./credentials.ts";
-import { createOpenAIEmbeddingProvider, createOpenAIProvider } from "./openai.ts";
-import type { AIProvider, EmbeddingProvider } from "./provider.ts";
+import { createOpenAIEmbeddingProvider, createOpenAIProvider, createOpenAIWebSearchProvider } from "./openai.ts";
+import type { AIProvider, EmbeddingProvider, WebSearchProvider } from "./provider.ts";
 
 /** OpenAI clients bound to one user's decrypted key. Never cache across requests or steps. */
 export interface UserOpenAIClients {
   credentialId: string;
   ai: AIProvider;
   embeddings: EmbeddingProvider;
+  search: WebSearchProvider;
   realtime: RealtimeClient;
 }
 
@@ -27,6 +28,7 @@ export interface OpenAIClients {
 export interface OpenAIClientFactories {
   ai(apiKey: string): AIProvider;
   embeddings(apiKey: string): EmbeddingProvider;
+  search(apiKey: string): WebSearchProvider;
   realtime(apiKey: string): RealtimeClient;
 }
 
@@ -35,6 +37,7 @@ export function openAIClientFactories({ aiTimeoutMs }: { aiTimeoutMs?: number } 
   return {
     ai: (apiKey) => createOpenAIProvider({ apiKey, timeoutMs: aiTimeoutMs }),
     embeddings: (apiKey) => createOpenAIEmbeddingProvider({ apiKey }),
+    search: (apiKey) => createOpenAIWebSearchProvider({ apiKey }),
     realtime: (apiKey) => createRealtimeClient({ apiKey }),
   };
 }
@@ -84,11 +87,13 @@ export function createOpenAIClients(
 
       const ai = factories.ai(apiKey);
       const embeddings = factories.embeddings(apiKey);
+      const search = factories.search(apiKey);
       const realtime = factories.realtime(apiKey);
       return {
         credentialId,
         ai: { generateStructured: (request) => guard(() => ai.generateStructured(request)) },
         embeddings: { embed: (request) => guard(() => embeddings.embed(request)) },
+        search: { searchWeb: (request) => guard(() => search.searchWeb(request)) },
         realtime: {
           createClientSecret: (session, id) => guard(() => realtime.createClientSecret(session, id)),
           createTranscriptionClientSecret: (session, id) => guard(() => realtime.createTranscriptionClientSecret(session, id)),
