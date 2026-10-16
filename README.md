@@ -75,7 +75,7 @@ Request/response work runs in Supabase Edge Functions (`interviews`, `workspaces
 1. **Select a repository.** The user signs in with GitHub, adds their OpenAI API key on `/settings` (`PUT /me/openai-key` validates it with OpenAI before storing it), installs the GitHub App, and picks a repository. A workspace is created at a pinned commit.
 2. **Analysis.** The `workspaces` function sends `repository.analysis.requested`. Inngest then runs analysis, code indexing (the Tree-sitter call graph), deep analysis and memory embeddings.
 3. **Interview.** Creating an interview (in `workspaces`) queues `interview.planning.requested`. When the plan is ready, `POST /interviews/:id/realtime/session` mints a Realtime credential. The browser connects over WebRTC and relays each tool call to `POST /interviews/:id/tool-calls`. Transcript turns and session events go to `POST /interviews/:id/events`, and the browser follows `GET /interviews/:id/events` over SSE.
-4. **Report.** Ending the interview queues `interview.report.requested`. The report is stored in the workspace and a `report_ready` event is pushed to the browser.
+4. **Report.** Ending the interview queues `interview.report.requested`. The job writes a learning report: a question-by-question review (the candidate's verbatim answer, an assessment derived from the live evaluation, an AI-generated reference and ideal answer, and improvement steps), concepts to learn with links found by OpenAI web search on the user's key, and a prioritized learning plan. The report is stored in the workspace and a `report_ready` event is pushed to the browser.
 
 The full design is in [`architecture.md`](architecture.md).
 

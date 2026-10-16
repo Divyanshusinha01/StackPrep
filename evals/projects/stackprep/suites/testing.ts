@@ -1,7 +1,8 @@
 /** Fakes for the text-surface suite tests: a scripted model for every pipeline stage and the judge. */
 import type { AnswerEvaluation } from "../../../../supabase/functions/interviews/tools/evaluate-answer.ts";
-import type { InterviewReport } from "@stackprep/shared";
 import type { StructuredRequest } from "../../../../supabase/functions/_shared/ai/provider.ts";
+import type { LearningReportModelOutput } from "../../../../supabase/functions/inngest/report-learning.ts";
+import { REPORT_SCHEMA_NAME } from "../../../../supabase/functions/inngest/report.ts";
 import { createFakeAIProvider, type FakeAIProvider } from "../../../../supabase/functions/_shared/testing.ts";
 import type { Recorder, RunEnv } from "../../../core/types.ts";
 import { CONFIG } from "../project.ts";
@@ -39,7 +40,7 @@ const RIGHT_CLAIM = "createOrder in src/orders/service.ts:21-31 writes the order
 export interface PipelineScript {
   /** Put WRONG_CLAIM in every evaluation's gaps instead of a correct claim. */
   wrongClaim?: boolean;
-  /** Report with an invented repository_evidence path (removed by groundReport) and an invented path in a weakness (kept). */
+  /** Report with an invented repository_evidence path (removed by groundReport) and an invented path in a gap (kept). */
   inventedPaths?: boolean;
 }
 
@@ -59,25 +60,51 @@ function evaluation(script: PipelineScript): AnswerEvaluation {
   };
 }
 
-function report(script: PipelineScript): InterviewReport {
+/** The question ids the report prompt lists, so scripted reviews survive server-side hydration. */
+function promptQuestionIds(input: string): string[] {
+  return [...input.matchAll(/"question_message_id":\s*"([^"]+)"/g)].map((m) => m[1]);
+}
+
+function report(script: PipelineScript, input: string): LearningReportModelOutput {
+  const weakness = script.inventedPaths ? "Missed that src/payments/refund.ts retries refunds." : "Missed that hashPassword uses a static salt.";
   return {
     executive_summary: "The candidate traced the order flow well and was unsure about password storage.",
     categories: [{ name: "Security", rating: "developing", narrative: "The candidate traced OrderService.createOrder from validation to the charge." }],
     strengths: [],
-    gaps: [],
+    gaps: [weakness],
     interview_evidence: [],
     repository_evidence: [
       { path: "src/auth/password.ts", note: "hashPassword uses SHA-256 with a static salt." },
       ...(script.inventedPaths ? [{ path: "src/auth/tokens.ts", note: "Tokens are signed with HMAC." }] : []),
     ],
     areas_to_improve: [],
-    struggled_questions: [{
-      question: "How are passwords stored?",
-      performance: "Said bcrypt.",
-      weakness: script.inventedPaths ? "Missed that src/payments/refund.ts retries refunds." : "Missed that hashPassword uses a static salt.",
-      repository_area: "src/auth/",
-      learning_direction: "Read about slow password hashing.",
+    question_reviews: promptQuestionIds(input).map((id) => ({
+      question_message_id: id,
+      expected_answer: "hashPassword in src/auth/password.ts should use a slow, salted hash such as bcrypt.",
+      ideal_answer: "Passwords are hashed with a per-user salt and a slow algorithm.",
+      factual_errors: [],
+      missing_concepts: ["A slow, salted password hash."],
+      communication: [],
+      valid_alternatives: [],
+      how_to_improve: ["Read about slow password hashing."],
+      concept_ids: ["password-hashing"],
+    })),
+    concepts: [{
+      id: "password-hashing",
+      name: "Password hashing",
+      explanation: "Slow, salted hashes make stolen password tables expensive to crack.",
+      why_it_matters: "The candidate was unsure how passwords are stored.",
+      question_ids: promptQuestionIds(input),
+      search_query: "password hashing bcrypt",
     }],
+    learning_plan: [{
+      priority: 1,
+      concept_id: "password-hashing",
+      exercise: "Replace a fast hash with bcrypt in a small app.",
+      success_check: "Hashes differ for equal passwords.",
+      effort_minutes: 30,
+    }],
+    final_recommendations: [],
   };
 }
 
@@ -103,8 +130,8 @@ export async function scriptedModel(corpus: IndexedCorpus, script: PipelineScrip
         return structuredClone(sessions.state);
       case "answer_evaluation":
         return evaluation(script);
-      case "interview_report":
-        return report(script);
+      case REPORT_SCHEMA_NAME:
+        return report(script, request.input);
       case JUDGE_SCHEMA_NAME: {
         const claim = judgedClaim(request);
         return { verdict: judge(claim, labels.get(claim)), reason: "scripted" };

@@ -709,33 +709,49 @@ The report uses:
 The report contains:
 
 1. Executive summary
-2. Category-wise evaluation
-3. Strengths
-4. Weaknesses / knowledge gaps
-5. Evidence from the interview
-6. Evidence from the repository
-7. Areas to improve
-8. Full interview transcript
+2. Performance breakdown (category-wise evaluation, strengths, weaknesses / knowledge gaps)
+3. Question-by-question review
+4. Concepts to learn, with cited learning resources
+5. Improved answer examples
+6. Prioritized learning plan
+7. Final recommendations
+8. Evidence from the interview and from the repository
+9. Full interview transcript
+
+Sections adapt to the data available: a section with nothing grounded to say shows an empty state instead of invented content.
 
 There is **no overall score**.
 
 Do not rank the user.
 
+Reports generated before the learning report keep their original structure (executive summary, categories, strengths, gaps, evidence, areas to improve, questions to revisit) and remain readable. Such a report offers **Regenerate report**: after a confirmation that it uses the user's OpenAI key, the report is rebuilt from the saved transcript as a learning report. The old report stays visible until the new one is saved; a failed regeneration leaves it unchanged and can be tried again.
+
 ---
 
 ## 27. Report Question Analysis
 
-For questions where the user struggled, the report should show:
+The report is a learning tool: it explains what went wrong, shows what a strong answer looks like, and how to improve.
 
-- Question asked
-- User's performance
-- Identified weakness
-- Relevant repository area
-- Learning direction
+For every evaluated question, the report shows:
 
-The report should **not reveal the exact expected/correct answer**.
+- **Question:** the question as asked, from the transcript.
+- **Your answer:** the candidate's own words, from the transcript (marked unanswered when there were none).
+- **Assessment:** correct, partially correct, incorrect, or unanswered. Derived from the evaluation recorded during the interview, so it is consistent with the category ratings.
+- **What was missing or wrong:** factual errors, missing concepts, and communication weaknesses, kept separate.
+- **Expected answer:** an AI-generated reference answer appropriate to the question and the repository.
+- **Ideal answer:** an example of how a strong candidate could answer, with code where it helps.
+- **Valid alternatives:** other technically sound approaches; the reference is never the only acceptable answer.
+- **How to improve:** concrete, ordered steps.
 
-The purpose is to allow the user to prepare for the next interview without giving away the solution.
+Content from the transcript, judgments from the evaluator, and AI-generated reference material are labeled as such. Candidate answers and questions are never paraphrased into something they did not say.
+
+### Concepts to learn
+
+For each significant knowledge gap the report names the underlying concept, explains it briefly, says why it matters in practice, and links learning resources found by web search on the user's own OpenAI key. Each resource shows its title, publisher, link, and what to learn from it, and is tied to the gap it addresses. Official documentation is preferred. Links come only from the search results; when none can be retrieved, the report says resources are unavailable instead of inventing them. Search queries contain only generic concept names, never repository names, file paths, transcript text, or secrets.
+
+### Learning plan
+
+A prioritized list of practical exercises, each tied to a concept, with a way to check success and an effort estimate, followed by the few next steps most likely to improve the next interview.
 
 ---
 

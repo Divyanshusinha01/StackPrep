@@ -1,6 +1,6 @@
 import { assert, assertEquals, assertInstanceOf, assertRejects, assertThrows } from "@std/assert";
 import { z } from "zod";
-import { createOpenAIEmbeddingProvider, createOpenAIProvider, toStrictJsonSchema } from "./openai.ts";
+import { createOpenAIEmbeddingProvider, createOpenAIProvider, createOpenAIWebSearchProvider, toStrictJsonSchema } from "./openai.ts";
 import {
   AIAuthError,
   AIInvalidOutputError,
@@ -350,4 +350,74 @@ Deno.test("embedding dimensions must match exactly and be finite", () => {
     assertInstanceOf(err, AIInvalidOutputError);
     assertEquals(err.reason, "dimension_mismatch");
   }
+});
+
+
+function searchStub(respond: () => Response) {
+  const calls: { url: string; init: RequestInit }[] = [];
+  const logs: Record<string, unknown>[] = [];
+  const fetchFn = ((url: string, init: RequestInit) => {
+    calls.push({ url, init });
+    return Promise.resolve(respond());
+  }) as typeof fetch;
+  return { provider: createOpenAIWebSearchProvider({ apiKey: "sk-test-key", fetch: fetchFn, log: (e) => logs.push(e) }), calls, logs };
+}
+
+const searchRequest = { model: "gpt-search", system: "Find docs.", input: "Concept: http caching", maxToolCalls: 2 };
+
+function searchResponse(status = "completed") {
+  const text = "MDN explains Cache-Control. (mdn)\nThe RFC defines semantics. (rfc) See also https://evil.example/typed.";
+  const at = (marker: string) => ({ start_index: text.indexOf(marker), end_index: text.indexOf(marker) + marker.length });
+  return {
+    status,
+    output: [
+      { type: "web_search_call", id: "ws_1", status: "completed" },
+      { type: "web_search_call", id: "ws_2", status: "completed" },
+      {
+        type: "message",
+        content: [{
+          type: "output_text",
+          text,
+          annotations: [
+            { type: "url_citation", url: "https://developer.mozilla.org/en-US/docs/Web/HTTP/Caching", title: "HTTP caching - MDN", ...at("(mdn)") },
+            { type: "url_citation", url: "https://www.rfc-editor.org/rfc/rfc9111", title: "RFC 9111", ...at("(rfc)") },
+            { type: "file_citation", file_id: "f" },
+          ],
+        }],
+      },
+    ],
+    usage: { input_tokens: 300, output_tokens: 80 },
+  };
+}
+
+Deno.test("web search sends the web_search tool and returns only annotated citations", async () => {
+  const { provider, calls, logs } = searchStub(() => Response.json(searchResponse()));
+  const result = await provider.searchWeb(searchRequest);
+
+  const body = JSON.parse(calls[0].init.body as string);
+  assertEquals(body.tools, [{ type: "web_search" }]);
+  assertEquals([body.tool_choice, body.max_tool_calls, body.store], ["required", 2, false]);
+  assertEquals(body.input, [{ role: "user", content: "Concept: http caching" }]);
+  assertEquals((calls[0].init.headers as Record<string, string>).Authorization, "Bearer sk-test-key");
+
+  assertEquals(result.citations.map((c) => c.url), [
+    "https://developer.mozilla.org/en-US/docs/Web/HTTP/Caching",
+    "https://www.rfc-editor.org/rfc/rfc9111",
+  ], "URLs typed in the answer text are ignored");
+  assertEquals(result.citations[0].excerpt, "MDN explains Cache-Control.");
+  assertEquals(result.citations[1].excerpt, "The RFC defines semantics.");
+  assertEquals(result.searchCalls, 2);
+  assertEquals(result.usage, { input_tokens: 300, cached_input_tokens: 0, output_tokens: 80 });
+
+  const logged = JSON.stringify(logs);
+  assert(!logged.includes("http caching") && !logged.includes("https://"), "queries and URLs are never logged");
+});
+
+Deno.test("web search maps incomplete output and HTTP errors like structured calls", async () => {
+  await assertRejects(() => searchStub(() => Response.json(searchResponse("incomplete"))).provider.searchWeb(searchRequest), AIInvalidOutputError);
+  await assertRejects(
+    () => searchStub(() => Response.json({ error: { code: "invalid_api_key" } }, { status: 401 })).provider.searchWeb(searchRequest),
+    AIAuthError,
+  );
+  await assertRejects(() => searchStub(() => new Response("", { status: 503 })).provider.searchWeb(searchRequest), AIUnavailableError);
 });

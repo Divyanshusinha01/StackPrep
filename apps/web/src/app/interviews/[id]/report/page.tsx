@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { ArrowRight } from "lucide-react";
-import type { InterviewReportResponse, ReportErrorCode } from "@stackprep/shared";
+import { type InterviewReportResponse, isLearningReport, type ReportErrorCode } from "@stackprep/shared";
 import { AppShell } from "@/components/app/app-shell";
 import { InterviewStatusBadge } from "@/components/app/interview-status";
 import { InterviewTranscript } from "@/components/app/interview-transcript";
@@ -12,10 +12,12 @@ import { PageHeader } from "@/components/app/page-header";
 import { PrintButton } from "@/components/app/print-button";
 import { ReportPending } from "@/components/app/report-pending";
 import { ReportToc } from "@/components/app/report-toc";
-import { REPORT_SECTIONS, ReportView } from "@/components/app/report-view";
+import { ReportUpgradePending } from "@/components/app/report-upgrade-pending";
+import { ReportView, reportSections } from "@/components/app/report-view";
 import { SubmitButton } from "@/components/app/submit-button";
 import { TrackReportViewed } from "@/components/app/track-report-viewed";
 import { TranscriptDisclosure } from "@/components/app/transcript-disclosure";
+import { UpgradeReportButton } from "@/components/app/upgrade-report-button";
 import { Button } from "@/components/ui/button";
 import { type ApiResult, getInterview, getInterviewReport, getInterviewTranscript } from "@/lib/api";
 import { requireUser } from "@/lib/auth";
@@ -40,7 +42,7 @@ const FAILURE_MESSAGES: Record<ReportErrorCode, string> = {
   openai_quota_exhausted: "Your OpenAI account ran out of quota while generating the report.",
 };
 
-const TOC_ITEMS = [...REPORT_SECTIONS, { id: "transcript", label: "Full interview transcript" }];
+const TRANSCRIPT_TOC_ITEM = { id: "transcript", label: "Full interview transcript" };
 
 const dateTimeFormat = new Intl.DateTimeFormat("en", { dateStyle: "medium", timeStyle: "short", timeZone: "UTC" });
 
@@ -52,6 +54,52 @@ function RetryForm({ interviewId }: { interviewId: string }) {
         Retry report
       </SubmitButton>
     </form>
+  );
+}
+
+/** Offers, tracks or reports on regenerating a legacy report; nothing for a learning report. */
+function ReportUpgrade({
+  interviewId,
+  ready,
+  requestError,
+}: {
+  interviewId: string;
+  ready: Extract<InterviewReportResponse, { status: "ready" }>;
+  requestError: string | null;
+}) {
+  if (isLearningReport(ready.report)) {
+    return null;
+  }
+  if (ready.upgrade?.status === "pending") {
+    return <ReportUpgradePending />;
+  }
+  const failedCode = ready.upgrade?.status === "failed" ? ready.upgrade.error_code : null;
+  const keyCode = isOpenAIKeySetupCode(requestError)
+    ? requestError
+    : isOpenAIKeySetupCode(failedCode)
+      ? failedCode
+      : null;
+  return (
+    <div className="mb-8 space-y-3 print:hidden">
+      <Notice tone={failedCode || requestError ? "error" : "info"} className="mt-0">
+        <span className="min-w-0 flex-1">
+          {requestError !== null
+            ? "The report could not be regenerated. "
+            : failedCode
+              ? `The report could not be regenerated. ${FAILURE_MESSAGES[failedCode]} `
+              : "This report was generated before answer-by-answer reviews and learning resources were available. "}
+          {failedCode || requestError ? "Your current report is unchanged." : "You can regenerate it from the saved transcript."}
+        </span>
+        <UpgradeReportButton interviewId={interviewId} label={failedCode || requestError ? "Try again" : "Regenerate report"} />
+      </Notice>
+      {keyCode ? (
+        <OpenAIKeyNotice
+          code={keyCode}
+          returnTo={`/interviews/${interviewId}/report`}
+          detail="Your current report is unchanged. Fix the key, then come back and regenerate it."
+        />
+      ) : null}
+    </div>
   );
 }
 
@@ -187,11 +235,16 @@ export default async function InterviewReportPage({ params, searchParams }: Page
         <div className="lg:grid lg:grid-cols-[13rem_minmax(0,1fr)] lg:gap-12">
           <aside className="mb-8 lg:mb-0">
             <div className="lg:sticky lg:top-[calc(var(--app-header-h)+2rem)]">
-              <ReportToc items={TOC_ITEMS} />
+              <ReportToc items={[...reportSections(ready.report), TRANSCRIPT_TOC_ITEM]} />
             </div>
           </aside>
           <div className="min-w-0">
             <TrackReportViewed />
+            <ReportUpgrade
+              interviewId={interview.id}
+              ready={ready}
+              requestError={typeof query.upgrade_error === "string" ? query.upgrade_error : null}
+            />
             <ReportView report={ready.report} />
             {transcriptSection}
           </div>

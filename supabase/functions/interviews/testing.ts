@@ -254,6 +254,8 @@ export function createFakeIntegrityStore(now: () => Date): FakeIntegrityStore {
 export interface FakeReportJobs extends ReportJobStore {
   /** Interview ids passed to requestReportJob, in order. */
   requests: string[];
+  /** Interview ids passed to requestReportUpgradeJob, in order. */
+  upgrades: string[];
   failures: { jobId: string; code: string }[];
   eventIds: { jobId: string; eventId: string }[];
   /** Ids of jobs that are currently active (queued). */
@@ -267,12 +269,21 @@ export function createFakeReportJobs(): FakeReportJobs {
   let counter = 0;
   const jobs: FakeReportJobs = {
     requests: [],
+    upgrades: [],
     failures: [],
     eventIds: [],
     active: new Set(),
     skip: false,
     requestReportJob(interviewId) {
       jobs.requests.push(interviewId);
+      if (jobs.skip || jobs.active.has(interviewId)) {
+        return Promise.resolve(null);
+      }
+      jobs.active.add(interviewId);
+      return Promise.resolve(`job-${++counter}`);
+    },
+    requestReportUpgradeJob(interviewId) {
+      jobs.upgrades.push(interviewId);
       if (jobs.skip || jobs.active.has(interviewId)) {
         return Promise.resolve(null);
       }

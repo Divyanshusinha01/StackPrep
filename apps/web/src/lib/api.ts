@@ -206,6 +206,12 @@ export function retryInterviewReport(id: string) {
   });
 }
 
+export function upgradeInterviewReport(id: string) {
+  return functionRequest(`interviews/${encodeURIComponent(id)}/report/upgrade`, interviewReportResponseSchema, {
+    method: "POST",
+  });
+}
+
 export function deleteInterview(id: string) {
   return functionRequest(`interviews/${encodeURIComponent(id)}`, deleteInterviewResponseSchema, { method: "DELETE" });
 }

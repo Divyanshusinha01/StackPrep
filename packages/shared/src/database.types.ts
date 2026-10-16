@@ -1580,6 +1580,10 @@ export type Database = {
         Args: { p_interview_id: string; p_user_id: string }
         Returns: string
       }
+      request_report_upgrade: {
+        Args: { p_interview_id: string; p_user_id: string }
+        Returns: string
+      }
       reserve_integrity_check: {
         Args: { p_interview_id: string; p_user_id: string }
         Returns: {

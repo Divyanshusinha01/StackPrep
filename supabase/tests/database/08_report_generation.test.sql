@@ -2,7 +2,7 @@ begin;
 
 create extension if not exists pgtap with schema extensions;
 
-select plan(16);
+select plan(18);
 
 -- Fixtures ------------------------------------------------------------------
 
@@ -78,6 +78,16 @@ select is(
   (select content ->> 'executive_summary' from public.reports where interview_id = pg_temp.interview_id()),
   'v2',
   'one report row per interview, holding the latest content'
+);
+select lives_ok(
+  $$select public.save_report(pg_temp.interview_id(), (select id from first_job),
+    '{"report_version": 2, "executive_summary": "learning", "question_reviews": [], "concepts": []}')$$,
+  'a learning report (version 2) replaces the stored content'
+);
+select is(
+  (select count(*)::text || ':' || max(content ->> 'report_version') from public.reports where interview_id = pg_temp.interview_id()),
+  '1:2',
+  'a retried save of a learning report keeps a single row'
 );
 select is(
   (select status::text || ':' || progress from public.jobs where id = (select id from first_job)),

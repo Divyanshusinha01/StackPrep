@@ -11,9 +11,9 @@ import {
   interviewEventRequestSchema,
   interviewIdParamSchema,
   interviewPlanSchema,
+  isLearningReport,
   type InterviewReportResponse,
   interviewReportResponseSchema,
-  interviewReportSchema,
   type InterviewStatus,
   MAX_INTERVIEW_PAUSES,
   parseInterviewStreamCursor,
@@ -23,6 +23,7 @@ import {
   realtimeSessionResponseSchema,
   reportErrorCodeSchema,
   resumeInterviewResponseSchema,
+  storedInterviewReportSchema,
   toolCallRequestSchema,
   type ToolCallResponse,
   toolCallResponseSchema,
@@ -443,6 +444,7 @@ const EVENTS_ROUTE = /\/interviews\/([^/]+)\/events\/?$/;
 const TOOL_CALLS_ROUTE = /\/interviews\/([^/]+)\/tool-calls\/?$/;
 const REPORT_ROUTE = /\/interviews\/([^/]+)\/report\/?$/;
 const REPORT_RETRY_ROUTE = /\/interviews\/([^/]+)\/report\/retry\/?$/;
+const REPORT_UPGRADE_ROUTE = /\/interviews\/([^/]+)\/report\/upgrade\/?$/;
 const FRAMES_ROUTE = /\/interviews\/([^/]+)\/integrity\/frames\/?$/;
 const PAUSE_ROUTE = /\/interviews\/([^/]+)\/pause\/?$/;
 const RESUME_ROUTE = /\/interviews\/([^/]+)\/resume\/?$/;
@@ -497,8 +499,8 @@ export function createInterviewsHandler({
     return apiError(code, cors);
   }
 
-  function queueReport(interview: ReportInterview, userId: string) {
-    return requestReport({ jobs, store: reportJobs }, interview, userId);
+  function queueReport(interview: ReportInterview, userId: string, options?: { upgrade?: boolean }) {
+    return requestReport({ jobs, store: reportJobs }, interview, userId, options);
   }
 
   /**
@@ -538,9 +540,18 @@ export function createInterviewsHandler({
   async function reportStatus(userReader: InterviewReader, interviewId: string): Promise<InterviewReportResponse> {
     const [report, job] = await Promise.all([userReader.getReport(interviewId), userReader.getReportJob(interviewId)]);
     if (report) {
-      const parsed = interviewReportSchema.safeParse(report.content);
+      const parsed = storedInterviewReportSchema.safeParse(report.content);
       if (parsed.success) {
-        return { status: "ready", report: parsed.data, generated_at: report.generated_at };
+        const ready = { status: "ready" as const, report: parsed.data, generated_at: report.generated_at };
+        // A report job newer than a legacy report can only be a regeneration of it.
+        if (isLearningReport(parsed.data) || !job || job.status === "succeeded") {
+          return ready;
+        }
+        if (job.status === "queued" || job.status === "running") {
+          return { ...ready, upgrade: { status: "pending" } };
+        }
+        const code = reportErrorCodeSchema.safeParse(job.error_code);
+        return { ...ready, upgrade: { status: "failed", error_code: code.success ? code.data : "internal_error" } };
       }
       logGithubError(FN, null, { event: "report_content_invalid", code: "internal_error", interview_id: interviewId });
       return { status: "failed", error_code: "internal_error" };
@@ -611,6 +622,34 @@ export function createInterviewsHandler({
     const body = interviewReportResponseSchema.parse(
       outcome === "queued" ? { status: "pending" } : await reportStatus(userReader, interview.id),
     );
+    return json(body, { status: outcome === "queued" ? 202 : 200, headers: cors.headers });
+  }
+
+  /**
+   * Regenerates a legacy report as a learning report, on the owner's key. The legacy report stays
+   * readable until the new one is saved; a failed regeneration can be requested again.
+   */
+  async function upgradeReport(req: Request, id: string): Promise<Response> {
+    const loaded = await loadCompletedInterview(req, id);
+    if (!loaded.ok) {
+      return loaded.response;
+    }
+    const { userId, userReader, interview } = loaded;
+    const state = await reportStatus(userReader, interview.id);
+    if (state.status !== "ready" || isLearningReport(state.report) || state.upgrade?.status === "pending") {
+      return apiError("report_not_upgradable", cors);
+    }
+    try {
+      await openai.forUser(userId);
+    } catch (err) {
+      const keyError = keyErrorResponse(err, interview.id);
+      if (keyError) {
+        return keyError;
+      }
+      throw err;
+    }
+    const outcome = await queueReport(interview, userId, { upgrade: true });
+    const body = interviewReportResponseSchema.parse(await reportStatus(userReader, interview.id));
     return json(body, { status: outcome === "queued" ? 202 : 200, headers: cors.headers });
   }
 
@@ -1210,6 +1249,7 @@ export function createInterviewsHandler({
       { pattern: TOOL_CALLS_ROUTE, method: "POST", run: callTool },
       { pattern: REPORT_ROUTE, method: "GET", run: getReport },
       { pattern: REPORT_RETRY_ROUTE, method: "POST", run: retryReport },
+      { pattern: REPORT_UPGRADE_ROUTE, method: "POST", run: upgradeReport },
       { pattern: FRAMES_ROUTE, method: "POST", run: submitFrame },
       { pattern: PAUSE_ROUTE, method: "POST", run: pauseInterview },
       { pattern: RESUME_ROUTE, method: "POST", run: resumeInterview },

@@ -63,6 +63,39 @@ export interface EmbeddingProvider {
   embed(request: EmbeddingRequest): Promise<EmbeddingResult>;
 }
 
+export interface WebSearchRequest {
+  model: string;
+  /** Trusted instructions. */
+  system: string;
+  /** Must contain only generic, non-private search terms: it is sent to a web search. */
+  input: string;
+  /** Upper bound on web searches the model may run for this request. */
+  maxToolCalls: number;
+  maxOutputTokens?: number;
+  reasoningEffort?: ReasoningEffort;
+  timeoutMs?: number;
+}
+
+/** A source the search tool cited. URL and title come from the tool's annotation, never from model text. */
+export interface WebCitation {
+  url: string;
+  title: string;
+  /** The answer text immediately before the citation, which describes the source. */
+  excerpt: string;
+}
+
+export interface WebSearchResult {
+  citations: WebCitation[];
+  /** Web searches the tool actually ran (each is billed by the provider). */
+  searchCalls: number;
+  usage: AIUsage;
+}
+
+/** Web search through the model provider, kept separate so text-generation fakes need not implement it. */
+export interface WebSearchProvider {
+  searchWeb(request: WebSearchRequest): Promise<WebSearchResult>;
+}
+
 export class AIError extends Error {
   override name = "AIError";
 }

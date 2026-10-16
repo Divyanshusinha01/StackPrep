@@ -92,6 +92,10 @@ function failingClients(error: () => Error) {
         seenKeys.push(apiKey);
         return { embed: () => Promise.reject(error()) };
       },
+      search(apiKey: string) {
+        seenKeys.push(apiKey);
+        return { searchWeb: () => Promise.reject(error()) };
+      },
       realtime(apiKey: string) {
         seenKeys.push(apiKey);
         return {
@@ -117,10 +121,21 @@ Deno.test("forUser builds clients with the owner's key and marks key failures by
     const { factories, seenKeys } = failingClients(error);
     const clients = await createOpenAIClients(createOpenAICredentialResolver(store, keyring), factories).forUser(USER);
     assertEquals(clients.credentialId, CREDENTIAL);
-    assertEquals(seenKeys, [API_KEY, API_KEY, API_KEY]);
+    assertEquals(seenKeys, [API_KEY, API_KEY, API_KEY, API_KEY]);
     await assertRejects(() => clients.ai.generateStructured(request));
     assertEquals(marks, [{ userId: USER, credentialId: CREDENTIAL, status, code }]);
   }
+});
+
+Deno.test("a key failure during web search marks the key like any other call", async () => {
+  const { keyring, store, marks } = await fakeStore();
+  const { factories } = failingClients(() => new AIAuthError());
+  const clients = await createOpenAIClients(createOpenAICredentialResolver(store, keyring), factories).forUser(USER);
+  await assertRejects(
+    () => clients.search.searchWeb({ model: "m", system: "s", input: "Concept: x", maxToolCalls: 1 }),
+    AIAuthError,
+  );
+  assertEquals(marks, [{ userId: USER, credentialId: CREDENTIAL, status: "invalid", code: "invalid_api_key" }]);
 });
 
 Deno.test("rate limits and outages do not change the key status", async () => {

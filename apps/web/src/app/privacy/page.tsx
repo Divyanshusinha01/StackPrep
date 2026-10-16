@@ -13,7 +13,7 @@ export const metadata: Metadata = {
 const PROCESSORS = [
   ["Supabase", "Database, sign-in and backend functions. Stores your account, workspaces, transcripts and reports."],
   ["Vercel", "Hosts the web app and provides cookieless, aggregate page analytics."],
-  ["OpenAI", "Runs the voice interviewer, transcribes your speech, analyzes camera frames and repository context, and writes reports. All of these requests use your own OpenAI API key, so they fall under your OpenAI account and its terms."],
+  ["OpenAI", "Runs the voice interviewer, transcribes your speech, analyzes camera frames and repository context, writes reports, and searches the web for learning resources (search queries contain only general technical topics, never your code, repository names or transcript). All of these requests use your own OpenAI API key, so they fall under your OpenAI account and its terms."],
   ["Inngest", "Runs background jobs (repository analysis, interview planning, reports)."],
   ["GitHub", "Sign-in and read-only repository access through the StackPrep GitHub App."],
   ["Sentry", "Error monitoring, with personal data scrubbed before sending."],

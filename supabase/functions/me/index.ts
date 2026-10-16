@@ -32,6 +32,7 @@ Deno.serve(withSentry(
         env.OPENAI_EVALUATION_MODEL,
         env.OPENAI_REPORT_MODEL,
         env.OPENAI_VISION_MODEL,
+        ...(env.OPENAI_REPORT_SEARCH_MODEL ? [env.OPENAI_REPORT_SEARCH_MODEL] : []),
       ],
       embeddingModel: env.OPENAI_EMBEDDING_MODEL,
       transcriptionModel: env.OPENAI_REALTIME_TRANSCRIPTION_MODEL,

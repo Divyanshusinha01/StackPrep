@@ -1,6 +1,7 @@
 import { assert, assertEquals } from "@std/assert";
-import type { InterviewReport } from "@stackprep/shared";
 import type { AnswerEvaluation } from "../../../../supabase/functions/interviews/tools/evaluate-answer.ts";
+import type { LearningReportModelOutput } from "../../../../supabase/functions/inngest/report-learning.ts";
+import { REPORT_SCHEMA_NAME } from "../../../../supabase/functions/inngest/report.ts";
 import { createFakeAIProvider, type FakeAIProvider } from "../../../../supabase/functions/_shared/testing.ts";
 import { createFileRecorder } from "../../../core/recording.ts";
 import type { SuiteResult } from "../../../core/types.ts";
@@ -83,9 +84,9 @@ async function scriptedModel(script: Script = {}): Promise<FakeAIProvider> {
         };
         return evaluation;
       }
-      case "interview_report": {
+      case REPORT_SCHEMA_NAME: {
         const c = data.cases.find((x) => request.input.includes(`Candidate: ${x.answer}`))!;
-        const report: InterviewReport = {
+        const report: LearningReportModelOutput = {
           executive_summary: "The candidate answered one question about their repository.",
           categories: [{ name: "Security", rating: "developing", narrative: "One answer was discussed." }],
           strengths: [],
@@ -93,7 +94,10 @@ async function scriptedModel(script: Script = {}): Promise<FakeAIProvider> {
           interview_evidence: [],
           repository_evidence: [{ path: c.rubric.code.path, note: script.report === "location_only" ? "Discussed during the interview." : identifying(c) }],
           areas_to_improve: [],
-          struggled_questions: [],
+          question_reviews: [],
+          concepts: [],
+          learning_plan: [],
+          final_recommendations: [],
         };
         return report;
       }
@@ -233,7 +237,7 @@ Deno.test("recorded once, the suite replays identically with no provider; record
     // 23 evaluations, 15 reports, 30 + 30 calibration judgements and 15 conflict judgements. The scripted focus
     // cues are the neutral calibration cues, so their disclosure judgements are the same recordings.
     const calls = (name: string) => live.calls.filter((c) => c.schemaName === name).length;
-    assertEquals([calls("answer_evaluation"), calls("interview_report"), calls(CONFLICT_SCHEMA_NAME), calls(DISCLOSURE_SCHEMA_NAME)], [23, 15, 45, 30]);
+    assertEquals([calls("answer_evaluation"), calls(REPORT_SCHEMA_NAME), calls(CONFLICT_SCHEMA_NAME), calls(DISCLOSURE_SCHEMA_NAME)], [23, 15, 45, 30]);
     assertEquals([...Deno.readDirSync(`${dir}/${EVALUATION_SITE}`)].length, 23);
     assertEquals([...Deno.readDirSync(`${dir}/${REPORT_SITE}`)].length, 15);
 

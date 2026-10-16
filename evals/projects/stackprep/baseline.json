@@ -1204,6 +1204,140 @@
       "samples": 10,
       "seed": 1,
       "user": "Divyanshu Sinha <div.sinhaofficial@gmail.com>"
+    },
+    {
+      "allowRegression": false,
+      "config": {
+        "contradiction": {
+          "floor": {
+            "n": 20,
+            "precision": 0.8,
+            "recall": 0.8
+          },
+          "judge": {
+            "model": "gpt-6.1-sol",
+            "reasoningEffort": "medium"
+          }
+        },
+        "embedding": {
+          "decimals": 5,
+          "dimensions": 1536,
+          "model": "text-embedding-3-small"
+        },
+        "pipeline": {
+          "evaluation": {
+            "model": "gpt-6-luna",
+            "reasoningEffort": "low"
+          },
+          "planning": {
+            "model": "gpt-6.1-sol",
+            "reasoningEffort": "medium"
+          },
+          "report": {
+            "model": "gpt-6-luna",
+            "reasoningEffort": "low"
+          }
+        },
+        "retrieval": {
+          "ks": [
+            1,
+            3,
+            5
+          ],
+          "limit": 5
+        },
+        "support": {
+          "floor": {
+            "n": 30,
+            "precision": 0.8,
+            "recall": 0.8
+          },
+          "judge": {
+            "model": "gpt-6.1-sol",
+            "reasoningEffort": "medium"
+          }
+        }
+      },
+      "date": "2026-10-16T14:52:41.530Z",
+      "gitDirty": true,
+      "gitSha": "794de5557eb9bd85962b2d5bc8ce2e41dea607a8",
+      "metrics": [
+        {
+          "after": 0.13333333333333333,
+          "before": 0,
+          "delta": 0.13333333333333333,
+          "id": "contradiction.synthetic.report.conflict_anchored",
+          "status": "improvement"
+        }
+      ],
+      "mode": "replay",
+      "pins": {
+        "dataset.claims.stackprep-snapshot": {
+          "hash": "1ee33246e784702f39dd58d27708dbbb5cfe6b6217ed7e9ca5834322958d642e",
+          "kind": "dataset",
+          "version": 1
+        },
+        "dataset.claims.synthetic": {
+          "hash": "81e6ea0d326cc43c5e3aac5a0192e0bc1c641909ab758e78b3b354d84f9150ea",
+          "kind": "dataset",
+          "version": 1
+        },
+        "dataset.consistency.stackprep-snapshot": {
+          "hash": "0d58b5e6bd41cebc845917ef07f2894c8f069bab93e021621bb24caaf7be8227",
+          "kind": "dataset",
+          "version": 1
+        },
+        "dataset.consistency.synthetic": {
+          "hash": "74ca38f97602dd8ed0a09ec0e12a99e20bf2404adeb55ceaf59f8accac0f5035",
+          "kind": "dataset",
+          "version": 1
+        },
+        "dataset.contradiction.synthetic": {
+          "hash": "fe9a8e3b272af01d4a530b734cfd1bdd35a137b54b4320f89edb8811f31ba718",
+          "kind": "dataset",
+          "version": 1
+        },
+        "dataset.retrieval.stackprep-snapshot": {
+          "hash": "278b01455baada4a947a175b0fcbc7308615907eca7dd19046e7f9d25ed7010c",
+          "kind": "dataset",
+          "version": 1
+        },
+        "dataset.retrieval.synthetic": {
+          "hash": "09b7aa8172721673519f000e98e6eaf0e45fdc9d2db36ac708c1cccf260af5d1",
+          "kind": "dataset",
+          "version": 1
+        },
+        "dataset.sessions.stackprep-snapshot": {
+          "hash": "d18d966c3808841e73cc15da11d08dd362fcc0ec68105995ecc3bb563ea34fb5",
+          "kind": "dataset",
+          "version": 1
+        },
+        "dataset.sessions.synthetic": {
+          "hash": "1911adc7586517c5a270008ccc1e6249a231ebbd59ec3198c7fe2a8c13e7bdd2",
+          "kind": "dataset",
+          "version": 1
+        },
+        "recordings": {
+          "hash": "6a2ef2a67c7467a7115c4d7b62d1a3b92e571befe475f6e20944034150d54407",
+          "kind": "recordings",
+          "version": 3
+        },
+        "stackprep-snapshot": {
+          "hash": "f33851e8acae609fe53d36cb43e162e54942f1d01c3306ca2210c65e492adff8",
+          "kind": "corpus",
+          "version": 1
+        },
+        "synthetic": {
+          "hash": "c1c26c9b9d6ed1939e39e48e8a5652e0f2dfa8cb1c7a338416ece481fc3ebd01",
+          "kind": "corpus",
+          "version": 1
+        }
+      },
+      "reason": "Learning-plan report schema anchors more conflicts; re-recorded report outputs",
+      "recordingSetHash": "5ace05b4ec09cdf1ab24b7ec09fe3a65ba031e3b1c1fed9685bafd7853a23036",
+      "samples": 10,
+      "seed": 1,
+      "user": "Divyanshu Sinha <192967679+Divyanshusinha01@users.noreply.github.com>"
     }
   ],
   "format": 1,
@@ -1857,10 +1991,10 @@
       "value": 1
     },
     "contradiction.synthetic.report.conflict_anchored": {
-      "approval": 0,
+      "approval": 1,
       "ci": [
         0,
-        0
+        0.3333333333333333
       ],
       "corpus": "synthetic",
       "direction": "higher_is_better",
@@ -1874,7 +2008,7 @@
       },
       "provenance": "recorded_live",
       "suite": "contradiction-synthetic",
-      "value": 0
+      "value": 0.13333333333333333
     },
     "contradiction.synthetic.report.conflict_identified": {
       "approval": 0,

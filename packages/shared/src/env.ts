@@ -64,6 +64,8 @@ export const openAIModelEnvSchema = z.object({
   OPENAI_EMBEDDING_MODEL: secret.default("text-embedding-3-small"),
   /** Writes the post-interview report. Defaults to the evaluation model; set separately to resize either. */
   OPENAI_REPORT_MODEL: secret.default("gpt-6-luna"),
+  /** Finds report learning resources with the Responses `web_search` tool; unset uses the report model. */
+  OPENAI_REPORT_SEARCH_MODEL: secret.optional(),
   /**
    * Reasoning effort per task; hidden reasoning tokens dominate latency. "default" omits the
    * parameter for models that do not accept it. Deep analysis uses the planning effort.
