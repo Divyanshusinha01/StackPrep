@@ -118,7 +118,7 @@ function setup({
   pauseResult = { status: "paused", pauseCount: 1, pausedAt: NOW.toISOString(), disconnectedSequence: null },
   resumeResult = "resumed",
   endResult = { status: "completed", disconnectedSequence: null },
-  deleteResult = "deleted",
+  deleteResult = { status: "deleted", disconnectedSequence: null },
   keyError,
 }: Setup = {}) {
   const clock = { now: NOW };
@@ -1340,17 +1340,40 @@ Deno.test("delete: an ended interview is deleted", async () => {
 });
 
 Deno.test("delete: repeating it answers the same way", async () => {
-  const { handler } = setup({ interview: { ...interviewRow, status: "terminated" }, deleteResult: "already_deleted" });
+  const { handler } = setup({
+    interview: { ...interviewRow, status: "terminated" },
+    deleteResult: { status: "already_deleted", disconnectedSequence: null },
+  });
   const res = await handler(post(`/interviews/${INTERVIEW_ID}/`, "Bearer valid", "DELETE"));
   assertEquals(res.status, 200);
   assertEquals(deleteInterviewResponseSchema.parse(await res.json()), { status: "deleted" });
 });
 
-Deno.test("delete: an interview in progress or paused is refused", async () => {
-  for (const status of ["in_progress", "paused"] as const) {
-    const { handler } = setup({ interview: { ...interviewRow, status }, deleteResult: "not_ended" });
-    await expectError(await handler(post(`/interviews/${INTERVIEW_ID}`, "Bearer valid", "DELETE")), 409, "interview_not_ended");
+Deno.test("delete: a pending, in-progress or paused interview is deleted without a report", async () => {
+  for (const status of ["created", "in_progress", "paused"] as const) {
+    const { handler, pauseCalls, reportJobs, usage } = setup({ interview: { ...interviewRow, status } });
+    const res = await handler(post(`/interviews/${INTERVIEW_ID}`, "Bearer valid", "DELETE"));
+    assertEquals(res.status, 200);
+    assertEquals(deleteInterviewResponseSchema.parse(await res.json()), { status: "deleted" });
+    assertEquals(pauseCalls, [{ op: "delete", interviewId: INTERVIEW_ID, userId }]);
+    assertEquals(reportJobs.requests, []);
+    assertEquals(usage, []);
   }
+});
+
+Deno.test("delete: closing an open voice segment writes its duration estimates", async () => {
+  const segmentEvents: VoiceSegmentEvent[] = [
+    { id: CONNECTED_ID, sequence: 6, event_type: "connected", occurred_at: at(-90) },
+    { id: "eeeeeeee-0000-4000-8000-000000000004", sequence: 7, event_type: "disconnected", occurred_at: at(0) },
+  ];
+  const { handler, usage, reportJobs } = setup({
+    interview: inProgress,
+    segmentEvents,
+    deleteResult: { status: "deleted", disconnectedSequence: 7 },
+  });
+  assertEquals((await handler(post(`/interviews/${INTERVIEW_ID}`, "Bearer valid", "DELETE"))).status, 200);
+  assertEquals(usage.map((u) => [u.voiceSegmentEventId, u.audioSeconds]), [[CONNECTED_ID, 90], [CONNECTED_ID, 90]]);
+  assertEquals(reportJobs.requests, []);
 });
 
 Deno.test("delete: auth, ownership, and method are checked before deleting", async () => {
@@ -1368,7 +1391,7 @@ Deno.test("delete: auth, ownership, and method are checked before deleting", asy
   );
   assertEquals(pauseCalls, []);
 
-  const raced = setup({ interview: completed, deleteResult: "not_found" });
+  const raced = setup({ interview: completed, deleteResult: { status: "not_found", disconnectedSequence: null } });
   await expectError(await raced.handler(post(`/interviews/${INTERVIEW_ID}`, "Bearer valid", "DELETE")), 404, "interview_not_found");
 });
 

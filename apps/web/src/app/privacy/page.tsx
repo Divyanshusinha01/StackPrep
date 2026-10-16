@@ -111,7 +111,7 @@ export default function PrivacyPage() {
       <h2 id="deletion">Deleting your data</h2>
       <ul>
         <li>
-          <strong>Interviews.</strong> You can delete an ended interview from your history. It disappears
+          <strong>Interviews.</strong> You can delete any interview from your history; one that has not ended is ended first, without a report. It disappears
           from your workspace, and its transcript and report are no longer accessible to you. A minimal
           record is kept so it still counts toward the 5-interviews-per-24-hours limit and keeps its
           interview number, and it can still inform the coverage of later interviews in that workspace.
