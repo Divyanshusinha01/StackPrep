@@ -9,6 +9,7 @@ import {
   type InterviewHistoryItem,
   type InterviewPlanning,
   type InterviewStatus,
+  type OpenAIKeyStatus,
   type PlanningErrorCode,
   repositoryHtmlUrl,
   retryAnalysisResponseSchema,
@@ -20,6 +21,8 @@ import {
   type WorkspaceStatus,
 } from "@stackprep/shared";
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { keyStatusApiErrorCode } from "../_shared/ai/clients.ts";
+import { createOpenAICredentialStore } from "../_shared/ai/credentials.ts";
 import type { Authenticate } from "../_shared/auth.ts";
 import type { GithubApp, GithubRepo } from "../_shared/github-app.ts";
 import { apiError, githubErrorResponse, logGithubError } from "../_shared/github-errors.ts";
@@ -124,6 +127,8 @@ export interface WorkspaceWriters {
    */
   startInterview(userId: string, workspaceId: string, commitSha: string): Promise<StartInterviewResult>;
   failPlanningJob(userId: string, jobId: string, code: PlanningErrorCode, message: string): Promise<void>;
+  /** Status of the user's stored OpenAI key; null when none is stored. */
+  getOpenAIKeyStatus(userId: string): Promise<OpenAIKeyStatus | null>;
 }
 
 export interface WorkspacesHandlerOptions {
@@ -207,6 +212,8 @@ const WORKSPACE_NOT_READY_SQLSTATE = "55000";
 const INTERVIEW_LIMIT_SQLSTATE = "P0429";
 
 export function createWorkspaceWriters(serviceClient: SupabaseClient): WorkspaceWriters {
+  const keyStatuses = createOpenAICredentialStore(serviceClient);
+
   async function run<T>(
     action: string,
     op: PromiseLike<{ data: T | null; error: { message: string; code?: string } | null }>,
@@ -336,6 +343,9 @@ export function createWorkspaceWriters(serviceClient: SupabaseClient): Workspace
         throw new Error(`Failed to record planning failure: ${error.message}`);
       }
     },
+    async getOpenAIKeyStatus(userId) {
+      return (await keyStatuses.getStatus(userId))?.status ?? null;
+    },
     async setJobEventId(userId, jobId, eventId) {
       const { error } = await serviceClient
         .from("jobs")
@@ -390,6 +400,12 @@ export function createWorkspacesHandler({
   jobs,
 }: WorkspacesHandlerOptions) {
   const cors = createCors(webOrigin, ["GET", "POST"]);
+
+  /** Analysis, planning, and embeddings run on the user's own key, so nothing is queued without one. */
+  async function keyGate(userId: string): Promise<Response | null> {
+    const code = keyStatusApiErrorCode(await writers.getOpenAIKeyStatus(userId));
+    return code ? apiError(code, cors) : null;
+  }
 
   function respondWorkspace(row: WorkspaceRow, created: boolean): Response {
     const body = createWorkspaceResponseSchema.parse({ workspace: toWorkspace(row), created });
@@ -505,6 +521,11 @@ export function createWorkspacesHandler({
         }
       }
       return respondWorkspace(existing, false);
+    }
+
+    const blocked = await keyGate(userId);
+    if (blocked) {
+      return blocked;
     }
 
     let commitSha: string;
@@ -628,6 +649,10 @@ export function createWorkspacesHandler({
     if (row.status !== "ready" || row.indexed_commit_sha === null) {
       return apiError("workspace_not_ready", cors);
     }
+    const blocked = await keyGate(ctx.user.id);
+    if (blocked) {
+      return blocked;
+    }
 
     const commitSha = row.indexed_commit_sha;
     const result = await writers.startInterview(ctx.user.id, row.id, commitSha);
@@ -680,6 +705,10 @@ export function createWorkspacesHandler({
     }
     if (conn.suspended_at !== null) {
       return apiError("installation_suspended", cors);
+    }
+    const blocked = await keyGate(ctx.user.id);
+    if (blocked) {
+      return blocked;
     }
 
     const jobId = await writers.retryAnalysis(ctx.user.id, row.id);

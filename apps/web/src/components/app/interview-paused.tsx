@@ -5,6 +5,7 @@ import { Loader2, Pause } from "lucide-react";
 import { NO_REPORT_MESSAGE } from "@/components/app/end-interview";
 import { type EndControl, useEndInterviewConfirm } from "@/components/app/end-interview-control";
 import { Notice } from "@/components/app/notice";
+import { CTA_GLOW } from "@/components/landing/constants";
 import { Button } from "@/components/ui/button";
 
 const timeFormat = new Intl.DateTimeFormat("en", { timeStyle: "short" });
@@ -40,8 +41,8 @@ export function InterviewPaused({
 }) {
   const ending = useEndInterviewConfirm(endControl, busy);
   return (
-    <section aria-labelledby="interview-paused" className="mx-auto max-w-2xl rounded-xl border bg-panel/60 p-6 sm:p-8">
-      <span aria-hidden className="grid size-11 place-items-center rounded-full bg-amber-500/15 text-amber-300">
+    <section aria-labelledby="interview-paused" className="surface-inset mx-auto max-w-2xl rounded-xl border bg-panel/60 p-6 sm:p-8">
+      <span aria-hidden className="grid size-11 place-items-center rounded-full bg-warning/15 text-warning">
         <Pause className="size-5" />
       </span>
       <h2 id="interview-paused" className="mt-4 font-display text-lg font-semibold">
@@ -53,7 +54,7 @@ export function InterviewPaused({
           {formatResumeBy(resumeBy)}
         </span>
         , or the interview ends. You can close this
-        page and come back from your interview history.
+        page and come back from your interview history. Resuming starts with a quick camera and microphone check.
       </p>
       <p className="mt-1 text-xs text-muted-foreground">
         {pausesLeft === 0 ? "This was your last pause." : `${pausesLeft} more ${pausesLeft === 1 ? "pause" : "pauses"} left.`}
@@ -63,7 +64,7 @@ export function InterviewPaused({
       {ending.panel}
       <div className="mt-6 flex flex-wrap gap-3">
         {ended ? null : (
-          <Button onClick={onResume} disabled={busy || ending.confirming}>
+          <Button onClick={onResume} disabled={busy || ending.confirming} className={CTA_GLOW}>
             {busy && !endControl?.busy ? <Loader2 className="size-4 motion-safe:animate-spin" aria-hidden /> : null}
             Resume interview
           </Button>

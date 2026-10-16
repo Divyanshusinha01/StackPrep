@@ -70,6 +70,8 @@ export function InterviewSession({
   const [pauseBusy, setPauseBusy] = useState(false);
   const [pauseError, setPauseError] = useState<string | null>(null);
   const [pauseEnded, setPauseEnded] = useState(false);
+  /** Resuming from an in-room pause goes back through the camera and microphone check. */
+  const [recheckingDevices, setRecheckingDevices] = useState(false);
   const [endBusy, setEndBusy] = useState(false);
   const [endError, setEndError] = useState<string | null>(null);
   /** The candidate ended the interview before any answer was evaluated. */
@@ -153,6 +155,7 @@ export function InterviewSession({
     }
     closeForPause();
     release();
+    setRecheckingDevices(false);
     setPausesLeft(result.body.pauses_left);
     setResumeBy(result.body.resume_by);
   }, [interviewId, closeForPause, release]);
@@ -171,6 +174,7 @@ export function InterviewSession({
       return;
     }
     setResumeBy(null);
+    setRecheckingDevices(false);
     if (sessionPaused) {
       reopenAfterPause();
     } else {
@@ -208,11 +212,12 @@ export function InterviewSession({
     pauseEnded || endedWithoutReport ? null : { busy: endBusy, error: endError, onEnd: () => void endByCandidate() };
 
   if (onPausedScreen && resumeBy) {
-    if (!entered) {
+    if (!entered || recheckingDevices) {
       return (
         <InterviewLobby
           planning={planning}
           media={media}
+          workspaceId={workspaceId}
           resume={{
             resumeBy,
             busy: pauseBusy || endBusy,
@@ -223,7 +228,9 @@ export function InterviewSession({
             workspaceId,
           }}
           onEnter={() => {
-            track("interview_started", { resumed: true });
+            if (!entered) {
+              track("interview_started", { resumed: true });
+            }
             void resume();
           }}
         />
@@ -239,7 +246,10 @@ export function InterviewSession({
         endedWithoutReport={endedWithoutReport}
         endControl={pausedEnd}
         workspaceId={workspaceId}
-        onResume={() => void resume()}
+        onResume={() => {
+          setPauseError(null);
+          setRecheckingDevices(true);
+        }}
       />
     );
   }
@@ -249,6 +259,7 @@ export function InterviewSession({
       <InterviewLobby
         planning={planning}
         media={media}
+        workspaceId={workspaceId}
         onEnter={() => {
           track("interview_started", { resumed: false });
           setEntered(true);
@@ -275,10 +286,12 @@ export function InterviewSession({
       resumed={voice.resumed}
       warning={integrity.warning}
       termination={termination}
+      interviewId={interviewId}
       workspaceId={workspaceId}
       examining={voice.examining}
       clock={voice.clock}
       transcript={voice.transcript}
+      syncError={voice.syncError}
       stop={canStop ? { pausesLeft, busy: pauseBusy, error: pauseError, onStop: () => void stopInterview() } : null}
       endControl={canEnd ? { busy: endBusy, error: endError, onEnd: () => void endByCandidate() } : null}
       onReconnect={voice.reconnect}

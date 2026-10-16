@@ -11,7 +11,7 @@ export const metadata: Metadata = {
 
 export default function TermsPage() {
   return (
-    <LegalLayout title="Terms of Service" updated="October 14, 2026">
+    <LegalLayout title="Terms of Service" updated="October 16, 2026">
       <p>
         These terms apply when you use the hosted StackPrep service. By signing in, you agree to them and to
         the <Link href="/privacy">Privacy Policy</Link>.
@@ -22,6 +22,11 @@ export default function TermsPage() {
         StackPrep analyzes a GitHub repository you choose, interviews you about it by voice, and writes a
         report. It is a practice and self-assessment tool, provided free of charge and under active
         development. Features may change or be removed.
+      </p>
+      <p>
+        AI features run on your own OpenAI API key. OpenAI bills you directly for that usage under your
+        agreement with OpenAI; StackPrep does not pay for, mark up, or refund it. Set usage limits on your
+        OpenAI account if you want a spending cap.
       </p>
 
       <h2>Your account and repositories</h2>

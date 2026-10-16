@@ -47,7 +47,7 @@ export function InterviewReport() {
             >
               Right after the interview, get a written evaluation of each area: strengths,
               knowledge gaps, and where to dig in next, tied back to your answers and your
-              repository. No overall score. No ranking.
+              repository, generated with your OpenAI key. No overall score. No ranking.
             </SectionHeading>
             <blockquote className="border-l-2 border-brand/40 pl-5 text-base leading-relaxed text-pretty text-muted-foreground italic lg:mt-8 lg:text-lg">
               “Strong on the request lifecycle and auth design—the async failure paths are where

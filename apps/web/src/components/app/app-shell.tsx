@@ -8,6 +8,8 @@ import { Wordmark } from "@/components/landing/wordmark";
 type AppShellProps = {
   /** Null while a route is loading; the account menu shows a placeholder. */
   user: User | null;
+  /** The saved OpenAI key is missing or no longer works; flags the account menu. */
+  keyAlert?: boolean;
   children: React.ReactNode;
 };
 
@@ -22,7 +24,7 @@ function displayName(user: User): string {
   return user.email ?? "Signed in";
 }
 
-export function AppShell({ user, children }: AppShellProps) {
+export function AppShell({ user, keyAlert = false, children }: AppShellProps) {
   return (
     <div className="flex min-h-dvh flex-col">
       <a
@@ -40,7 +42,7 @@ export function AppShell({ user, children }: AppShellProps) {
           <AppNav className="hidden sm:flex sm:h-full" />
           <div className="ml-auto flex items-center gap-3">
             {user ? (
-              <UserMenu name={displayName(user)} email={user.email ?? null} />
+              <UserMenu name={displayName(user)} email={user.email ?? null} keyAlert={keyAlert} />
             ) : (
               <Skeleton className="size-7 rounded-full" />
             )}

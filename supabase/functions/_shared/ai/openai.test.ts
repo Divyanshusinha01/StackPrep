@@ -2,7 +2,10 @@ import { assert, assertEquals, assertInstanceOf, assertRejects, assertThrows } f
 import { z } from "zod";
 import { createOpenAIEmbeddingProvider, createOpenAIProvider, toStrictJsonSchema } from "./openai.ts";
 import {
+  AIAuthError,
   AIInvalidOutputError,
+  AIPermissionError,
+  AIQuotaError,
   AIRateLimitedError,
   AIRequestError,
   AIUnavailableError,
@@ -190,6 +193,46 @@ Deno.test("maps HTTP failures to typed errors without exposing bodies", async ()
   assertInstanceOf(e3, AIRequestError);
   assertEquals(e3.status, 400);
   assert(!e3.message.includes("invalid schema"));
+});
+
+function openAIError(status: number, error: Record<string, unknown>, headers: Record<string, string> = {}) {
+  return () => Response.json({ error: { message: "Incorrect API key provided: sk-test-key", ...error } }, { status, headers });
+}
+
+Deno.test("classifies key failures from the error code and type only", async () => {
+  const auth = await assertRejects(() => stub(openAIError(401, { code: "invalid_api_key" })).provider.generateStructured(request));
+  assertInstanceOf(auth, AIAuthError);
+  assertInstanceOf(auth, AIRequestError);
+
+  const quota = await assertRejects(() =>
+    stub(openAIError(429, { code: "insufficient_quota", type: "insufficient_quota" })).provider.generateStructured(request)
+  );
+  assertInstanceOf(quota, AIQuotaError);
+
+  const denied = await assertRejects(() => stub(openAIError(403, { code: null })).provider.generateStructured(request));
+  assertInstanceOf(denied, AIPermissionError);
+  assertEquals(denied.reason, "permission_denied");
+
+  const missingModel = await assertRejects(() => stub(openAIError(404, { code: "model_not_found" })).provider.generateStructured(request));
+  assertInstanceOf(missingModel, AIPermissionError);
+  assertEquals(missingModel.reason, "model_unavailable");
+
+  const limited = await assertRejects(() =>
+    stub(openAIError(429, { code: "rate_limit_exceeded" }, { "Retry-After": "4" })).provider.generateStructured(request)
+  );
+  assertInstanceOf(limited, AIRateLimitedError);
+  assertEquals(limited.retryAfterSeconds, 4);
+
+  for (const err of [auth, quota, denied, missingModel, limited]) {
+    assert(!err.message.includes("sk-test-key"));
+    assert(!err.message.includes("Incorrect"));
+  }
+});
+
+Deno.test("embedding key failures use the same taxonomy", async () => {
+  const fetchFn = (() => Promise.resolve(openAIError(401, { code: "invalid_api_key" })())) as typeof fetch;
+  const provider = createOpenAIEmbeddingProvider({ apiKey: "sk-test-key", fetch: fetchFn, log: () => {} });
+  assertInstanceOf(await assertRejects(() => provider.embed({ model: "e", input: ["x"] })), AIAuthError);
 });
 
 Deno.test("network errors and timeouts are unavailable", async () => {

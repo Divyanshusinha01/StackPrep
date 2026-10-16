@@ -33,6 +33,12 @@ export const apiErrorCodeSchema = z.enum([
   "pause_expired",
   "voice_not_connected",
   "invalid_cursor",
+  "openai_key_required",
+  "openai_key_invalid",
+  "openai_key_permission_denied",
+  "openai_quota_exhausted",
+  "openai_rate_limited",
+  "openai_unavailable",
   "rate_limited",
   "github_rate_limited",
   "github_unavailable",
@@ -45,6 +51,8 @@ export const apiErrorSchema = z.object({
   code: apiErrorCodeSchema,
   /** Only with `interview_limit_reached`: when the next interview can be started. */
   next_available_at: z.iso.datetime({ offset: true }).optional(),
+  /** Only with `openai_key_permission_denied` from key validation: the model the key cannot use. */
+  model: z.string().min(1).max(100).optional(),
 });
 
 // POST /github/connect ---------------------------------------------------------

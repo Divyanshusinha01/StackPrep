@@ -39,7 +39,7 @@ export function ScrollSpine() {
               aria-hidden
             />
             <span className="flex flex-col leading-none opacity-0 transition-opacity duration-200 group-hover:opacity-100 group-focus-visible:opacity-100">
-              <span className="font-mono text-[10px] text-brand">{step}</span>
+              <span className="font-mono text-[11px] text-brand">{step}</span>
               <span className="text-[11px]">{label}</span>
             </span>
           </a>

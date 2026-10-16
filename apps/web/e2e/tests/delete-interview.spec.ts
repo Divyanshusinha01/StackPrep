@@ -24,16 +24,18 @@ test("an ended interview can be deleted from history and its report is no longer
     .filter({ hasText: `Interview ${interview.interviewNumber}` });
   const deleteButton = row.getByRole("button", { name: `Delete Interview ${interview.interviewNumber}` });
 
-  // Dismissing the confirm keeps the interview.
-  page.once("dialog", (dialog) => dialog.dismiss());
+  // Cancelling the confirmation keeps the interview.
+  const confirm = page.getByRole("alertdialog");
   await deleteButton.click();
+  await confirm.getByRole("button", { name: "Cancel" }).click();
+  await expect(confirm).toBeHidden();
   await expect(row).toBeVisible();
 
-  page.once("dialog", (dialog) => {
-    expect(dialog.message()).toContain("still counts toward your daily interview limit");
-    return dialog.accept();
-  });
   await deleteButton.click();
+  await expect(confirm).toContainText("still counts toward your daily interview limit");
+  await confirm.getByRole("button", { name: "Delete interview" }).click();
+  // The open dialog hides the page from the accessibility tree, so wait for it to close first.
+  await expect(confirm).toBeHidden();
   await expect(row).toHaveCount(0);
   await expect(page).toHaveURL(/\/interviews$/);
 

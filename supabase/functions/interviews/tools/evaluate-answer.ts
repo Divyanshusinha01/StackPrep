@@ -1,6 +1,8 @@
 import type { CoverageMap, EvaluateAnswerInput, EvaluateAnswerOutput, InterviewPlan, InterviewStrategy } from "@stackprep/shared";
 import { z } from "zod";
 import { scrubSecrets } from "../../_shared/analysis/scrub.ts";
+import { openAIKeyApiErrorCode } from "../../_shared/ai/clients.ts";
+import { OpenAIKeyError } from "../../_shared/ai/credentials.ts";
 import { AIError } from "../../_shared/ai/provider.ts";
 import { providerTokens } from "../../_shared/ai-usage.ts";
 import { runInBackground } from "../../_shared/background.ts";
@@ -164,7 +166,8 @@ export async function evaluateAnswer(ctx: ToolContext, input: EvaluateAnswerInpu
   let evaluation: AnswerEvaluation;
   const startedAt = Date.now();
   try {
-    const { output, usage } = await ctx.ai.generateStructured({
+    const { ai, credentialId } = await ctx.openai();
+    const { output, usage } = await ai.generateStructured({
       model: ctx.evaluationModel,
       system: EVALUATION_SYSTEM_PROMPT,
       input: buildEvaluationInput({
@@ -207,13 +210,15 @@ export async function evaluateAnswer(ctx: ToolContext, input: EvaluateAnswerInpu
         source: "provider",
         tokens: providerTokens(usage),
         idempotencyKey: `evaluation:${interview.id}:${crypto.randomUUID()}`,
+        openaiCredentialId: credentialId,
       }),
     );
   } catch (err) {
-    if (!(err instanceof AIError)) {
+    if (!(err instanceof AIError || err instanceof OpenAIKeyError)) {
       throw err;
     }
-    ctx.log({ event: "evaluate_answer_failed", reason: err.name, elapsed_ms: Date.now() - startedAt });
+    const reason = openAIKeyApiErrorCode(err) ? "openai_key_unavailable" : err.name;
+    ctx.log({ event: "evaluate_answer_failed", reason, elapsed_ms: Date.now() - startedAt });
     return failed("internal", false);
   }
 

@@ -1,6 +1,7 @@
 "use client";
 
 import { createContext, useContext, useEffect, useState } from "react";
+import { ArrowRight } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { type CtaLocation, track } from "@/lib/analytics";
 import { cn } from "@/lib/utils";
@@ -41,11 +42,12 @@ export function useLandingCta(location: CtaLocation) {
   const signedIn = useContext(SignedInContext);
   return {
     ...primaryCta(signedIn),
+    signedIn,
     onClick: () => track("cta_click", { location, signed_in: signedIn }),
   };
 }
 
-/** The primary "Sign in with GitHub" / "Open workspace" button. */
+/** The primary "Sign in with GitHub" / "Open workspaces" button. */
 export function AuthCta({
   location,
   size,
@@ -61,8 +63,9 @@ export function AuthCta({
   return (
     <Button asChild size={size} className={cn(CTA_GLOW, className)}>
       <a href={cta.href} onClick={cta.onClick}>
-        <GitHubMark className={iconClassName} />
+        {cta.signedIn ? null : <GitHubMark className={iconClassName} />}
         {cta.label}
+        {cta.signedIn ? <ArrowRight aria-hidden className={iconClassName} /> : null}
       </a>
     </Button>
   );

@@ -1,5 +1,6 @@
 import { ScrollReveal } from "@/components/motion/scroll-reveal";
 import { AuthCta } from "./auth-cta";
+import { SectionHeading } from "./section-heading";
 
 export function FinalCta() {
   return (
@@ -11,18 +12,14 @@ export function FinalCta() {
       />
 
       <ScrollReveal className="relative mx-auto max-w-3xl px-6 text-center">
-        <p className="font-mono text-xs uppercase tracking-[0.18em] text-brand">Ready when you are</p>
-        <h2
-          id="cta-heading"
-          className="mt-5 font-display text-3xl font-semibold tracking-[-0.03em] text-balance sm:text-4xl lg:leading-[1.1]"
-        >
-          Your code. Your interview.
-        </h2>
-        <p className="mx-auto mt-6 max-w-xl text-base leading-relaxed text-pretty text-muted-foreground sm:text-lg">
+        <SectionHeading id="cta-heading" eyebrow="Ready when you are" title="Your code. Your interview." align="center">
           Connect a repository and find out how well you can explain what you built, before
           someone else asks.
+        </SectionHeading>
+        <AuthCta location="final-cta" size="lg" className="mt-10 h-11 px-6" />
+        <p className="mt-4 text-sm text-muted-foreground">
+          You&apos;ll add your OpenAI API key after signing in. AI usage is billed by OpenAI to your account.
         </p>
-        <AuthCta location="final-cta" size="lg" className="mt-10 h-12 px-6 text-[15px]" />
       </ScrollReveal>
     </section>
   );

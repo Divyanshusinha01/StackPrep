@@ -1,8 +1,8 @@
 import { type InterviewReport, interviewReportSchema, type ReportErrorCode, reportErrorCodeSchema } from "@stackprep/shared";
 import { type Inngest, NonRetriableError, RetryAfterError } from "inngest";
 import { z } from "zod";
+import { type OpenAIClients, openAIKeyJobErrorCode } from "../_shared/ai/clients.ts";
 import {
-  type AIProvider,
   AIInvalidOutputError,
   AIRateLimitedError,
   AIRequestError,
@@ -42,10 +42,14 @@ export const REPORT_FAILURE_MESSAGES: Record<ReportErrorCode, string> = {
   ai_invalid_output: "AI provider returned an invalid report",
   enqueue_failed: "The interview report could not be queued",
   internal_error: "Interview report generation failed",
+  openai_key_unavailable: "The owner has no usable OpenAI key",
+  openai_key_invalid: "The owner's OpenAI key was rejected",
+  openai_quota_exhausted: "The owner's OpenAI account has no remaining quota",
 };
 
 export interface ReportDeps {
-  ai: AIProvider;
+  /** Resolved inside the AI step for the owner loaded from the database; never from the event. */
+  openai: OpenAIClients;
   model: string;
   reasoningEffort?: ReasoningEffort;
   store: ReportStore;
@@ -102,6 +106,10 @@ function nonRetriable(code: ReportErrorCode): NonRetriableError {
 export function classifyReportError(err: unknown): Error {
   if (err instanceof NonRetriableError || err instanceof RetryAfterError) {
     return err;
+  }
+  const keyCode = openAIKeyJobErrorCode(err);
+  if (keyCode) {
+    return nonRetriable(keyCode);
   }
   if (err instanceof AIRateLimitedError) {
     return new RetryAfterError("ai_rate_limited", err.retryAfterSeconds * 1000);
@@ -267,7 +275,8 @@ export async function runInterviewReport(
   const report = await step.run("generate", () =>
     classified(async () => {
       await deps.store.markReportStage(event.job_id, 30, runId);
-      const { output, usage } = await deps.ai.generateStructured({
+      const { ai, credentialId } = await deps.openai.forUser(target.user_id);
+      const { output, usage } = await ai.generateStructured({
         model: deps.model,
         system: REPORT_SYSTEM_PROMPT,
         input: buildReportInput(target, context),
@@ -296,6 +305,7 @@ export async function runInterviewReport(
         source: "provider",
         tokens: providerTokens(usage),
         idempotencyKey: `report:${event.job_id}:${runId}:${crypto.randomUUID()}`,
+        openaiCredentialId: credentialId,
       });
       return groundReport(output, context);
     }));

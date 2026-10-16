@@ -25,6 +25,8 @@ export interface AiUsageEntry {
   voiceSegmentEventId?: string;
   /** Globally unique; a repeated key is a no-op. */
   idempotencyKey: string;
+  /** The credential whose key made the call; omitted rows take the owner's current credential. */
+  openaiCredentialId?: string;
 }
 
 /** `failed` means the row was not written; the failure is already logged. */
@@ -77,6 +79,7 @@ export function aiUsageRow(entry: AiUsageEntry) {
     voice_segment_event_id: entry.voiceSegmentEventId ?? null,
     estimated_cost_usd: aiUsageCost(entry),
     idempotency_key: entry.idempotencyKey,
+    openai_credential_id: entry.openaiCredentialId ?? null,
   };
 }
 

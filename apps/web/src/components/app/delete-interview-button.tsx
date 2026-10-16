@@ -1,32 +1,38 @@
 "use client";
 
+import { useRef } from "react";
 import { useFormStatus } from "react-dom";
 import { Loader2, Trash2 } from "lucide-react";
 import { deleteInterview } from "@/app/interviews/actions";
+import { ConfirmDialog } from "@/components/app/confirm-dialog";
 import { Button } from "@/components/ui/button";
 
-function confirmMessage(interviewNumber: number): string {
-  return `Delete Interview ${interviewNumber}? It will be removed from your history. It still counts toward your daily interview limit.`;
-}
-
-function DeleteSubmit({ interviewNumber }: { interviewNumber: number }) {
+function DeleteControl({ interviewNumber, onConfirm }: { interviewNumber: number; onConfirm: () => void }) {
   const { pending } = useFormStatus();
   return (
-    <Button
-      type="submit"
-      variant="ghost"
-      size="icon-sm"
-      disabled={pending}
-      aria-label={`Delete Interview ${interviewNumber}`}
-      title="Delete interview"
-      className="text-muted-foreground hover:bg-red-500/10 hover:text-red-300"
-    >
-      {pending ? <Loader2 className="motion-safe:animate-spin" aria-hidden /> : <Trash2 aria-hidden />}
-    </Button>
+    <ConfirmDialog
+      title={`Delete Interview ${interviewNumber}?`}
+      description="It will be removed from your history. It still counts toward your daily interview limit."
+      confirmLabel="Delete interview"
+      onConfirm={onConfirm}
+      trigger={
+        <Button
+          type="button"
+          variant="ghost"
+          size="icon-sm"
+          disabled={pending}
+          aria-label={`Delete Interview ${interviewNumber}`}
+          title="Delete interview"
+          className="text-muted-foreground hover:bg-danger/10 hover:text-danger"
+        >
+          {pending ? <Loader2 className="motion-safe:animate-spin" aria-hidden /> : <Trash2 aria-hidden />}
+        </Button>
+      }
+    />
   );
 }
 
-/** Deletes an ended interview from history after a browser confirm. */
+/** Deletes an ended interview from history after a confirmation dialog. */
 export function DeleteInterviewButton({
   interviewId,
   interviewNumber,
@@ -36,18 +42,12 @@ export function DeleteInterviewButton({
   interviewNumber: number;
   returnTo: string;
 }) {
+  const formRef = useRef<HTMLFormElement>(null);
   return (
-    <form
-      action={deleteInterview}
-      onSubmit={(event) => {
-        if (!window.confirm(confirmMessage(interviewNumber))) {
-          event.preventDefault();
-        }
-      }}
-    >
+    <form ref={formRef} action={deleteInterview}>
       <input type="hidden" name="interview_id" value={interviewId} />
       <input type="hidden" name="return_to" value={returnTo} />
-      <DeleteSubmit interviewNumber={interviewNumber} />
+      <DeleteControl interviewNumber={interviewNumber} onConfirm={() => formRef.current?.requestSubmit()} />
     </form>
   );
 }

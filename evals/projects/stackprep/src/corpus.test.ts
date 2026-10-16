@@ -1,6 +1,6 @@
 import { assert, assertEquals, assertNotEquals } from "@std/assert";
 import type { SearchRepositoryOutput } from "@stackprep/shared";
-import { createFakeAIProvider } from "../../../../supabase/functions/_shared/testing.ts";
+import { createFakeAIProvider, fakeUserOpenAIClients } from "../../../../supabase/functions/_shared/testing.ts";
 import type { FakeToolStore } from "../../../../supabase/functions/interviews/testing.ts";
 import { createTreeCache } from "../../../../supabase/functions/interviews/tools/get-file.ts";
 import { searchRepository } from "../../../../supabase/functions/interviews/tools/search-repository.ts";
@@ -31,7 +31,7 @@ function context(corpus: IndexedCorpus, store: FakeToolStore, logs: Record<strin
     store,
     github: createCorpusGithub(corpus.files),
     trees: createTreeCache(),
-    ai: createFakeAIProvider(() => new Error("retrieval makes no model calls")),
+    openai: () => Promise.resolve(fakeUserOpenAIClients({ ai: createFakeAIProvider(() => new Error("retrieval makes no model calls")) })),
     evaluationModel: "none",
     elapsedSeconds: 0,
     requestReport: () => Promise.resolve(),

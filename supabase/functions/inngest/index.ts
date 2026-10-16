@@ -1,6 +1,8 @@
-import { edgeSupabaseEnvSchema, githubAppEnvSchema, inngestEnvSchema, openAIEnvSchema } from "@stackprep/shared";
+import { byokEnvSchema, edgeSupabaseEnvSchema, githubAppEnvSchema, inngestEnvSchema, openAIModelEnvSchema } from "@stackprep/shared";
 import { createClient } from "@supabase/supabase-js";
-import { createOpenAIEmbeddingProvider, createOpenAIProvider } from "../_shared/ai/openai.ts";
+import { createOpenAIClients, openAIClientFactories } from "../_shared/ai/clients.ts";
+import { loadKeyring } from "../_shared/ai/keyring.ts";
+import { createOpenAICredentialResolver, createOpenAICredentialStore } from "../_shared/ai/credentials.ts";
 import { readEnv } from "../_shared/env.ts";
 import { createGithubApp } from "../_shared/github-app.ts";
 import { createInngestClient } from "../_shared/inngest.ts";
@@ -26,7 +28,11 @@ import { createAnalysisStore } from "./store.ts";
 initSentry("inngest");
 const env = readEnv(
   "inngest function",
-  edgeSupabaseEnvSchema.extend(githubAppEnvSchema.shape).extend(inngestEnvSchema.shape).extend(openAIEnvSchema.shape),
+  edgeSupabaseEnvSchema
+    .extend(githubAppEnvSchema.shape)
+    .extend(inngestEnvSchema.shape)
+    .extend(openAIModelEnvSchema.shape)
+    .extend(byokEnvSchema.shape),
 );
 
 const serviceClient = createClient(env.SUPABASE_URL, env.SUPABASE_SERVICE_ROLE_KEY, {
@@ -41,7 +47,11 @@ const github = createGithubApp({
 });
 
 const inngest = createInngestClient(env);
-const ai = createOpenAIProvider({ apiKey: env.OPENAI_API_KEY });
+const keyring = await loadKeyring(env.OPENAI_KEY_ENCRYPTION_KEYS, env.OPENAI_KEY_ENCRYPTION_ACTIVE_VERSION);
+const openai = createOpenAIClients(
+  createOpenAICredentialResolver(createOpenAICredentialStore(serviceClient), keyring),
+  openAIClientFactories(),
+);
 const jobs = createInngestJobQueue(inngest);
 const pushSyncStore = createPushSyncStore(serviceClient);
 
@@ -60,25 +70,25 @@ Deno.serve(withSentry(
       jobs,
     }),
     createDeepAnalysisFunction(inngest, {
-      ai,
+      openai,
       model: env.OPENAI_PLANNING_MODEL,
       reasoningEffort: env.OPENAI_PLANNING_REASONING_EFFORT,
       store: createDeepAnalysisStore(serviceClient),
       jobs,
     }),
     createMemoryEmbeddingFunction(inngest, {
-      embedding: createOpenAIEmbeddingProvider({ apiKey: env.OPENAI_API_KEY }),
+      openai,
       model: env.OPENAI_EMBEDDING_MODEL,
       store: createMemoryEmbeddingStore(serviceClient),
     }),
     createInterviewPlanningFunction(inngest, {
-      ai,
+      openai,
       model: env.OPENAI_PLANNING_MODEL,
       reasoningEffort: env.OPENAI_PLANNING_REASONING_EFFORT,
       store: createPlanningStore(serviceClient),
     }),
     createInterviewReportFunction(inngest, {
-      ai,
+      openai,
       model: env.OPENAI_REPORT_MODEL,
       reasoningEffort: env.OPENAI_REPORT_REASONING_EFFORT,
       store: createReportStore(serviceClient),

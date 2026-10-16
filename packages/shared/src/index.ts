@@ -8,6 +8,7 @@ export * from "./env.ts";
 export * from "./github.ts";
 export * from "./health.ts";
 export * from "./interview-planning.ts";
+export * from "./openai-key.ts";
 export * from "./profile.ts";
 export * from "./realtime.ts";
 export * from "./reports.ts";

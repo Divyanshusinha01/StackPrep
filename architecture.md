@@ -104,6 +104,7 @@ Stores persistent application state:
 - Evaluations
 - Reports
 - AI usage (per-call tokens and estimated cost)
+- Users' OpenAI keys (encrypted; service role only)
 
 Repository source code itself should not be treated as primary database data.
 
@@ -139,6 +140,17 @@ Responsible for:
 
 AI output is persisted where it becomes part of the interview record.
 
+#### User OpenAI keys (bring your own key)
+
+Every OpenAI request uses the owning user's own API key (PRD §3, "OpenAI API key"). There is no platform key and no fallback: `OPENAI_API_KEY` is not read by any deployed function.
+
+- **Storage.** One row per user in `openai_credentials` (migration `20261016100000_openai_credentials.sql`): `credential_id` (new for every save), AES-256-GCM `ciphertext` and `iv` (`bytea`), `enc_key_version`, `key_hint` (`sk-...abcd`), `status` (`openai_credential_status`: `valid`, `invalid`, `quota_exhausted`, `permission_denied`), `last_error_code`, `validated_at`. RLS is on with no policies and `anon` / `authenticated` have no grants, so only Edge Functions (service role) can read it, through `upsert_openai_credential`, `mark_openai_credential_status`, `delete_openai_credential`, and `openai_credential_status` (status columns only). Rows cascade with the profile.
+- **Encryption.** Encryption happens in Edge Functions (`_shared/ai/credential-crypto.ts`) with a versioned keyring from `OPENAI_KEY_ENCRYPTION_KEYS` (`version:base64` pairs of 32-byte keys) and `OPENAI_KEY_ENCRYPTION_ACTIVE_VERSION`. The additional authenticated data is `stackprep:openai-key:v1:{user_id}:{credential_id}`, so a ciphertext cannot be moved to another user or row. New saves use the active version; older versions stay in the keyring while any row references them. The master keys live only in Supabase function secrets.
+- **Validation.** `PUT /me/openai-key` checks the format (`sk-` secret keys only; admin keys are rejected) and reserves a per-user attempt (`reserve_openai_key_attempt`, 5 per 10 minutes, `429 rate_limited`). It then checks, in order: `GET /v1/models/{id}` for every configured model, a one-input embedding with `OPENAI_EMBEDDING_MODEL` (billed to the user; catches `insufficient_quota`), and a discarded transcription client secret (checks Realtime access). Only a passing key is encrypted and stored, atomically replacing the previous one; a failing key leaves the stored key untouched. `POST /me/openai-key/validate` re-checks the stored key and updates its status.
+- **Resolution.** `OpenAIClients.forUser(userId)` (`_shared/ai/clients.ts`) loads and decrypts the key, refuses anything not `valid`, and returns per-request `ai`, `embeddings`, and `realtime` clients plus the `credential_id`. Request handlers pass the authenticated user; Inngest functions pass the owner `user_id` loaded from the database inside the step that calls OpenAI. The key is never part of an event payload, step output, response, log line, or Sentry event (`sk-` values are redacted in both Sentry scrubbers).
+- **Provider errors.** A 401 marks the key `invalid`, a 429 with `insufficient_quota` marks it `quota_exhausted`, and a 403 or a 404 `model_not_found` marks it `permission_denied`. Status changes are a compare-and-set on `credential_id`, so a stale failure never overwrites a newer key. An ordinary 429 keeps the status and is retried. API responses map these to `409 openai_key_required | openai_key_invalid | openai_key_permission_denied | openai_quota_exhausted`, `429 openai_rate_limited`, or `502 openai_unavailable`; background jobs fail non-retriably with `openai_key_unavailable`, `openai_key_invalid`, or `openai_quota_exhausted`.
+- **Gates.** Creating a workspace, retrying analysis, and creating an interview check the stored status before doing any work. Push sync skips (`key_unavailable`) while the owner has no valid key, leaving the push pending; `list_pending_push_workspaces` only returns owners with a valid key, so the reconciler picks it up once a key exists.
+
 #### Models
 
 Each task reads its model from an environment variable, so models can change without code changes.
@@ -171,11 +183,11 @@ The embedding model must natively produce 1536-dimensional vectors, the size of 
 
 #### Cost controls
 
-The live voice session is the main AI cost, so most controls target it.
+All AI usage is billed to the user's own OpenAI key, so these controls bound what one interview can spend on the user's account and keep the service responsive; the spend cap itself is the user's usage limit on OpenAI. The live voice session is the main AI cost, so most controls target it.
 
 - **Session length.** Voice time is the sum of connected time, measured from `connected` / `disconnected` interview events. At 30 minutes the backend tells the interviewer to wrap up. At 35 minutes the backend completes the interview, refuses new Realtime credentials, and tool calls return an instruction to close. See [Voice Session Flow](#voice-session-flow) for how this is enforced.
 - **Idle timeout.** The browser closes the voice session after 3 minutes without candidate speech and records a `disconnected` event. The user can reconnect within the remaining voice time.
-- **Usage limit.** `POST /workspaces/:id/interviews` rejects a request when the user has created 5 or more interviews in the previous 24 hours, returning `429 interview_limit_reached` with `Retry-After`. Every created interview counts.
+- **Usage limit.** `POST /workspaces/:id/interviews` rejects a request when the user has created 5 or more interviews in the previous 24 hours, returning `429 interview_limit_reached` with `Retry-After`. Every created interview counts. It is a fair-use and infrastructure guard, not a cost control.
 - **Cached prompt prefix.** Realtime session instructions are assembled in a fixed order: interviewer instructions, then repository context, then the interview plan, then changing state (progress, current question, recap). The first three are byte-identical across sessions of the same interview, so reconnects get cached-input pricing.
 - **Context trimming.** Sessions enable OpenAI's automatic truncation of older turns. On reconnect, the backend replaces the full transcript with a compact recap of covered topics and the current question. The full transcript stays in PostgreSQL for evaluation and the report.
 - **Bounded inputs.** Repository context and tool results are already size-limited (see [Repository Context](#6-repository-context) and the [Tool catalogue](#tool-catalogue)).
@@ -184,6 +196,8 @@ The live voice session is the main AI cost, so most controls target it.
 #### Usage tracking
 
 Every AI call writes a row to `ai_usage` (migration `20261006100000_ai_usage.sql`): user, workspace, interview (null for repository analysis), task (`voice`, `auxiliary`, `deep_analysis`, `planning`, `evaluation`, `report`, `vision`, `embedding`), model, `source`, input / cached-input / output tokens split into text and audio, `audio_seconds` for duration estimates, the voice segment for voice rows, estimated cost in USD, an idempotency key, and a timestamp. `auxiliary` is a reserved task with no callers; it stays in the enum because Postgres enum values cannot be dropped cleanly. The table is service-role only and append-only: updates are rejected, and the service role can only select and insert. `embedding` (migration `20261007100000_ai_usage_embedding_task.sql`) covers both repository memory embeddings (no interview) and `search_repository` query embeddings (with the interview); embeddings bill input tokens only.
+
+`openai_credential_id` (migration `20261016100000_openai_credentials.sql`) records which of the user's keys paid for the call. Backend calls set it from the resolved key; a `BEFORE INSERT` trigger fills it from the owner's current key when it is null (browser-relayed voice usage and duration estimates). Rows written before bring-your-own-key, which used the former platform key, have no credential id. Key validation requests are not recorded.
 
 Cost is computed by `estimateCostUsd` from the price table in `@stackprep/shared` (`AI_PRICES`, USD per 1M tokens). Following OpenAI's `usage`, input counts include their cached portion, so each modality is billed as `(input − cached) × input rate + cached × cached rate + output × output rate`; a model without a cached rate bills cached tokens at the input rate. A model missing from the table gets a null cost, and the row is still written. Raw token counts are kept, so rows can be recalculated if prices change.
 
@@ -206,7 +220,7 @@ The view `ai_usage_effective` applies the reconciliation rule without changing r
 
 #### Admin dashboard
 
-`/admin` in the web app shows cost per interview, the voice/text split, prompt-cache hit rate, and tool latency over a window of 1, 7, 30, or 90 days. Data comes only from the four service-role SQL functions `admin_interview_cost` (fixed limit of 50), `admin_voice_text_split`, `admin_cache_hit_rate`, and `admin_tool_latency`, which read `ai_usage_effective` and `tool_call_metrics`. Output carries interview ids and aggregates, never transcripts, repository content, or emails.
+`/admin` in the web app shows estimated spend per interview on users' own OpenAI keys, the voice/text split, prompt-cache hit rate, and tool latency over a window of 1, 7, 30, or 90 days. Data comes only from the four service-role SQL functions `admin_interview_cost` (fixed limit of 50), `admin_voice_text_split`, `admin_cache_hit_rate`, and `admin_tool_latency`, which read `ai_usage_effective` and `tool_call_metrics`. Output carries interview ids and aggregates, never transcripts, repository content, or emails.
 
 - **Allowlist.** `ADMIN_USER_IDS` is a comma-separated list of Supabase Auth user ids, parsed by `parseAdminUserIds` in `@stackprep/shared`. It fails closed: an empty value, or any entry that is not a UUID, means no admins. Emails are never used for authorization.
 - **Web gate.** The page calls `requireAdmin` (`apps/web/src/lib/admin.ts`, `server-only`) before reading anything. It gets the identity from `supabase.auth.getUser()` and compares the user id to the allowlist; unauthenticated and non-admin visitors both get `notFound()`, so the route is not revealed.
@@ -371,7 +385,7 @@ The browser never holds the OpenAI API key. The backend mints a short-lived ephe
 2. Backend → OpenAI
    Authenticates user, verifies interview ownership
    Verifies the interview plan exists (otherwise returns interview_preparing)
-   Uses server-side OPENAI_API_KEY
+   Uses the user's decrypted OpenAI key (409 openai_key_* if none is usable)
    Creates ephemeral Realtime credential (session config set server-side)
    and, best-effort, a transcription-session credential
 
@@ -394,7 +408,8 @@ The browser never holds the OpenAI API key. The backend mints a short-lived ephe
 
 Rules:
 
-- **Never expose `OPENAI_API_KEY` to the browser.** Only the short-lived ephemeral credential is returned to the client.
+- **Never expose the user's OpenAI key to the browser.** The key is decrypted only inside the Edge Function for the mint; only the short-lived ephemeral credential is returned to the client. A 401 or `insufficient_quota` from the mint updates the key's status and returns the matching `409 openai_key_*` code instead of `502 realtime_unavailable`.
+- **Key deletion during a session.** Deleting or replacing the key does not end a WebRTC session that is already connected (there is no sideband connection). The next credential mint, tool call that needs OpenAI, or reconnect resolves the key again and is refused.
 - The backend sets the Realtime session configuration (model, interviewer instructions, repository context, tools) when minting the credential. The client cannot override interviewer instructions or tool definitions. Tool calls are executed by the backend (see [Realtime Tool Execution & Persistence](#10-realtime-tool-execution--persistence)).
 - **Voice and turn settings.** Voice `marin` at speed 1.05, `noise_reduction: near_field`, and `turn_detection: server_vad` with 700 ms silence (default threshold 0.5 and 300 ms prefix padding) plus `create_response` and `interrupt_response`. In a scripted A/B with mid-thought pauses of 450 to 1300 ms, the 500 ms default ended the candidate's turn early at 21 of 24 pauses, and 700 ms at 4 of 24, with no change in median time to the interviewer's first audio. `semantic_vad` was rejected: its median end-of-turn delay was about 4.8 s (`medium`) and 8.3 s (`low`). `cedar` did not beat `marin`, and speed 1.05 showed no measurable loss of clarity. The transcript commit depends on `server_vad`'s `speech_stopped` (see the transcription session under [Models](#models)), so changing turn detection, `far_field`, speed, or voice is done one setting at a time and only after a measured A/B. The interviewer instructions include delivery guidance (pace, saying identifiers aloud, one brief acknowledgement before slow lookups, asking once for a repeat, not filling the candidate's thinking time).
 - **Playback.** The browser plays the interviewer's remote track through an inline `<audio>` element and calls `play()` once the track arrives. If the browser's autoplay policy blocks it, playback starts on the next click or key press; this never affects the reconnect coordinator or the outbox.
@@ -567,6 +582,11 @@ Example:
 
 ```text
 POST   /github/connect
+GET    /me
+GET    /me/openai-key                  (status and hint only)
+PUT    /me/openai-key                  (validate, encrypt, store)
+DELETE /me/openai-key
+POST   /me/openai-key/validate         (re-check the stored key)
 GET    /repositories
 POST   /workspaces
 GET    /workspaces/:id
@@ -587,6 +607,8 @@ POST   /github-webhooks                (GitHub App webhooks; signature-verified,
 ```
 
 `GET /interviews/:id/events` is the server-to-client event stream (see [Transport](#transport)).
+
+`/me/openai-key` manages the signed-in user's own OpenAI key (see [User OpenAI keys](#user-openai-keys-bring-your-own-key)). Every route acts only on the authenticated user; responses are `Cache-Control: no-store` and carry `{ configured: false }` or `{ configured: true, status, key_hint, last_error_code, validated_at }`, never the key. `PUT` takes `{ api_key }` in the body, returns `400 invalid_request` for a malformed key, `429 rate_limited` after 5 attempts in 10 minutes, the `409 openai_key_*` / `429 openai_rate_limited` / `502 openai_unavailable` codes when validation fails (with the model id for permission failures), and replaces the stored key only on success. `DELETE` returns `204`. The web app calls these routes from server actions on `/settings`; the key travels only in the form body and is never put in a redirect URL.
 
 `POST /github-webhooks` is called only by GitHub. It is authenticated by the `X-Hub-Signature-256` HMAC, not a Supabase JWT, and only acts on `push` events (see Push sync in [Repository Context](#6-repository-context)).
 
@@ -732,7 +754,7 @@ OpenAI Realtime runs the live conversation, but it never touches the database, G
 6. Transcript turns are persisted incrementally, independent of tool calls.
 7. Tool inputs and outputs use shared Zod schemas in `@stackprep/shared`.
 8. State-changing tools are requests; the backend decides whether they take effect.
-9. The browser never receives privileged credentials (`OPENAI_API_KEY`, `SUPABASE_SERVICE_ROLE_KEY`, GitHub tokens).
+9. The browser never receives privileged credentials (the user's OpenAI key, `SUPABASE_SERVICE_ROLE_KEY`, GitHub tokens).
 
 ### Tool-call relay
 
@@ -1054,7 +1076,10 @@ Key requirements:
 
 - Encrypt sensitive GitHub credentials/tokens
 - Keep secrets server-side
-- Never expose `OPENAI_API_KEY` to the browser; voice sessions use backend-issued, short-lived ephemeral Realtime credentials
+- Store each user's OpenAI key encrypted (AES-256-GCM, versioned master keys in function secrets, AAD bound to user and credential); read it only in Edge Functions, never return it, log it, put it in Inngest payloads or step outputs, or send it to Sentry (see [User OpenAI keys](#user-openai-keys-bring-your-own-key))
+- Never expose the user's OpenAI key to the browser; voice sessions use backend-issued, short-lived ephemeral Realtime credentials
+- Never fall back to a platform OpenAI key; no deployed environment has `OPENAI_API_KEY`
+- Rate-limit key validation per user (5 attempts per 10 minutes) and return generic error codes, so the endpoint cannot be used to test keys
 - Never expose `SUPABASE_SERVICE_ROLE_KEY` or GitHub tokens to the browser
 - Execute Realtime tool calls only in Edge Functions; validate tool arguments with Zod and never trust model-supplied identifiers
 - Validate all API input
@@ -1070,7 +1095,7 @@ Key requirements:
 ### Data deletion
 
 - **Interviews.** Soft delete only (`DELETE /interviews/:id`, see [API Structure](#7-api-structure)); the row stays for the usage limit, numbering and planning memory.
-- **Accounts.** There is no self-service account deletion. Users request it through the contact channel on `/privacy`, and an operator deletes the user in Supabase Auth (Authentication > Users). Every user-owned table references `profiles`, which references `auth.users` with `on delete cascade`, so this removes workspaces, repository memory, the code index, interviews, transcripts, events, evaluations, reports, jobs, `ai_usage` and GitHub connection rows. The GitHub App installation lives on GitHub and must be uninstalled by the user.
+- **Accounts.** There is no self-service account deletion. Users request it through the contact channel on `/privacy`, and an operator deletes the user in Supabase Auth (Authentication > Users). Every user-owned table references `profiles`, which references `auth.users` with `on delete cascade`, so this removes workspaces, repository memory, the code index, interviews, transcripts, events, evaluations, reports, jobs, `ai_usage`, the encrypted OpenAI key and GitHub connection rows. The GitHub App installation lives on GitHub and must be uninstalled by the user.
 - **Not yet designed:** a "Delete my account" action. It needs an authenticated Edge Function endpoint (service-role `auth.admin.deleteUser`), a decision on in-flight Inngest jobs for the user's workspaces, and a confirmation UI. Design it here before implementing.
 
 ---
@@ -1127,7 +1152,8 @@ Each integration has its own Zod schema in `@stackprep/shared` (`packages/shared
 | `edgeEnvSchema` (required) | `WEB_ORIGIN`                                                                                  |
 | `edgeSupabaseEnvSchema`    | `SUPABASE_URL`, `SUPABASE_ANON_KEY`, `SUPABASE_SERVICE_ROLE_KEY` (injected by the runtime)     |
 | `inngestEnvSchema`         | `INNGEST_EVENT_KEY`, `INNGEST_SIGNING_KEY`                                                    |
-| `openAIEnvSchema`          | `OPENAI_API_KEY`, `OPENAI_REALTIME_MODEL`, `OPENAI_REALTIME_TRANSCRIPTION_MODEL`, `OPENAI_PLANNING_MODEL`, `OPENAI_EVALUATION_MODEL`, `OPENAI_REPORT_MODEL`, `OPENAI_VISION_MODEL`, `OPENAI_EMBEDDING_MODEL` (default `text-embedding-3-small`; must natively output 1536 dimensions), and per-task `OPENAI_{PLANNING,EVALUATION,REPORT,VISION}_REASONING_EFFORT`. |
+| `openAIModelEnvSchema`     | `OPENAI_REALTIME_MODEL`, `OPENAI_REALTIME_TRANSCRIPTION_MODEL`, `OPENAI_PLANNING_MODEL`, `OPENAI_EVALUATION_MODEL`, `OPENAI_REPORT_MODEL`, `OPENAI_VISION_MODEL`, `OPENAI_EMBEDDING_MODEL` (default `text-embedding-3-small`; must natively output 1536 dimensions), and per-task `OPENAI_{PLANNING,EVALUATION,REPORT,VISION}_REASONING_EFFORT`. Models only: there is no platform API key. |
+| `byokEnvSchema`            | `OPENAI_KEY_ENCRYPTION_KEYS` (comma-separated `version:base64` 32-byte keys; generate each with `openssl rand -base64 32`), `OPENAI_KEY_ENCRYPTION_ACTIVE_VERSION` (must be listed). Read by `me`, `interviews`, and `inngest`. Different per environment; never remove a version that stored keys still use. |
 | `githubAppEnvSchema`       | `GITHUB_APP_ID`, `GITHUB_APP_CLIENT_ID`, `GITHUB_APP_CLIENT_SECRET`, `GITHUB_APP_PRIVATE_KEY`, `GITHUB_APP_WEBHOOK_SECRET` (the `github-webhooks` function reads only the webhook secret) |
 | `edgeSentryEnvSchema`      | `SENTRY_DSN`, `SENTRY_ENVIRONMENT`                                                            |
 | `adminEnvSchema`           | `ADMIN_USER_IDS` (`admin` function; same list as the web app)                                 |

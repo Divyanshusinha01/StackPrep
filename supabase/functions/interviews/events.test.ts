@@ -2,8 +2,7 @@ import { assert, assertEquals } from "@std/assert";
 import { apiErrorSchema, interviewStreamEventSchema, parseInterviewStreamCursor } from "@stackprep/shared";
 import type { SupabaseClient, User } from "@supabase/supabase-js";
 import type { Authenticate } from "../_shared/auth.ts";
-import { createRealtimeClient } from "../_shared/realtime/openai-realtime.ts";
-import { createFakeAIProvider } from "../_shared/testing.ts";
+import { createFakeOpenAIClients } from "../_shared/testing.ts";
 import {
   type InterviewStreamReader,
   type PersistedTurnRow,
@@ -142,11 +141,10 @@ function setup({
     },
     streamTiming: timing,
     store,
-    realtime: createRealtimeClient({ apiKey: "sk-test", fetch: unused }),
+    openai: createFakeOpenAIClients(userId),
     model: "gpt-realtime-2.1-mini",
     transcriptionModel: "gpt-live-transcribe",
     github: createFakeGithub({}),
-    ai: createFakeAIProvider(() => ({})),
     evaluationModel: "gpt-eval",
     visionModel: "gpt-vision",
     jobs: createFakeJobQueue(),

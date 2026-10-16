@@ -20,6 +20,8 @@ The experience should feel like a natural human-to-human technical interview, wh
 ```text
 GitHub OAuth
     ↓
+User adds and validates their OpenAI API key (Settings)
+    ↓
 User selects repository
     ↓
 Repository Workspace created/opened
@@ -73,6 +75,21 @@ Workspace: owner/repository
 - Public repositories are supported.
 - Private repositories are supported only when the user explicitly grants the required access for that workspace.
 - Git history is not part of interview context.
+
+### OpenAI API key (bring your own key)
+
+Every AI feature runs on the user's own OpenAI API key. StackPrep has no platform key and never pays for, marks up, or falls back to another key for a user's AI usage; OpenAI bills the user directly.
+
+- **One key per account.** The key belongs to the signed-in user and serves all of their workspaces. Only that user can view its status, replace it, or delete it.
+- **Setup.** The user adds the key on the Settings page. A user without a working key who tries an AI action is sent to Settings and returned to where they were after saving.
+- **First run.** Right after GitHub sign-in, a user with no workspaces and no working key is taken to Settings in a guided setup step (sign in, add key, connect repository) before they can connect the GitHub App or pick a repository. Saving a valid key continues straight to the repository step. Users who already have workspaces can still browse them, their history, and finished reports without a key; the account menu flags a missing or broken key on every app page.
+- **Landing page.** The landing page states the model upfront: the user brings their own OpenAI key and pays OpenAI directly, and StackPrep runs the interview infrastructure, realtime voice, GitHub integration, evaluation, and reports. It shows the setup order (sign in, add key, connect repository), never implies free AI usage, and quotes no prices.
+- **Validation before storage.** The key must look like an OpenAI secret key (`sk-...`; admin keys are rejected) and pass one small embedding request on the user's account. If validation fails, nothing is stored and any key already saved stays active. Checks are rate limited per user.
+- **What the user sees.** Only the last four characters (`sk-...abcd`), the status (Working, Rejected by OpenAI, Out of quota, Missing model access), and when it was last validated. The full key is never shown again, never pre-filled, and never sent to the browser.
+- **Required for:** creating a workspace, retrying analysis, push-sync re-indexing, interview planning, starting or resuming a voice session, answer evaluation, integrity frame checks, repository search embeddings, deep analysis, and reports. Reopening an existing workspace, reading history, and viewing finished reports do not need a key.
+- **When OpenAI rejects the key** (revoked, out of quota, missing model access), the stored status is updated, the current action fails with a specific message and a link to Settings, and background jobs fail without retrying. Failed reports and planning can be retried once the key is fixed. An ordinary OpenAI rate limit is retried and does not change the status.
+- **Replace and delete.** Replacing a key keeps the old one until the new one validates. Deleting it stops AI features from the next request; a voice session that is already connected continues until OpenAI ends it.
+- **Spend.** Usage is recorded per interview and attributed to the key that was used, so the user can relate it to their OpenAI bill. The 5-interviews-per-24-hours limit stays as a fair-use guard, not a cost control.
 
 ### Repository handling
 
@@ -467,6 +484,8 @@ The system must never expose:
 - Other sensitive secret values
 
 The AI must not ask the user to reveal secret values.
+
+The user's own OpenAI API key is stored encrypted, used only server-side, and never returned to the browser, written to logs, or sent to error monitoring (see "OpenAI API key" in section 3).
 
 However, it should still evaluate:
 

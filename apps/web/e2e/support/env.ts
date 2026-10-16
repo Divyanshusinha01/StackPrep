@@ -13,6 +13,8 @@ const DEFAULTS = {
   E2E_USER_EMAIL: "e2e-user@stackprep.test",
   E2E_USER_PASSWORD: "e2e-password-not-a-secret",
   E2E_INNGEST_PORT: "8289",
+  // Must equal OPENAI_KEY_ENCRYPTION_KEYS in supabase/functions/.env.e2e, or seeded keys cannot be decrypted.
+  E2E_OPENAI_KEY_ENCRYPTION_KEYS: "1:hzoD/xxTZycp8U3IFrR+9ZyasS7CgdWxAmYmqzvH+tY=",
 } as const;
 
 export interface E2EEnv {
@@ -23,6 +25,8 @@ export interface E2EEnv {
   userEmail: string;
   userPassword: string;
   inngestPort: number;
+  /** Test-only keyring (version 1 active) used to seed encrypted OpenAI keys. */
+  openAIKeyEncryptionKeys: string;
 }
 
 /** `KEY="value"` lines printed by `supabase status -o env`. */
@@ -89,5 +93,6 @@ export function loadE2EEnv(): E2EEnv {
     userEmail: required("E2E_USER_EMAIL"),
     userPassword: required("E2E_USER_PASSWORD"),
     inngestPort: Number(required("E2E_INNGEST_PORT")),
+    openAIKeyEncryptionKeys: required("E2E_OPENAI_KEY_ENCRYPTION_KEYS"),
   };
 }

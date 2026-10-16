@@ -153,7 +153,7 @@ export default async function AdminPage({ searchParams }: PageProps<"/admin">) {
     <AppShell user={user}>
       <PageHeader
         title="Admin"
-        description="AI cost, cache, and tool latency. Aggregates and interview ids only."
+        description="Estimated AI spend on users' own OpenAI keys, cache, and tool latency. Aggregates and interview ids only."
         actions={
           <nav aria-label="Time window" className="flex gap-1 rounded-lg border p-1">
             {ADMIN_WINDOW_DAYS.map((option) => (

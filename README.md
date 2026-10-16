@@ -68,11 +68,11 @@ flowchart LR
     Edge --> Sentry
 ```
 
-Request/response work runs in Supabase Edge Functions (`interviews`, `workspaces`, `repositories`, `github`, `github-webhooks`, `me`, `admin`, `health`). Long-running work runs as Inngest functions, served by the `inngest` Edge Function, which call GitHub and OpenAI and write results back to Postgres. `OPENAI_API_KEY` never leaves the server: the browser only receives a short-lived Realtime credential.
+Request/response work runs in Supabase Edge Functions (`interviews`, `workspaces`, `repositories`, `github`, `github-webhooks`, `me`, `admin`, `health`). Long-running work runs as Inngest functions, served by the `inngest` Edge Function, which call GitHub and OpenAI and write results back to Postgres. Every OpenAI call uses the user's own API key, which they add on `/settings`; it is validated, stored encrypted (AES-256-GCM, master keys in function secrets), and decrypted only inside Edge Functions. There is no platform key, and the browser only receives a short-lived Realtime credential.
 
 **Request flow**
 
-1. **Select a repository.** The user signs in with GitHub, installs the GitHub App, and picks a repository. A workspace is created at a pinned commit.
+1. **Select a repository.** The user signs in with GitHub, adds their OpenAI API key on `/settings` (`PUT /me/openai-key` validates it with OpenAI before storing it), installs the GitHub App, and picks a repository. A workspace is created at a pinned commit.
 2. **Analysis.** The `workspaces` function sends `repository.analysis.requested`. Inngest then runs analysis, code indexing (the Tree-sitter call graph), deep analysis and memory embeddings.
 3. **Interview.** Creating an interview (in `workspaces`) queues `interview.planning.requested`. When the plan is ready, `POST /interviews/:id/realtime/session` mints a Realtime credential. The browser connects over WebRTC and relays each tool call to `POST /interviews/:id/tool-calls`. Transcript turns and session events go to `POST /interviews/:id/events`, and the browser follows `GET /interviews/:id/events` over SSE.
 4. **Report.** Ending the interview queues `interview.report.requested`. The report is stored in the workspace and a `report_ready` event is pushed to the browser.
@@ -90,7 +90,7 @@ The full design is in [`architecture.md`](architecture.md).
 | Auth | Supabase Auth (GitHub OAuth) |
 | Background jobs | Inngest |
 | Voice | OpenAI Realtime API over WebRTC (default `gpt-realtime-2.1-mini`) |
-| Text, vision, embeddings | OpenAI API; models set per task via `OPENAI_*_MODEL` env vars |
+| Text, vision, embeddings | OpenAI API on each user's own key; models set per task via `OPENAI_*_MODEL` env vars |
 | Code parsing | Tree-sitter (`web-tree-sitter` WASM) in `packages/code-parser` |
 | Validation | Zod 4 (shared between web and Edge Functions) |
 | Testing | Vitest, Deno test, pgTAP, Playwright |
@@ -116,7 +116,7 @@ apps/web/              Next.js app (UI, Supabase SSR auth, admin page, Playwrigh
 packages/shared/       Zod schemas, API contracts, env schemas, generated database types
 packages/code-parser/  Tree-sitter WASM parsing, import resolution, call graph extraction
 supabase/functions/    Deno Edge Functions; _shared/ holds auth, AI, GitHub, analysis, realtime code
-supabase/migrations/   30 SQL migrations (schema, RLS, SQL functions)
+supabase/migrations/   31 SQL migrations (schema, RLS, SQL functions)
 supabase/tests/        pgTAP tests (database/) and concurrency tests (concurrency/)
 evals/                 Eval harness: core runner plus the StackPrep project, datasets and recordings
 loadtest/              k6 SSE load test, decision criteria and committed results
@@ -130,7 +130,7 @@ docs/assets/           README screenshots
 - Docker, for the local Supabase stack
 - Deno 2.x, for Edge Function tests, evals and load tests
 - For the full flow:
-  - an OpenAI API key
+  - an OpenAI API key of your own, entered on `/settings` after signing in (it is not an env var)
   - a GitHub App, for repository access
   - a GitHub OAuth App, for sign-in
   - the Inngest Dev Server (started by `pnpm dev:inngest`), or an Inngest account in production
@@ -200,7 +200,8 @@ In hosted Supabase, set these under Authentication > Providers > GitHub instead.
 | --- | --- | --- |
 | `WEB_ORIGIN` | Yes | Origin of the web app; other origins are rejected |
 | `INNGEST_EVENT_KEY`, `INNGEST_SIGNING_KEY` | Yes | Sending events and serving Inngest functions |
-| `OPENAI_API_KEY` | Yes | Server-side OpenAI key (never sent to the browser) |
+| `OPENAI_KEY_ENCRYPTION_KEYS` | Yes | Keyring that encrypts users' OpenAI keys: comma-separated `version:base64` pairs, each a 32-byte key from `openssl rand -base64 32`. Use a different keyring per environment and never remove a version that stored keys still use |
+| `OPENAI_KEY_ENCRYPTION_ACTIVE_VERSION` | Yes | Keyring version used for new saves; must be listed in `OPENAI_KEY_ENCRYPTION_KEYS` |
 | `OPENAI_PLANNING_MODEL`, `OPENAI_EVALUATION_MODEL`, `OPENAI_REPORT_MODEL`, `OPENAI_VISION_MODEL` | No (defaults) | Text and vision models per task |
 | `OPENAI_REALTIME_MODEL`, `OPENAI_REALTIME_TRANSCRIPTION_MODEL` | No (defaults) | Voice model, and the candidate-speech transcription model (default `gpt-live-transcribe`), which runs in its own transcription-only WebRTC session |
 | `OPENAI_EMBEDDING_MODEL` | No (default) | Must natively output 1536-dimensional vectors |
@@ -215,7 +216,7 @@ For production, copy the file without the local-only block and run `supabase sec
 
 ### E2E
 
-- `supabase/functions/.env.e2e.example` holds dummy credentials only; E2E never reaches GitHub or OpenAI.
+- `supabase/functions/.env.e2e.example` holds dummy credentials only; E2E never reaches GitHub or OpenAI. Its test-only keyring matches `E2E_OPENAI_KEY_ENCRYPTION_KEYS`, which Playwright uses to seed encrypted dummy keys for test users.
 - `apps/web/.env.e2e.example` is optional. Without it, Supabase keys are read from `supabase status`.
 
 ## Production checklist
@@ -227,7 +228,7 @@ Before and after each production deploy:
 - **Supabase Auth URLs** (Authentication > URL Configuration): Site URL set to the production origin, and `<origin>/auth/callback` in Redirect URLs. `supabase/config.toml` only configures the local stack.
 - **GitHub OAuth App (sign-in):** callback `<SUPABASE_URL>/auth/v1/callback`.
 - **GitHub App:** Callback URL `<origin>/github/callback`; webhook URL `<SUPABASE_URL>/functions/v1/github-webhooks` with `GITHUB_APP_WEBHOOK_SECRET`.
-- **Edge Function secrets** (`supabase secrets set`): `WEB_ORIGIN` equal to the production origin, `ADMIN_USER_IDS`, the Inngest keys, OpenAI and GitHub App credentials, and `SENTRY_DSN`/`SENTRY_ENVIRONMENT`.
+- **Edge Function secrets** (`supabase secrets set`): `WEB_ORIGIN` equal to the production origin, `ADMIN_USER_IDS`, the Inngest keys, the OpenAI model variables and the production keyring (`OPENAI_KEY_ENCRYPTION_KEYS`, `OPENAI_KEY_ENCRYPTION_ACTIVE_VERSION`; keep a copy in a password manager), GitHub App credentials, and `SENTRY_DSN`/`SENTRY_ENVIRONMENT`. `OPENAI_API_KEY` must not be set.
 - **Inngest:** app synced to `<SUPABASE_URL>/functions/v1/inngest` with production event and signing keys.
 - **After deploy (smoke test):** `/status` reports the API as healthy; `/robots.txt` and `/sitemap.xml` return 200 with production URLs; the page source of `/` has an absolute, non-localhost `og:image` and canonical; response headers include `Content-Security-Policy-Report-Only` and `Cross-Origin-Opener-Policy`.
 - **CSP:** watch Sentry for CSP reports from the report-only policy. Once a full interview (camera, microphone, WebRTC to OpenAI) produces none, promote the policy from `buildFullCsp` to the enforced `Content-Security-Policy` in `apps/web/next.config.ts`.
@@ -251,7 +252,7 @@ All commands run from the repository root.
 | `pnpm db:reset` | Recreate the local database from migrations |
 | `pnpm db:types` | Regenerate `packages/shared/src/database.types.ts` |
 | `pnpm check` | Typecheck, lint, unit tests, Deno tests and build (what CI runs) |
-| `pnpm eval` | Run evals, recording live model calls (needs `OPENAI_API_KEY`) |
+| `pnpm eval` | Run evals, recording live model calls (needs your own `OPENAI_API_KEY` in the local shell; developer tooling only, never a deployed secret) |
 | `pnpm eval:replay` | Replay committed recordings offline and compare with the baseline |
 | `pnpm eval:verify` | Check datasets, corpora and recordings against `pins.json` |
 
@@ -262,7 +263,7 @@ All commands run from the repository root.
 | Unit (Vitest) | `pnpm test` | `apps/web`, `packages/shared`, `packages/code-parser` |
 | Edge Functions (Deno) | `pnpm test:functions` | Handlers, Inngest jobs, analysis, auth, AI provider |
 | Evals (Deno) | `pnpm test:evals` | Tests for the eval harness itself |
-| Database (pgTAP) | `pnpm test:db` | 21 test files: RLS, interview state, tool calls, reports, AI usage, code index, push sync |
+| Database (pgTAP) | `pnpm test:db` | 22 test files: RLS, interview state, tool calls, reports, AI usage, code index, push sync, OpenAI credentials |
 | Concurrency | `pnpm test:db:concurrency` | Concurrent interview operations against a real database; set `SUPABASE_DB_URL=postgresql://postgres:postgres@127.0.0.1:54322/postgres` |
 | E2E (Playwright) | `pnpm e2e:install`, `pnpm e2e:stack:up`, then `pnpm test:e2e` | Chromium against the local Supabase stack |
 

@@ -73,7 +73,7 @@ function MobileMenu({ active }: { active: string | null }) {
                       active === id ? "text-foreground" : "text-muted-foreground hover:text-foreground",
                     )}
                   >
-                    <span className={cn("font-mono text-xs", active === id ? "text-brand" : "text-muted-foreground/70")}>
+                    <span className={cn("font-mono text-xs", active === id ? "text-brand" : "text-muted-foreground")}>
                       {step}
                     </span>
                     {label}
@@ -82,7 +82,7 @@ function MobileMenu({ active }: { active: string | null }) {
               ))}
             </ul>
           </nav>
-          <AuthCta location="mobile-menu" size="lg" className="mt-5 h-11 w-full text-[15px]" />
+          <AuthCta location="mobile-menu" size="lg" className="mt-5 h-11 w-full" />
         </Dialog.Content>
       </Dialog.Portal>
     </Dialog.Root>
@@ -136,10 +136,11 @@ export function SiteHeader() {
 
         <nav aria-label="Sections" className="mx-auto hidden md:block">
           <ul className="flex items-center gap-1">
-            {SECTIONS.map(({ id, step, label }) => {
+            {SECTIONS.map((section) => {
+              const { id, step, label } = section;
               const current = active === id;
               return (
-                <li key={id}>
+                <li key={id} className={"wideOnly" in section ? "hidden lg:block" : undefined}>
                   <a
                     href={`#${id}`}
                     aria-current={current ? "location" : undefined}
@@ -152,8 +153,8 @@ export function SiteHeader() {
                   >
                     <span
                       className={cn(
-                        "font-mono text-[11px] transition-colors",
-                        current ? "text-brand" : "text-muted-foreground/60",
+                        "font-mono text-[11px] transition-colors max-lg:hidden",
+                        current ? "text-brand" : "text-muted-foreground/85",
                       )}
                     >
                       {step}
@@ -169,7 +170,7 @@ export function SiteHeader() {
         <AuthCta
           location="site-header"
           size="sm"
-          className="ml-auto h-10 max-[380px]:px-2.5 md:ml-0 md:h-8"
+          className="ml-auto h-10 max-[380px]:px-2.5 md:ml-0 md:h-9"
           iconClassName="size-3.5 max-[380px]:hidden"
         />
         <MobileMenu active={active} />

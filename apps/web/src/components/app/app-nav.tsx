@@ -27,7 +27,7 @@ export function AppNav({ className }: { className?: string }) {
             className={cn(
               "focus-ring relative inline-flex h-9 items-center rounded-md px-3 font-medium transition-colors",
               active
-                ? "bg-brand-muted/70 text-foreground after:absolute after:inset-x-2.5 after:-bottom-[13px] after:hidden after:h-[2px] after:rounded-full after:bg-brand sm:after:block"
+                ? "bg-brand-muted/70 text-foreground after:absolute after:inset-x-2.5 after:-bottom-[6px] after:h-[2px] after:rounded-full after:bg-brand sm:after:-bottom-[13px]"
                 : "text-muted-foreground hover:bg-panel-raised/70 hover:text-foreground",
             )}
           >

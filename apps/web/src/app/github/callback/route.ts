@@ -3,6 +3,8 @@ import { type NextRequest, NextResponse } from "next/server";
 import { connectGithub } from "@/lib/api";
 import { getUser } from "@/lib/auth";
 import type { ConnectError } from "@/lib/github";
+import { currentKeySetupCode } from "@/lib/openai-key-gate";
+import { openAIKeySetupHref } from "@/lib/return-to";
 
 const PICKER_PATH = "/workspaces/new";
 
@@ -49,6 +51,10 @@ export async function GET(request: NextRequest) {
   const result = await connectGithub(parsed.data);
   if (!result.ok) {
     return picker({ github_error: result.code });
+  }
+  // The connection is saved either way; without a working key, the key step comes before the picker.
+  if (await currentKeySetupCode()) {
+    return NextResponse.redirect(new URL(openAIKeySetupHref(PICKER_PATH), origin));
   }
   return picker({ connected: "1" });
 }

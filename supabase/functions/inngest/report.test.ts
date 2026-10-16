@@ -3,7 +3,8 @@ import type { InterviewReport } from "@stackprep/shared";
 import { NonRetriableError, RetryAfterError } from "inngest";
 import { AIInvalidOutputError, AIRateLimitedError, AIUnavailableError } from "../_shared/ai/provider.ts";
 import { type AiUsageEntry, aiUsageCost } from "../_shared/ai-usage.ts";
-import { createFakeAIProvider } from "../_shared/testing.ts";
+import { OpenAIKeyMissingError, OpenAIKeyUnusableError } from "../_shared/ai/credentials.ts";
+import { createFakeAIProvider, createFakeOpenAIClients, FAKE_CREDENTIAL_ID, fakeUserOpenAIClients } from "../_shared/testing.ts";
 import type { StepRunner } from "./function.ts";
 import {
   buildReportInput,
@@ -137,8 +138,9 @@ function setup({ target: t = target(), context: c = context(), ai = aiReport }: 
   };
 
   const provider = createFakeAIProvider(() => ai());
-  const deps: ReportDeps = { ai: provider, model: "gpt-report", store, log: (line) => logs.push(line) };
-  return { deps, provider, calls, saved, failures, logs, usage };
+  const openai = createFakeOpenAIClients(USER_ID, fakeUserOpenAIClients({ ai: provider }));
+  const deps: ReportDeps = { openai, model: "gpt-report", store, log: (line) => logs.push(line) };
+  return { deps, provider, openai, calls, saved, failures, logs, usage };
 }
 
 /** Records step outputs; memoizes completed steps across runs like Inngest's durable replay. */
@@ -200,6 +202,7 @@ Deno.test("a successful run verifies, loads stored data, generates, and saves th
     model: "gpt-report",
     source: "provider",
     tokens: { input_tokens: 100, cached_input_tokens: 0, output_tokens: 50 },
+    openaiCredentialId: FAKE_CREDENTIAL_ID,
   });
   assert(idempotencyKey.startsWith(`report:${event.job_id}:run-1:`));
   assertAlmostEquals(aiUsageCost({ ...row, model: "gpt-5.6-terra" })!, (100 * 2 + 50 * 12) / 1_000_000, 1e-15);
@@ -342,4 +345,27 @@ Deno.test("onFailure records a fixed code and message, never the raw error", asy
   await handleReportFailure(invalid.deps, { data: { nope: true }, error: new Error("x") });
   assertEquals(invalid.failures, []);
   assertEquals(JSON.parse(invalid.logs[0]).recorded, false);
+});
+
+Deno.test("the report resolves the owner's key loaded from the job, and key failures are non-retriable", async () => {
+  const { deps, openai } = setup();
+  await runInterviewReport(deps, { data: event, runId: "r", step: stepRunner().step });
+  assertEquals(openai.calls, [USER_ID]);
+
+  const cases: [Error, string][] = [
+    [new OpenAIKeyMissingError(), "openai_key_unavailable"],
+    [new OpenAIKeyUnusableError("invalid"), "openai_key_invalid"],
+    [new OpenAIKeyUnusableError("permission_denied"), "openai_key_invalid"],
+    [new OpenAIKeyUnusableError("quota_exhausted"), "openai_quota_exhausted"],
+  ];
+  for (const [error, code] of cases) {
+    const s = setup();
+    s.deps.openai = createFakeOpenAIClients(USER_ID, error);
+    const err = await assertRejects(() => runInterviewReport(s.deps, { data: event, runId: "r", step: stepRunner().step }));
+    assertInstanceOf(err, NonRetriableError);
+    assertEquals(err.message, code);
+    assertEquals(s.saved, []);
+    await handleReportFailure(s.deps, { data: event, error: err });
+    assertEquals(s.failures.at(-1), [code, REPORT_FAILURE_MESSAGES[code as keyof typeof REPORT_FAILURE_MESSAGES]]);
+  }
 });

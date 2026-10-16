@@ -9,7 +9,14 @@ import {
 } from "../_shared/ai/provider.ts";
 import { REDACTED } from "../_shared/analysis/scrub.ts";
 import type { AiUsageEntry } from "../_shared/ai-usage.ts";
-import { createFakeEmbeddingProvider, fakeEmbedding } from "../_shared/testing.ts";
+import { OpenAIKeyMissingError, OpenAIKeyUnusableError } from "../_shared/ai/credentials.ts";
+import {
+  createFakeEmbeddingProvider,
+  createFakeOpenAIClients,
+  FAKE_CREDENTIAL_ID,
+  fakeEmbedding,
+  fakeUserOpenAIClients,
+} from "../_shared/testing.ts";
 import type { StepRunner } from "./function.ts";
 import {
   buildEmbeddingInput,
@@ -125,10 +132,12 @@ function setup({ rows = baseline(), user = USER_ID, respond, model = MODEL }: Se
   };
 
   const provider = createFakeEmbeddingProvider(respond);
-  const deps: MemoryEmbeddingDeps = { embedding: provider, model, store, log: (line) => logs.push(line) };
+  const openai = createFakeOpenAIClients(user ?? USER_ID, fakeUserOpenAIClients({ embeddings: provider }));
+  const deps: MemoryEmbeddingDeps = { openai, model, store, log: (line) => logs.push(line) };
   return {
     deps,
     provider,
+    openai,
     db,
     usage,
     writes,
@@ -204,6 +213,7 @@ Deno.test("embeds every row of the commit with content and stores the vector and
     model: MODEL,
     source: "provider",
     tokens: { input_tokens: 21 },
+    openaiCredentialId: FAKE_CREDENTIAL_ID,
   });
   assert(idempotencyKey.startsWith(`embedding:${event.job_id}:run-1:0:`));
   assertEquals(JSON.parse(logs.at(-1)!).event, "memory_embedding_completed");
@@ -412,6 +422,27 @@ Deno.test("provider errors map to retriable or non-retriable fixed codes", async
   assertInstanceOf(rejected, NonRetriableError);
   assertEquals(rejected.message, "internal_error");
   assertEquals(classifyMemoryEmbeddingError(new Error("db password=hunter2")).message, "internal_error");
+});
+
+Deno.test("embeddings use the workspace owner's key, and key failures are non-retriable", async () => {
+  const { deps, openai } = setup();
+  await run(deps);
+  assertEquals(openai.calls, [USER_ID]);
+
+  const cases: [Error, string][] = [
+    [new OpenAIKeyMissingError(), "openai_key_unavailable"],
+    [new OpenAIKeyUnusableError("invalid"), "openai_key_invalid"],
+    [new OpenAIKeyUnusableError("quota_exhausted"), "openai_quota_exhausted"],
+  ];
+  for (const [error, code] of cases) {
+    const s = setup();
+    s.deps.openai = createFakeOpenAIClients(USER_ID, error);
+    const err = await assertRejects(() => run(s.deps));
+    assertInstanceOf(err, NonRetriableError);
+    assertEquals(err.message, code);
+    assertEquals(s.writes, []);
+    assertEquals(s.usage, []);
+  }
 });
 
 Deno.test("onFailure logs a fixed code, never the raw error", () => {

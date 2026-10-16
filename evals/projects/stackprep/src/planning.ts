@@ -1,6 +1,7 @@
 /** Drives the real `runInterviewPlanning` over a corpus with an in-memory PlanningStore. */
 import type { InterviewPlanningOutput } from "@stackprep/shared";
 import type { AIProvider, ReasoningEffort } from "../../../../supabase/functions/_shared/ai/provider.ts";
+import { createFakeOpenAIClients, fakeUserOpenAIClients } from "../../../../supabase/functions/_shared/testing.ts";
 import { runInterviewPlanning } from "../../../../supabase/functions/inngest/planning.ts";
 import { INITIAL_STATE_VERSION, type PlanningStore } from "../../../../supabase/functions/inngest/planning-store.ts";
 import type { PipelineMemory } from "./analysis.ts";
@@ -52,7 +53,13 @@ export async function runPlanning(
     failPlanning: done,
   };
   await runInterviewPlanning(
-    { ai, model: task.model, reasoningEffort: task.reasoningEffort, store, log: () => {} },
+    {
+      openai: createFakeOpenAIClients(EVAL_USER_ID, fakeUserOpenAIClients({ ai })),
+      model: task.model,
+      reasoningEffort: task.reasoningEffort,
+      store,
+      log: () => {},
+    },
     {
       data: { interview_id: PLANNING_INTERVIEW_ID, workspace_id: CORPUS_WORKSPACE_ID, job_id: PLANNING_JOB_ID, commit_sha: corpus.commitSha },
       runId: "eval",

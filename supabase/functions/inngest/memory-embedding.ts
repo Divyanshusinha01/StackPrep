@@ -1,13 +1,13 @@
 import { gitCommitShaSchema, REPOSITORY_MEMORY_EMBEDDING_DIMENSIONS } from "@stackprep/shared";
 import { type Inngest, NonRetriableError, RetryAfterError } from "inngest";
 import { z } from "zod";
+import { type OpenAIClients, openAIKeyJobErrorCode } from "../_shared/ai/clients.ts";
 import {
   AIInvalidOutputError,
   AIRateLimitedError,
   AIRequestError,
   AIUnavailableError,
   assertEmbeddingDimensions,
-  type EmbeddingProvider,
 } from "../_shared/ai/provider.ts";
 import { scrubSecrets } from "../_shared/analysis/scrub.ts";
 import type { JobQueue } from "../_shared/jobs.ts";
@@ -37,12 +37,16 @@ export const memoryEmbeddingErrorCodeSchema = z.enum([
   "ai_invalid_output",
   "embedding_dimension_mismatch",
   "internal_error",
+  "openai_key_unavailable",
+  "openai_key_invalid",
+  "openai_quota_exhausted",
 ]);
 
 export type MemoryEmbeddingErrorCode = z.infer<typeof memoryEmbeddingErrorCodeSchema>;
 
 export interface MemoryEmbeddingDeps {
-  embedding: EmbeddingProvider;
+  /** Resolved inside each batch step for the owner loaded from the database; never from the event. */
+  openai: OpenAIClients;
   model: string;
   store: MemoryEmbeddingStore;
   log?: (line: string) => void;
@@ -77,6 +81,10 @@ function nonRetriable(code: MemoryEmbeddingErrorCode): NonRetriableError {
 export function classifyMemoryEmbeddingError(err: unknown): Error {
   if (err instanceof NonRetriableError || err instanceof RetryAfterError) {
     return err;
+  }
+  const keyCode = openAIKeyJobErrorCode(err);
+  if (keyCode) {
+    return nonRetriable(keyCode);
   }
   if (err instanceof AIRateLimitedError) {
     return new RetryAfterError("ai_rate_limited", err.retryAfterSeconds * 1000);
@@ -209,7 +217,8 @@ async function embedBatch(
     return { embedded: 0, superseded, current };
   }
 
-  const { embeddings, usage } = await deps.embedding.embed({
+  const clients = await deps.openai.forUser(userId);
+  const { embeddings, usage } = await clients.embeddings.embed({
     model: deps.model,
     input: todo.map(({ row }) => buildEmbeddingInput(row)),
   });
@@ -224,6 +233,7 @@ async function embedBatch(
     source: "provider",
     tokens: { input_tokens: usage.input_tokens },
     idempotencyKey: `embedding:${event.job_id}:${runId}:${batch}:${crypto.randomUUID()}`,
+    openaiCredentialId: clients.credentialId,
   });
   if (embeddings.length !== todo.length) {
     throw new AIInvalidOutputError("malformed");

@@ -1,5 +1,14 @@
 import { randomBytes, randomInt, randomUUID } from "node:crypto";
-import type { InterviewReport, Json } from "@stackprep/shared";
+import {
+  type InterviewReport,
+  type Json,
+  maskOpenAIKey,
+  type OpenAIKeyErrorCode,
+  type OpenAIKeyStatus,
+  parseEncryptionKeyring,
+} from "@stackprep/shared";
+import { encryptOpenAIKey, importKeyring, toPgBytea } from "../../../../supabase/functions/_shared/ai/credential-crypto.ts";
+import { loadE2EEnv } from "./env";
 import { PLANNING_OUTPUT } from "./fixtures/plan";
 import type { AdminClient } from "./supabase";
 
@@ -77,6 +86,56 @@ export async function ensureUser(admin: AdminClient, email: string, password: st
     await admin.auth.admin.createUser({ email, password, email_confirm: true, user_metadata: { user_name: login } }),
   );
   return user.id;
+}
+
+const STATUS_ERROR: Record<Exclude<OpenAIKeyStatus, "valid">, OpenAIKeyErrorCode> = {
+  invalid: "invalid_api_key",
+  quota_exhausted: "insufficient_quota",
+  permission_denied: "permission_denied",
+};
+
+/**
+ * Stores a dummy OpenAI key the way the `me` function does after validation: encrypted with the
+ * E2E keyring and bound to the user and a fresh credential id. The key is not real, so any server
+ * call that reached OpenAI with it would fail. Returns the hint the settings page shows.
+ */
+export async function seedOpenAIKey(
+  admin: AdminClient,
+  user: TestUser,
+  status: OpenAIKeyStatus = "valid",
+): Promise<string> {
+  const parsed = parseEncryptionKeyring(loadE2EEnv().openAIKeyEncryptionKeys);
+  if (!parsed) {
+    throw new Error("E2E seed: E2E_OPENAI_KEY_ENCRYPTION_KEYS is not a valid keyring");
+  }
+  const keyring = await importKeyring(parsed, 1);
+  const apiKey = `sk-e2e-${randomBytes(16).toString("hex")}`;
+  const credentialId = randomUUID();
+  const sealed = await encryptOpenAIKey(keyring, apiKey, { userId: user.id, credentialId });
+  const hint = maskOpenAIKey(apiKey);
+  check(
+    "store openai key",
+    await admin.rpc("upsert_openai_credential", {
+      p_user_id: user.id,
+      p_credential_id: credentialId,
+      p_ciphertext: toPgBytea(sealed.ciphertext),
+      p_iv: toPgBytea(sealed.iv),
+      p_enc_key_version: sealed.version,
+      p_key_hint: hint,
+    }),
+  );
+  if (status !== "valid") {
+    check(
+      "mark openai key status",
+      await admin.rpc("mark_openai_credential_status", {
+        p_user_id: user.id,
+        p_credential_id: credentialId,
+        p_status: status,
+        p_error_code: STATUS_ERROR[status],
+      }),
+    );
+  }
+  return hint;
 }
 
 /** Deleting the auth user cascades to the profile and everything it owns. */

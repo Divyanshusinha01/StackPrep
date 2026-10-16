@@ -11,6 +11,7 @@ import { INTERVIEW_MESSAGES, InterviewPanel } from "./mockups/interview-panel";
 import { FileChip } from "./mockups/panel";
 import { VoiceOrb } from "./mockups/voice-orb";
 import { SectionHeading } from "./section-heading";
+import { WaveBars } from "./wave-bars";
 
 const MINI_WAVE = [40, 75, 100, 60, 85, 45, 70, 95, 50, 65];
 
@@ -18,18 +19,8 @@ const FEATURES = [
   {
     icon: Mic,
     title: "Voice-first",
-    body: "A natural 30-minute conversation, with live transcription of both sides.",
-    visual: (
-      <span className="flex h-7 items-center gap-[3px]">
-        {MINI_WAVE.map((h, i) => (
-          <span
-            key={i}
-            className="w-[3px] origin-center rounded-full bg-brand/70 motion-safe:animate-[wave_1.2s_ease-in-out_infinite]"
-            style={{ height: `${h}%`, animationDelay: `${i * 90}ms` }}
-          />
-        ))}
-      </span>
-    ),
+    body: "A natural 30-minute conversation over OpenAI realtime voice on your key, with live transcription of both sides.",
+    visual: <WaveBars heights={MINI_WAVE} className="h-7" />,
   },
   {
     icon: Search,

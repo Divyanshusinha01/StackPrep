@@ -2,25 +2,23 @@
 
 import { useId } from "react";
 import Link from "next/link";
-import { Check, CircleAlert, CircleCheck, Loader2, Mic, Video, X } from "lucide-react";
+import { CircleAlert, CircleCheck, Loader2, Mic, Video } from "lucide-react";
 import type { InterviewPlanning, PlanningErrorCode } from "@stackprep/shared";
+import { DEVICE_ERRORS } from "@/components/app/device-copy";
 import { NO_REPORT_MESSAGE } from "@/components/app/end-interview";
 import { type EndControl, useEndInterviewConfirm } from "@/components/app/end-interview-control";
+import { DeviceStep, StepMarker } from "@/components/app/interview-lobby/device-step";
+import { PreviewTile } from "@/components/app/interview-lobby/preview-tile";
 import { formatResumeBy } from "@/components/app/interview-paused";
 import { Notice } from "@/components/app/notice";
-import { type DeviceError, useDeviceCheck } from "@/components/app/use-device-check";
+import { OpenAIKeyNotice } from "@/components/app/openai-key-notice";
+import { useDeviceCheck } from "@/components/app/use-device-check";
 import type { InterviewMedia } from "@/components/app/use-interview-media";
 import { usePollWhile } from "@/components/app/use-poll-while";
 import { CTA_GLOW } from "@/components/landing/constants";
 import { Button } from "@/components/ui/button";
+import { isOpenAIKeySetupCode } from "@/lib/openai-key-setup";
 import { cn } from "@/lib/utils";
-
-const DEVICE_ERRORS: Record<DeviceError, string> = {
-  denied: "Camera or microphone access was blocked. Allow access in your browser settings and try again.",
-  not_found: "No camera or microphone was found. Connect one and try again.",
-  unsupported: "This browser cannot access a camera and microphone. Use a recent desktop browser.",
-  failed: "The camera or microphone stopped working. Check your devices and try again.",
-};
 
 const PLANNING_ERRORS: Record<PlanningErrorCode, string> = {
   repository_memory_unavailable: "The repository analysis for this interview's commit is missing.",
@@ -29,69 +27,10 @@ const PLANNING_ERRORS: Record<PlanningErrorCode, string> = {
   ai_invalid_output: "The interview planner could not produce a plan.",
   enqueue_failed: "Interview preparation could not be started.",
   internal_error: "Something went wrong while preparing the interview.",
+  openai_key_unavailable: "No working OpenAI key was available to prepare this interview.",
+  openai_key_invalid: "Your OpenAI key was rejected while preparing this interview.",
+  openai_quota_exhausted: "Your OpenAI account ran out of quota while preparing this interview.",
 };
-
-type StepState = "pending" | "active" | "done" | "failed";
-
-/** Numbered circle for one lobby step; turns into a check, spinner or cross as the step progresses. */
-function StepMarker({ step, state }: { step: number; state: StepState }) {
-  return (
-    <span
-      aria-hidden
-      className={cn(
-        "grid size-7 shrink-0 place-items-center rounded-full border text-xs font-semibold tabular-nums transition-colors",
-        state === "done" && "border-emerald-500/40 bg-emerald-500/15 text-emerald-300",
-        state === "active" && "border-brand/50 bg-brand-muted text-brand",
-        state === "failed" && "border-red-500/40 bg-red-500/15 text-red-300",
-        state === "pending" && "border-border text-muted-foreground",
-      )}
-    >
-      {state === "done" ? (
-        <Check className="size-3.5" />
-      ) : state === "active" ? (
-        <Loader2 className="size-3.5 motion-safe:animate-spin" />
-      ) : state === "failed" ? (
-        <X className="size-3.5" />
-      ) : (
-        step
-      )}
-    </span>
-  );
-}
-
-function CheckItem({
-  step,
-  ok,
-  waiting,
-  icon,
-  label,
-  hint,
-  children,
-}: {
-  step: number;
-  ok: boolean;
-  /** The check is running but has not passed yet. */
-  waiting: boolean;
-  icon: React.ReactNode;
-  label: string;
-  hint?: string;
-  children?: React.ReactNode;
-}) {
-  return (
-    <li className="flex gap-3 py-3.5">
-      <StepMarker step={step} state={ok ? "done" : waiting ? "active" : "pending"} />
-      <div className="min-w-0 flex-1 pt-0.5">
-        <p className={cn("flex items-center gap-2 text-sm font-medium", ok ? "text-foreground" : "text-muted-foreground")}>
-          {icon}
-          <span>{label}</span>
-          {!ok && hint ? <span className="text-xs font-normal">{hint}</span> : null}
-          <span className="sr-only">{ok ? "(passed)" : "(not yet passed)"}</span>
-        </p>
-        {children}
-      </div>
-    </li>
-  );
-}
 
 export interface LobbyResume {
   resumeBy: string;
@@ -109,11 +48,13 @@ export interface LobbyResume {
 export function InterviewLobby({
   planning,
   media,
+  workspaceId,
   resume,
   onEnter,
 }: {
   planning: InterviewPlanning | null;
   media: InterviewMedia;
+  workspaceId: string;
   /** Set when the candidate is coming back to a paused interview. */
   resume?: LobbyResume;
   onEnter: () => void;
@@ -159,46 +100,26 @@ export function InterviewLobby({
           </span>
         </div>
 
-        <div className="relative mt-4 aspect-video overflow-hidden rounded-lg border border-border-strong/70 bg-black/80 shadow-inner">
-          <video
-            ref={videoRef}
-            autoPlay
-            playsInline
-            muted
-            onLoadedData={onVideoLoaded}
-            className={cn("size-full -scale-x-100 object-cover", phase !== "active" && "invisible")}
-            aria-label="Camera preview"
-          />
-          {phase !== "active" ? (
-            <div className="absolute inset-0 flex flex-col items-center justify-center gap-3.5 bg-radial from-panel/80 to-black/90 p-4 text-center">
-              <span
-                aria-hidden
-                className="grid size-12 place-items-center rounded-xl border border-brand/25 bg-brand-muted/70 text-brand"
-              >
-                <Video className="size-5" />
-              </span>
-              <Button onClick={() => void start()} disabled={phase === "requesting"} variant="outline">
-                {phase === "requesting" ? "Waiting for permission…" : phase === "error" ? "Try again" : "Start check"}
-              </Button>
-            </div>
-          ) : null}
-          {checking && cameraOk ? (
-            <span className="absolute top-3 left-3 inline-flex items-center gap-1.5 rounded-full border border-emerald-500/30 bg-black/70 px-2.5 py-0.5 font-mono text-[11px] text-emerald-300 backdrop-blur-md">
-              <span aria-hidden className="size-1.5 rounded-full bg-emerald-400" />
-              Preview on
-            </span>
-          ) : null}
-        </div>
+        <PreviewTile
+          videoRef={videoRef}
+          phase={phase}
+          cameraOk={cameraOk}
+          onStart={() => void start()}
+          onVideoLoaded={onVideoLoaded}
+        />
 
+        <p className="sr-only" aria-live="polite">
+          {[cameraOk ? "Camera detected." : "", micOk ? "Microphone detected." : ""].join(" ").trim()}
+        </p>
         <ol className="mt-5 divide-y divide-border/70 rounded-lg border bg-background/40 px-4">
-          <CheckItem
+          <DeviceStep
             step={1}
             ok={cameraOk}
             waiting={checking}
             icon={<Video className="size-4" aria-hidden />}
             label="Camera"
           />
-          <CheckItem
+          <DeviceStep
             step={2}
             ok={micOk}
             waiting={checking}
@@ -212,11 +133,11 @@ export function InterviewLobby({
             >
               <div
                 ref={meterRef}
-                className="h-full origin-left scale-x-0 bg-gradient-to-r from-emerald-500 via-emerald-400 to-brand transition-transform duration-75"
+                className="h-full origin-left scale-x-0 bg-gradient-to-r from-success/80 via-success to-brand transition-transform duration-75"
               />
               <div className="pointer-events-none absolute inset-0 bg-[repeating-linear-gradient(to_right,transparent_0,transparent_8px,var(--background)_8px,var(--background)_10px)] opacity-60" />
             </div>
-          </CheckItem>
+          </DeviceStep>
         </ol>
         {error ? <Notice tone="error">{DEVICE_ERRORS[error]}</Notice> : null}
         <p data-testid="media-disclosure" className="mt-4 text-xs leading-relaxed text-muted-foreground">
@@ -247,6 +168,14 @@ export function InterviewLobby({
             <Notice tone="error" className="mt-4">
               {PLANNING_ERRORS[planning.error_code ?? "internal_error"]} Start a new interview from the workspace.
             </Notice>
+          ) : null}
+          {planFailed && isOpenAIKeySetupCode(planning.error_code) ? (
+            <OpenAIKeyNotice
+              code={planning.error_code}
+              returnTo={`/workspaces/${workspaceId}`}
+              detail="Once the key works, Settings takes you back to the workspace to start a new interview."
+              className="mt-3"
+            />
           ) : null}
         </section>
 
@@ -289,11 +218,11 @@ export function InterviewLobby({
             id={hintId}
             className={cn(
               "mt-3.5 flex items-start gap-2 text-xs leading-relaxed",
-              blocker ? "text-muted-foreground" : "text-emerald-300",
+              blocker ? "text-muted-foreground" : "text-success",
             )}
           >
             {blocker ? (
-              <CircleAlert className="mt-0.5 size-3.5 shrink-0 text-amber-300" aria-hidden />
+              <CircleAlert className="mt-0.5 size-3.5 shrink-0 text-warning" aria-hidden />
             ) : (
               <CircleCheck className="mt-0.5 size-3.5 shrink-0" aria-hidden />
             )}

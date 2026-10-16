@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { SearchX } from "lucide-react";
 import { EmptyState } from "@/components/app/empty-state";
+import { FooterLinks } from "@/components/landing/site-footer";
 import { Wordmark } from "@/components/landing/wordmark";
 import { Button } from "@/components/ui/button";
 
@@ -9,6 +10,8 @@ export const metadata: Metadata = {
   title: "Not found",
   robots: { index: false },
 };
+
+const SIGN_IN_HINT = <span className="sr-only"> (sign-in required)</span>;
 
 export default function NotFound() {
   return (
@@ -20,6 +23,7 @@ export default function NotFound() {
       <EmptyState
         className="relative w-full max-w-md bg-panel/80"
         headingLevel={1}
+        size="page"
         icon={<SearchX />}
         title="This page could not be found"
         description="It may have been deleted, or the link is wrong."
@@ -29,14 +33,21 @@ export default function NotFound() {
               <Link href="/">Home</Link>
             </Button>
             <Button asChild variant="outline">
-              <Link href="/workspaces">Go to workspaces</Link>
+              <Link href="/workspaces">
+                Go to workspaces
+                {SIGN_IN_HINT}
+              </Link>
             </Button>
             <Button asChild variant="outline">
-              <Link href="/interviews">Your interviews</Link>
+              <Link href="/interviews">
+                Your interviews
+                {SIGN_IN_HINT}
+              </Link>
             </Button>
           </>
         }
       />
+      <FooterLinks className="relative [&_ul]:justify-center" />
     </main>
   );
 }

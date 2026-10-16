@@ -30,8 +30,7 @@ export function interviewStore(corpus: IndexedCorpus, memory: PipelineMemory, st
 /** The ToolContext the evaluation tool runs in, with the given (recorded) provider and model settings. */
 export function evaluationToolContext(corpus: IndexedCorpus, store: FakeToolStore, ai: AIProvider, task: TaskModel): ToolContext {
   return {
-    ...corpusToolContext(corpus, store),
-    ai,
+    ...corpusToolContext(corpus, store, { ai }),
     evaluationModel: task.model,
     evaluationReasoningEffort: task.reasoningEffort,
   };

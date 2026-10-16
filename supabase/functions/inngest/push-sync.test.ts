@@ -70,6 +70,7 @@ function setup({ workspace, heads = [NEW_HEAD], onHead, onSleep, enqueueError, h
     name: "api",
     installation_id: 501,
     suspended: false,
+    openai_key_valid: true,
     ...workspace,
   };
 
@@ -240,13 +241,14 @@ Deno.test("nothing pending is up to date without calling GitHub", async () => {
   assertEquals(s.calls, ["load", "observe"]);
 });
 
-Deno.test("a workspace that is not ready or whose installation is unusable is skipped and stays pending", async () => {
-  const cases: [Partial<PushSyncWorkspace> | null, "not_ready" | "installation_unavailable"][] = [
+Deno.test("a workspace that is not ready, whose installation is unusable, or whose owner has no valid key is skipped and stays pending", async () => {
+  const cases: [Partial<PushSyncWorkspace> | null, "not_ready" | "installation_unavailable" | "key_unavailable"][] = [
     [null, "not_ready"],
     [{ status: "analyzing" }, "not_ready"],
     [{ installation_id: null }, "installation_unavailable"],
     [{ suspended: true }, "installation_unavailable"],
     [{ installation_id: 999 }, "installation_unavailable"],
+    [{ openai_key_valid: false }, "key_unavailable"],
   ];
   for (const [workspace, reason] of cases) {
     const s = setup({ workspace });

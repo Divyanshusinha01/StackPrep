@@ -1,10 +1,13 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { createContext, useContext, useEffect, useState } from "react";
 
 import { SECTIONS } from "./constants";
 
-export function useActiveSection() {
+const ActiveSectionContext = createContext<string | null>(null);
+
+/** One observer for the whole landing page, shared by the header nav and the scroll spine. */
+export function ActiveSectionProvider({ children }: { children: React.ReactNode }) {
   const [active, setActive] = useState<string | null>(null);
 
   useEffect(() => {
@@ -26,5 +29,9 @@ export function useActiveSection() {
     return () => observer.disconnect();
   }, []);
 
-  return active;
+  return <ActiveSectionContext.Provider value={active}>{children}</ActiveSectionContext.Provider>;
+}
+
+export function useActiveSection() {
+  return useContext(ActiveSectionContext);
 }

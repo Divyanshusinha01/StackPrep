@@ -1,11 +1,13 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
+import { ArrowRight } from "lucide-react";
 import type { InterviewReportResponse, ReportErrorCode } from "@stackprep/shared";
 import { AppShell } from "@/components/app/app-shell";
 import { InterviewStatusBadge } from "@/components/app/interview-status";
 import { InterviewTranscript } from "@/components/app/interview-transcript";
 import { Notice } from "@/components/app/notice";
+import { OpenAIKeyNotice } from "@/components/app/openai-key-notice";
 import { PageHeader } from "@/components/app/page-header";
 import { PrintButton } from "@/components/app/print-button";
 import { ReportPending } from "@/components/app/report-pending";
@@ -17,6 +19,8 @@ import { TranscriptDisclosure } from "@/components/app/transcript-disclosure";
 import { Button } from "@/components/ui/button";
 import { type ApiResult, getInterview, getInterviewReport, getInterviewTranscript } from "@/lib/api";
 import { requireUser } from "@/lib/auth";
+import { currentKeySetupCode } from "@/lib/openai-key-gate";
+import { isOpenAIKeySetupCode } from "@/lib/openai-key-setup";
 import { retryReport } from "./actions";
 
 export const metadata: Metadata = {
@@ -31,6 +35,9 @@ const FAILURE_MESSAGES: Record<ReportErrorCode, string> = {
   ai_invalid_output: "The report could not be generated.",
   enqueue_failed: "The report could not be started.",
   internal_error: "Something went wrong while generating the report.",
+  openai_key_unavailable: "No working OpenAI key was available to generate the report.",
+  openai_key_invalid: "Your OpenAI key was rejected while generating the report.",
+  openai_quota_exhausted: "Your OpenAI account ran out of quota while generating the report.",
 };
 
 const TOC_ITEMS = [...REPORT_SECTIONS, { id: "transcript", label: "Full interview transcript" }];
@@ -51,11 +58,11 @@ function RetryForm({ interviewId }: { interviewId: string }) {
 function ReportBody({
   interviewId,
   result,
-  retryFailed,
+  retryError,
 }: {
   interviewId: string;
   result: ApiResult<InterviewReportResponse>;
-  retryFailed: boolean;
+  retryError: string | null;
 }) {
   if (!result.ok) {
     return (
@@ -72,14 +79,28 @@ function ReportBody({
     return <ReportPending />;
   }
   if (state.status === "failed") {
+    const keyCode = isOpenAIKeySetupCode(retryError)
+      ? retryError
+      : isOpenAIKeySetupCode(state.error_code)
+        ? state.error_code
+        : null;
     return (
-      <Notice tone="error" className="mt-0">
-        <span className="min-w-0 flex-1">
-          {retryFailed ? "The retry could not be started. " : ""}
-          {FAILURE_MESSAGES[state.error_code]}
-        </span>
-        {state.error_code !== "transcript_unavailable" ? <RetryForm interviewId={interviewId} /> : null}
-      </Notice>
+      <>
+        <Notice tone="error" className="mt-0">
+          <span className="min-w-0 flex-1">
+            {retryError !== null ? "The retry could not be started. " : ""}
+            {FAILURE_MESSAGES[state.error_code]}
+          </span>
+          {state.error_code !== "transcript_unavailable" ? <RetryForm interviewId={interviewId} /> : null}
+        </Notice>
+        {keyCode ? (
+          <OpenAIKeyNotice
+            code={keyCode}
+            returnTo={`/interviews/${interviewId}/report`}
+            detail="Your transcript is saved. Fix the key, then come back and retry the report."
+          />
+        ) : null}
+      </>
     );
   }
   return <ReportView report={state.report} />;
@@ -94,9 +115,10 @@ export default async function InterviewReportPage({ params, searchParams }: Page
     notFound();
   }
   const completed = interview.status === "completed";
-  const [transcript, report] = await Promise.all([
+  const [transcript, report, keyCode] = await Promise.all([
     getInterviewTranscript(interview.id),
     completed ? getInterviewReport(interview.id) : Promise.resolve(null),
+    currentKeySetupCode(),
   ]);
   const ready = report?.ok && report.data.status === "ready" ? report.data : null;
 
@@ -116,7 +138,7 @@ export default async function InterviewReportPage({ params, searchParams }: Page
   );
 
   return (
-    <AppShell user={user}>
+    <AppShell user={user} keyAlert={keyCode !== null}>
       <PageHeader
         back={{
           href: `/workspaces/${interview.workspace_id}`,
@@ -125,7 +147,19 @@ export default async function InterviewReportPage({ params, searchParams }: Page
         title={`Interview ${interview.interview_number} report`}
         badge={<InterviewStatusBadge status={interview.status} terminationReason={interview.termination_reason} />}
         description={ready ? `Generated ${dateTimeFormat.format(new Date(ready.generated_at))} UTC` : undefined}
-        actions={ready ? <PrintButton label="Print report" /> : null}
+        actions={
+          ready ? (
+            <>
+              <PrintButton label="Print report" />
+              <Button asChild size="sm" className="print:hidden">
+                <Link href={`/workspaces/${interview.workspace_id}`}>
+                  Start next interview
+                  <ArrowRight aria-hidden />
+                </Link>
+              </Button>
+            </>
+          ) : null
+        }
       />
 
       {!completed ? (
@@ -142,7 +176,11 @@ export default async function InterviewReportPage({ params, searchParams }: Page
           ) : null}
         </Notice>
       ) : ready ? null : report ? (
-        <ReportBody interviewId={interview.id} result={report} retryFailed={typeof query.retry_error === "string"} />
+        <ReportBody
+          interviewId={interview.id}
+          result={report}
+          retryError={typeof query.retry_error === "string" ? query.retry_error : null}
+        />
       ) : null}
 
       {ready ? (

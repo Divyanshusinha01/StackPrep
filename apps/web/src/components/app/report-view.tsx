@@ -1,7 +1,9 @@
-import { ArrowUpRight, BookOpen, Check, FileCode2, MessageSquareQuote, Target } from "lucide-react";
 import type { InterviewReport, ReportRating } from "@stackprep/shared";
 import { type ChipTone, StatusChip } from "@/components/app/status-chip";
-import { cn } from "@/lib/utils";
+import { SurfaceList } from "@/components/app/surface";
+import { Bullets } from "./report-view/bullets";
+import { InterviewEvidenceList, RepositoryEvidenceList } from "./report-view/evidence-list";
+import { RevisitQuestion } from "./report-view/revisit-question";
 
 const RATING_LABELS: Record<ReportRating, string> = {
   strong: "Strong",
@@ -48,68 +50,6 @@ function Section({ id, children }: { id: SectionId; children: React.ReactNode })
   );
 }
 
-function Bullets({
-  items,
-  empty,
-  variant = "brand",
-}: {
-  items: string[];
-  empty: string;
-  variant?: "success" | "warning" | "brand";
-}) {
-  if (items.length === 0) {
-    return <p className="mt-2.5 text-sm text-muted-foreground">{empty}</p>;
-  }
-  return (
-    <ul className="mt-3.5 space-y-2.5 text-sm leading-relaxed">
-      {items.map((item, i) => (
-        <li key={i} className="flex items-start gap-3">
-          <span
-            aria-hidden
-            className={cn(
-              "mt-1 grid size-4.5 shrink-0 place-items-center rounded-full border",
-              variant === "success" && "border-emerald-500/35 bg-emerald-500/10 text-emerald-300",
-              variant === "warning" && "border-amber-500/35 bg-amber-500/10 text-amber-300",
-              variant === "brand" && "border-brand/35 bg-brand-muted text-brand",
-            )}
-          >
-            {variant === "success" ? (
-              <Check className="size-3" />
-            ) : variant === "warning" ? (
-              <Target className="size-3" />
-            ) : (
-              <ArrowUpRight className="size-3" />
-            )}
-          </span>
-          <span className="min-w-0 flex-1 text-foreground/95">{item}</span>
-        </li>
-      ))}
-    </ul>
-  );
-}
-
-function RevisitField({
-  icon,
-  label,
-  className,
-  children,
-}: {
-  icon: React.ReactNode;
-  label: string;
-  className?: string;
-  children: React.ReactNode;
-}) {
-  return (
-    <div className={cn("p-4", className)}>
-      <dt className="flex items-center gap-1.5 font-mono text-[11px] font-medium tracking-wider text-muted-foreground uppercase">
-        {icon}
-        {label}
-      </dt>
-      <dd className="mt-1.5 text-sm leading-relaxed text-foreground/90">{children}</dd>
-    </div>
-  );
-}
-
 /**
  * The report sections in PRD order (the transcript is rendered by the page). There is no overall
  * score; ratings are qualitative per category.
@@ -126,7 +66,7 @@ export function ReportView({ report }: { report: InterviewReport }) {
       </Section>
 
       <Section id="report-categories">
-        <ul className="surface-inset mt-4 divide-y overflow-hidden rounded-xl border bg-panel/50">
+        <SurfaceList className="mt-4 bg-panel/50">
           {report.categories.map((category, i) => (
             <li
               key={i}
@@ -139,7 +79,7 @@ export function ReportView({ report }: { report: InterviewReport }) {
               <p className="text-sm leading-relaxed text-muted-foreground">{category.narrative}</p>
             </li>
           ))}
-        </ul>
+        </SurfaceList>
       </Section>
 
       <Section id="report-strengths">
@@ -157,40 +97,8 @@ export function ReportView({ report }: { report: InterviewReport }) {
             <h3 className="font-display text-sm font-semibold">Questions to revisit</h3>
             <ul className="mt-3.5 space-y-4">
               {report.struggled_questions.map((q, i) => (
-                <li
-                  key={i}
-                  className="surface-inset overflow-hidden rounded-xl border bg-panel/60 text-sm print:break-inside-avoid"
-                >
-                  <div className="border-b bg-panel-raised/40 p-4">
-                    <code className="inline-flex max-w-full items-center gap-1.5 rounded-md border border-brand/30 bg-brand-muted/70 px-2 py-0.5 font-mono text-xs break-all text-brand">
-                      <FileCode2 className="size-3.5 shrink-0" aria-hidden />
-                      <span className="sr-only">Repository area: </span>
-                      {q.repository_area}
-                    </code>
-                    <p className="mt-2.5 font-medium leading-relaxed text-foreground">{q.question}</p>
-                  </div>
-                  <dl className="divide-y sm:grid sm:grid-cols-2 sm:divide-y-0">
-                    <RevisitField
-                      icon={<MessageSquareQuote className="size-3.5 text-muted-foreground" aria-hidden />}
-                      label="Your answer"
-                      className="sm:border-r"
-                    >
-                      {q.performance}
-                    </RevisitField>
-                    <RevisitField
-                      icon={<Target className="size-3.5 text-amber-300" aria-hidden />}
-                      label="Weakness"
-                    >
-                      {q.weakness}
-                    </RevisitField>
-                    <RevisitField
-                      icon={<BookOpen className="size-3.5 text-brand" aria-hidden />}
-                      label="What to study"
-                      className="bg-background/30 sm:col-span-2 sm:border-t"
-                    >
-                      {q.learning_direction}
-                    </RevisitField>
-                  </dl>
+                <li key={i}>
+                  <RevisitQuestion question={q} />
                 </li>
               ))}
             </ul>
@@ -199,42 +107,11 @@ export function ReportView({ report }: { report: InterviewReport }) {
       </Section>
 
       <Section id="report-interview-evidence">
-        {report.interview_evidence.length === 0 ? (
-          <p className="mt-2.5 text-sm text-muted-foreground">No interview evidence was recorded.</p>
-        ) : (
-          <ul className="mt-3.5 divide-y divide-border/60 rounded-xl border bg-panel/40 px-4 text-sm leading-relaxed">
-            {report.interview_evidence.map((item, i) => (
-              <li key={i} className="flex flex-col gap-1 py-3 sm:flex-row sm:gap-4">
-                <span className="shrink-0 font-mono text-xs font-medium text-muted-foreground sm:w-44 sm:pt-0.5">
-                  {item.category}
-                </span>
-                <span className="text-foreground/95">{item.observation}</span>
-              </li>
-            ))}
-          </ul>
-        )}
+        <InterviewEvidenceList items={report.interview_evidence} />
       </Section>
 
       <Section id="report-repository-evidence">
-        {report.repository_evidence.length === 0 ? (
-          <p className="mt-2.5 text-sm text-muted-foreground">No repository files were referenced.</p>
-        ) : (
-          <ul className="mt-3.5 divide-y divide-border/60 rounded-xl border bg-panel/40 px-4 text-sm leading-relaxed">
-            {report.repository_evidence.map((item, i) => (
-              <li key={i} className="flex flex-col gap-1.5 py-3 sm:flex-row sm:items-baseline sm:gap-4">
-                <span className="shrink-0 sm:w-60">
-                  <code className="inline-block max-w-full rounded border border-border-strong/60 bg-background/60 px-2 py-0.5 font-mono text-xs break-all text-brand">
-                    {item.path}
-                  </code>
-                </span>
-                <span className="min-w-0 flex-1 text-muted-foreground">
-                  <span className="sr-only"> — </span>
-                  {item.note}
-                </span>
-              </li>
-            ))}
-          </ul>
-        )}
+        <RepositoryEvidenceList items={report.repository_evidence} />
       </Section>
 
       <Section id="report-improve">

@@ -9,13 +9,20 @@ import {
   VOICE_WRAP_UP_SECONDS,
 } from "@stackprep/shared";
 import type { SupabaseClient, User } from "@supabase/supabase-js";
-import { AIUnavailableError, type EmbeddingRequest, type StructuredRequest } from "../_shared/ai/provider.ts";
+import { OpenAIKeyMissingError } from "../_shared/ai/credentials.ts";
+import { AIUnavailableError, type EmbeddingProvider, type EmbeddingRequest, type StructuredRequest } from "../_shared/ai/provider.ts";
 import { aiUsageCost } from "../_shared/ai-usage.ts";
 import type { Authenticate } from "../_shared/auth.ts";
 import type { FileSymbol, SymbolSearchHit } from "../_shared/code-index/reader.ts";
 import { GithubRateLimitedError, GithubUnavailableError } from "../_shared/github-app.ts";
-import { createRealtimeClient } from "../_shared/realtime/openai-realtime.ts";
-import { createFakeAIProvider, createFakeEmbeddingProvider, type FakeEmbeddingProvider } from "../_shared/testing.ts";
+import {
+  createFakeAIProvider,
+  createFakeEmbeddingProvider,
+  createFakeOpenAIClients,
+  FAKE_CREDENTIAL_ID,
+  type FakeEmbeddingProvider,
+  fakeUserOpenAIClients,
+} from "../_shared/testing.ts";
 import {
   createInterviewsHandler,
   type InterviewRow,
@@ -149,7 +156,9 @@ interface Setup {
   github?: ReturnType<typeof createFakeGithub>;
   ai?: (request: StructuredRequest<unknown>) => unknown;
   store?: FakeToolStore;
-  embeddings?: SearchEmbeddings;
+  embeddings?: SearchEmbeddings & { provider: EmbeddingProvider };
+  /** Rejects every key resolution instead of serving the caller's clients. */
+  keyError?: Error;
 }
 
 function at(offsetSeconds: number): string {
@@ -166,6 +175,7 @@ function setup({
   ai = () => evaluation,
   store = createFakeToolStore({ memory, messages, state: stateSnapshot() }),
   embeddings,
+  keyError,
 }: Setup = {}) {
   const rlsClient = { rls: true } as unknown as SupabaseClient;
   const authenticate: Authenticate = (req) =>
@@ -189,6 +199,10 @@ function setup({
     deleteInterview: () => Promise.reject(new Error("unused")),
   };
   const fakeAI = createFakeAIProvider(ai);
+  const openai = createFakeOpenAIClients(
+    userId,
+    keyError ?? fakeUserOpenAIClients({ ai: fakeAI, ...(embeddings ? { embeddings: embeddings.provider } : {}) }),
+  );
   const jobs = createFakeJobQueue();
   const reportJobs = createFakeReportJobs();
   const handler = createInterviewsHandler({
@@ -204,20 +218,19 @@ function setup({
       };
     },
     store: interviewStore,
-    realtime: createRealtimeClient({ apiKey: "sk-test", fetch: () => Promise.reject(new Error("unused")) }),
+    openai,
     model: "gpt-realtime-2.1-mini",
     transcriptionModel: "gpt-live-transcribe",
     github,
-    ai: fakeAI,
     evaluationModel: "gpt-eval",
     evaluationReasoningEffort: "low",
-    embeddings,
+    embeddings: embeddings && { model: embeddings.model, budgetMs: embeddings.budgetMs },
     visionModel: "gpt-vision",
     jobs,
     reportJobs,
     now: () => NOW,
   });
-  return { handler, store, github, ai: fakeAI, jobs, reportJobs };
+  return { handler, store, github, ai: fakeAI, openai, jobs, reportJobs };
 }
 
 let callCounter = 0;
@@ -625,6 +638,7 @@ Deno.test("search_repository: vector hits fill after keyword hits, deduplicated 
     model: "text-embedding-3-small",
     source: "provider",
     tokens: { input_tokens: 7 },
+    openaiCredentialId: FAKE_CREDENTIAL_ID,
   });
   assert(idempotencyKey.startsWith(`embedding:${INTERVIEW_ID}:`));
 });
@@ -659,6 +673,11 @@ Deno.test("search_repository: any vector failure falls back to the keyword resul
     ["embed_error", vectorSetup((r) => r.input.map(() => new Array(3072).fill(0.01)))],
     ["no_results", vectorSetup(undefined, { storeMatches: [] })],
     ["disabled", setup()],
+    ["key_unavailable", setup({
+      store: createFakeToolStore({ memory, messages, state: stateSnapshot(), matches }),
+      embeddings: { provider: createFakeEmbeddingProvider(), model: "text-embedding-3-small" },
+      keyError: new OpenAIKeyMissingError(),
+    })],
   ];
   const rpcFailure = vectorSetup();
   rpcFailure.store.matchImpl = () => Promise.reject(new Error("connection refused password=hunter2"));
@@ -783,6 +802,7 @@ Deno.test("evaluate_answer: stores a hidden evaluation, updates coverage, and re
     model: "gpt-eval",
     source: "provider",
     tokens: { input_tokens: 100, cached_input_tokens: 0, output_tokens: 50 },
+    openaiCredentialId: FAKE_CREDENTIAL_ID,
   });
   assert(idempotencyKey.startsWith(`evaluation:${interviewRow.id}:`));
   assertEquals(aiUsageCost({ ...usage, model: "gpt-5.6-terra" }), (100 * 2 + 50 * 12) / 1_000_000);
@@ -848,6 +868,29 @@ Deno.test("evaluate_answer: AI failures return internal and leave nothing behind
     await expectToolError(await handler(toolCall("evaluate_answer", { answerSummary: "x" }, { callId: "eval_fail" })), "internal");
   });
   assertEquals([store.records.length, store.evaluations.length, store.stateUpdates.length, store.usage.length], [0, 0, 0, 0]);
+});
+
+Deno.test("evaluate_answer: a missing key returns internal, records nothing, and logs only a fixed reason", async () => {
+  const { handler, store, ai, openai } = setup({ keyError: new OpenAIKeyMissingError() });
+  const { value: res, logs } = await captureLogs(() => handler(toolCall("evaluate_answer", { answerSummary: "x" })));
+  await expectToolError(res, "internal");
+  assertEquals(ai.calls.length, 0);
+  assertEquals(openai.calls, [userId]);
+  assertEquals([store.evaluations.length, store.stateUpdates.length, store.usage.length], [0, 0, 0]);
+  assertEquals(logs.find((l) => l.event === "evaluate_answer_failed")?.reason, "openai_key_unavailable");
+});
+
+Deno.test("evaluate_answer: usage is attributed to the credential that paid for it", async () => {
+  const { handler, store } = setup();
+  await result(await handler(toolCall("evaluate_answer", { answerSummary: "x" })));
+  await new Promise((resolve) => setTimeout(resolve, 0));
+  assertEquals(store.usage.map((u) => [u.task, u.openaiCredentialId]), [["evaluation", FAKE_CREDENTIAL_ID]]);
+});
+
+Deno.test("tools that need no AI never resolve the key", async () => {
+  const { handler, openai } = setup({ keyError: new OpenAIKeyMissingError() });
+  await result(await handler(toolCall("get_file", { path: "src/server.ts" })));
+  assertEquals(openai.calls, []);
 });
 
 Deno.test("evaluate_answer: unknown areas are stored as general without touching coverage", async () => {

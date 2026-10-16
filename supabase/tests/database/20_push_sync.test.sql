@@ -17,6 +17,11 @@ insert into auth.users (id, email) values
   ('20202020-0000-4000-8000-00000000000c', 'carol@example.com'),
   ('20202020-0000-4000-8000-00000000000d', 'dave@example.com');
 
+-- Pending pushes are only listed for owners with a valid OpenAI key (22_openai_credentials covers the filter).
+insert into public.openai_credentials (user_id, credential_id, ciphertext, iv, enc_key_version, key_hint)
+select u.id, gen_random_uuid(), extensions.gen_random_bytes(48), extensions.gen_random_bytes(12), 1, 'sk-...test'
+from auth.users as u where u.id::text like '20202020-%';
+
 insert into public.github_connections (id, user_id, github_user_id, installation_id, account_login, suspended_at) values
   ('20202020-0000-4000-8000-0000000001a0', '20202020-0000-4000-8000-00000000000a', 1, 501, 'acme', null),
   ('20202020-0000-4000-8000-0000000001b0', '20202020-0000-4000-8000-00000000000b', 2, 501, 'acme', null),

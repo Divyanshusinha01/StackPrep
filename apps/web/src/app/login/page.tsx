@@ -43,8 +43,8 @@ export default async function LoginPage({ searchParams }: PageProps<"/login">) {
           </Link>
           <h1 className="mt-6 font-display text-2xl font-semibold tracking-tight">Sign in to StackPrep</h1>
           <p className="mt-2 text-sm leading-relaxed text-muted-foreground">
-            Sign in with your GitHub account. You will choose which repositories StackPrep can read in a
-            separate step.
+            Sign in with your GitHub account. Next you&apos;ll add your OpenAI API key, then choose which
+            repositories StackPrep can read.
           </p>
         </div>
         {error ? (
@@ -54,9 +54,9 @@ export default async function LoginPage({ searchParams }: PageProps<"/login">) {
         ) : null}
         <form action={signInWithGitHub} className="mt-6">
           <input type="hidden" name="next" value={next} />
-          <SubmitButton size="lg" pendingLabel="Redirecting to GitHub…" className={cn("h-11 w-full text-[15px]", CTA_GLOW)}>
+          <SubmitButton size="lg" pendingLabel="Redirecting to GitHub…" className={cn("h-11 w-full", CTA_GLOW)}>
             <GitHubMark className="size-4" />
-            Continue with GitHub
+            Sign in with GitHub
           </SubmitButton>
         </form>
         <p className="mt-3 text-center text-xs leading-relaxed text-muted-foreground">
@@ -72,16 +72,24 @@ export default async function LoginPage({ searchParams }: PageProps<"/login">) {
         </p>
         <dl className="mt-6 divide-y border-t pt-4 text-xs text-muted-foreground">
           <div className="flex items-center justify-between gap-4 py-2">
-            <dt className="font-medium text-foreground/85">Repository access</dt>
-            <dd className="text-right font-mono text-[11px]">Per-repo via GitHub App</dd>
+            <dt className="font-medium text-foreground/85">
+              <span className="font-mono text-brand">1</span> Sign in
+            </dt>
+            <dd className="text-right font-mono text-[11px]">GitHub account profile only, no repository access</dd>
           </div>
           <div className="flex items-center justify-between gap-4 py-2">
-            <dt className="font-medium text-foreground/85">Permissions</dt>
-            <dd className="text-right font-mono text-[11px]">Read-only contents &amp; metadata</dd>
+            <dt className="font-medium text-foreground/85">
+              <span className="font-mono text-brand">2</span> Choose repositories
+            </dt>
+            <dd className="text-right font-mono text-[11px]">GitHub App, read-only contents &amp; metadata, per repo</dd>
           </div>
           <div className="flex items-center justify-between gap-4 py-2">
             <dt className="font-medium text-foreground/85">Source retention</dt>
             <dd className="text-right font-mono text-[11px]">No persistent repo clone</dd>
+          </div>
+          <div className="flex items-center justify-between gap-4 py-2">
+            <dt className="font-medium text-foreground/85">AI usage</dt>
+            <dd className="text-right font-mono text-[11px]">Your own OpenAI key, added after sign-in</dd>
           </div>
           <div className="flex items-center justify-between gap-4 py-2">
             <dt className="font-medium text-foreground/85">Camera &amp; audio</dt>

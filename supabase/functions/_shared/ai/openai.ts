@@ -1,7 +1,11 @@
 import { z } from "zod";
+import { failureOf, type OpenAIFailure, retryAfterSeconds } from "./openai-errors.ts";
 import {
-  type AIProvider,
+  AIAuthError,
   AIInvalidOutputError,
+  AIPermissionError,
+  type AIProvider,
+  AIQuotaError,
   AIRateLimitedError,
   AIRequestError,
   AIUnavailableError,
@@ -13,7 +17,6 @@ const RESPONSES_URL = "https://api.openai.com/v1/responses";
 const EMBEDDINGS_URL = "https://api.openai.com/v1/embeddings";
 const DEFAULT_TIMEOUT_MS = 120_000;
 const DEFAULT_MAX_OUTPUT_TOKENS = 16_000;
-const DEFAULT_RETRY_AFTER_SECONDS = 30;
 const DEFAULT_RETRY_DELAY_MS = 250;
 
 /** Keywords OpenAI structured outputs reject; Zod still enforces them on the parsed result. */
@@ -77,15 +80,11 @@ function buildStrictJsonSchema(schema: z.ZodType): Record<string, unknown> {
   return strip(z.toJSONSchema(schema)) as Record<string, unknown>;
 }
 
-function retryAfterSeconds(res: Response): number {
-  const value = Number(res.headers.get("retry-after"));
-  return Number.isFinite(value) && value > 0 ? Math.ceil(value) : DEFAULT_RETRY_AFTER_SECONDS;
-}
-
 /**
  * POSTs JSON and returns the parsed body. Network failures, aborts, timeouts, and 5xx are
- * AIUnavailableError; 429 is AIRateLimitedError; other 4xx are AIRequestError. Bodies of failed
- * responses are discarded, never surfaced.
+ * AIUnavailableError; a rate-limit 429 is AIRateLimitedError; 401 is AIAuthError, 403 and an
+ * unknown model are AIPermissionError, 429 `insufficient_quota` is AIQuotaError, and other 4xx are
+ * AIRequestError. Only the error code of a failed response is read; its message is never surfaced.
  */
 async function postJson(fetchFn: typeof fetch, url: string, apiKey: string, body: unknown, signal: AbortSignal): Promise<unknown> {
   let res: Response;
@@ -100,23 +99,35 @@ async function postJson(fetchFn: typeof fetch, url: string, apiKey: string, body
     throw new AIUnavailableError();
   }
 
-  if (res.status === 429) {
-    await res.body?.cancel();
-    throw new AIRateLimitedError(retryAfterSeconds(res));
-  }
   if (res.status >= 500) {
     await res.body?.cancel();
     throw new AIUnavailableError(res.status);
   }
   if (!res.ok) {
-    await res.body?.cancel();
-    throw new AIRequestError(res.status);
+    throw aiErrorFor(res, await failureOf(res));
   }
 
   try {
     return await res.json();
   } catch {
     throw new AIUnavailableError(res.status);
+  }
+}
+
+function aiErrorFor(res: Response, failure: OpenAIFailure): AIRequestError | AIRateLimitedError {
+  switch (failure) {
+    case "auth":
+      return new AIAuthError();
+    case "permission":
+      return new AIPermissionError(res.status, "permission_denied");
+    case "model_unavailable":
+      return new AIPermissionError(res.status, "model_unavailable");
+    case "quota":
+      return new AIQuotaError();
+    case "rate_limited":
+      return new AIRateLimitedError(retryAfterSeconds(res));
+    default:
+      return new AIRequestError(res.status);
   }
 }
 

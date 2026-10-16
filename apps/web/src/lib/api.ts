@@ -1,3 +1,4 @@
+import "server-only";
 import {
   type ApiErrorCode,
   apiErrorSchema,
@@ -13,6 +14,7 @@ import {
   type InterviewPlanning,
   interviewReportResponseSchema,
   interviewStatusSchema,
+  openAIKeyStatusResponseSchema,
   PAUSE_RESUME_WINDOW_SECONDS,
   planningErrorCodeSchema,
   planningStateSchema,
@@ -35,7 +37,8 @@ interface Schema<T> {
 
 export type ApiResult<T> =
   | { ok: true; data: T }
-  | { ok: false; code: ApiErrorCode; nextAvailableAt?: string };
+  /** `model` only with `openai_key_permission_denied` from key validation. */
+  | { ok: false; code: ApiErrorCode; nextAvailableAt?: string; model?: string };
 
 async function functionGet<T>(name: string, schema: Schema<T>): Promise<T> {
   const supabase = await createSupabaseServerClient();
@@ -50,7 +53,7 @@ async function functionGet<T>(name: string, schema: Schema<T>): Promise<T> {
 async function functionRequest<T>(
   name: string,
   schema: Schema<T>,
-  init: { method: "GET" | "POST" | "DELETE"; body?: Record<string, unknown> },
+  init: { method: "GET" | "POST" | "PUT" | "DELETE"; body?: Record<string, unknown> },
 ): Promise<ApiResult<T>> {
   const supabase = await createSupabaseServerClient();
   const { data, error } = await supabase.functions.invoke(name, init);
@@ -61,8 +64,13 @@ async function functionRequest<T>(
     const body = await (error.context as Response).json().catch(() => null);
     const parsed = apiErrorSchema.safeParse(body);
     if (parsed.success) {
-      const { code, next_available_at: nextAvailableAt } = parsed.data;
-      return nextAvailableAt ? { ok: false, code, nextAvailableAt } : { ok: false, code };
+      const { code, next_available_at: nextAvailableAt, model } = parsed.data;
+      return {
+        ok: false,
+        code,
+        ...(nextAvailableAt ? { nextAvailableAt } : {}),
+        ...(model ? { model } : {}),
+      };
     }
   }
   return { ok: false, code: "github_unavailable" };
@@ -78,6 +86,24 @@ export function connectGithub(body: ConnectGithubRequest) {
 
 export function listRepositories(page = 1) {
   return functionRequest(`repositories?page=${page}&per_page=100`, repositoryListResponseSchema, { method: "GET" });
+}
+
+/** Status and hint only; the key itself is never returned. Cached per request. */
+export const getOpenAIKeyStatus = cache(() =>
+  functionRequest("me/openai-key", openAIKeyStatusResponseSchema, { method: "GET" }),
+);
+
+/** Sends the key in the request body only; the response carries status and hint. */
+export function saveOpenAIKey(apiKey: string) {
+  return functionRequest("me/openai-key", openAIKeyStatusResponseSchema, { method: "PUT", body: { api_key: apiKey } });
+}
+
+export function revalidateOpenAIKey() {
+  return functionRequest("me/openai-key/validate", openAIKeyStatusResponseSchema, { method: "POST" });
+}
+
+export function deleteOpenAIKey() {
+  return functionRequest("me/openai-key", z.unknown(), { method: "DELETE" });
 }
 
 export function createWorkspace(body: CreateWorkspaceRequest) {
