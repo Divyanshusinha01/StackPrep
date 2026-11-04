@@ -7,7 +7,7 @@ test("robots.txt allows the public site, blocks app routes and points at the sit
   expect(response.status()).toBe(200);
   const body = await response.text();
   expect(body).toMatch(/Allow: \/$/m);
-  for (const path of ["/admin", "/workspaces", "/interviews", "/auth", "/github", "/status", "/login"]) {
+  for (const path of ["/admin", "/workspaces", "/interviews", "/r", "/auth", "/github", "/status", "/login"]) {
     expect(body).toContain(`Disallow: ${path}`);
   }
   expect(body).toContain(`Sitemap: ${baseURL}/sitemap.xml`);

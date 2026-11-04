@@ -6,6 +6,8 @@ import {
   type InterviewHistoryItem,
   type OpenAIKeyStatus,
   retryAnalysisResponseSchema,
+  type InterviewCost,
+  interviewCostsResponseSchema,
   workspaceDetailResponseSchema,
   workspaceListResponseSchema,
 } from "@stackprep/shared";
@@ -95,6 +97,8 @@ interface Setup {
   startResult?: StartInterviewResult;
   /** The caller's stored OpenAI key status; null means no key. Defaults to valid. */
   keyStatus?: OpenAIKeyStatus | null;
+  /** What the service-role cost read returns. */
+  costs?: InterviewCost[];
 }
 
 const INTERVIEW_ID = "ffffffff-0000-4000-8000-000000000001";
@@ -121,6 +125,7 @@ function setup({
   interviews = [],
   startResult = { ok: true, interview: startedInterview },
   keyStatus = "valid",
+  costs = [],
 }: Setup = {}) {
   const state = { workspaces: [...workspaces] };
   const writes: unknown[][] = [];
@@ -228,6 +233,11 @@ function setup({
     getOpenAIKeyStatus(uid) {
       assertEquals(uid, userId);
       return Promise.resolve(keyStatus);
+    },
+    listInterviewCosts(uid, workspaceId) {
+      assertEquals(uid, userId);
+      writes.push(["listInterviewCosts", workspaceId]);
+      return Promise.resolve(costs);
     },
   };
 
@@ -548,6 +558,42 @@ Deno.test("an empty list is returned when there are no workspaces", async () => 
   assertEquals(workspaceListResponseSchema.parse(await (await request(handler, "/workspaces")).json()), {
     workspaces: [],
   });
+});
+
+// GET /workspaces/:id/costs --------------------------------------------------------
+
+Deno.test("returns estimated interview costs for the caller's own workspace", async () => {
+  const row = workspaceRow(1, 1, { status: "ready", indexed_commit_sha: SHA, ready_at: "2026-10-01T01:00:00+00:00" });
+  const costs: InterviewCost[] = [{
+    interview_id: INTERVIEW_ID,
+    interview_number: 1,
+    cost_usd: 0.42,
+    voice_cost_usd: 0.4,
+    text_cost_usd: 0.02,
+    has_estimate: true,
+    unpriced_calls: 0,
+  }];
+  const { handler, writes } = setup({ workspaces: [row], costs });
+  const res = await request(handler, `/workspaces/${row.id}/costs`);
+  assertEquals(res.status, 200);
+  await assertNoSecrets(res.clone());
+  assertEquals(interviewCostsResponseSchema.parse(await res.json()).interviews, costs);
+  assertEquals(writes, [["listInterviewCosts", row.id]]);
+});
+
+Deno.test("another user's workspace costs are a 404 and never read with the service role", async () => {
+  const { handler, writes } = setup({ workspaces: [] });
+  const res = await request(handler, "/workspaces/eeeeeeee-0000-4000-8000-000000000009/costs");
+  assertEquals(res.status, 404);
+  assertEquals(writes, []);
+});
+
+Deno.test("costs require authentication and accept GET only", async () => {
+  const row = workspaceRow(1, 1, { status: "ready", indexed_commit_sha: SHA, ready_at: "2026-10-01T01:00:00+00:00" });
+  const { handler, writes } = setup({ workspaces: [row] });
+  assertEquals((await request(handler, `/workspaces/${row.id}/costs`, {}, "")).status, 401);
+  assertEquals((await request(handler, `/workspaces/${row.id}/costs`, { method: "POST" })).status, 405);
+  assertEquals(writes, []);
 });
 
 // GET /workspaces/:id --------------------------------------------------------------
