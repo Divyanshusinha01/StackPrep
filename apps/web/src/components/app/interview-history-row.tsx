@@ -1,6 +1,8 @@
 import Link from "next/link";
 import { FileText, Loader2, Play, ScrollText, ShieldAlert } from "lucide-react";
+import type { InterviewCost } from "@stackprep/shared";
 import { DeleteInterviewButton } from "@/components/app/delete-interview-button";
+import { hasInterviewCost, InterviewCostLabel } from "@/components/app/interview-cost";
 import { InterviewStatusBadge } from "@/components/app/interview-status";
 import { Button } from "@/components/ui/button";
 import type { InterviewHistoryEntry, ReportAvailability } from "@/lib/api";
@@ -31,7 +33,16 @@ export function deleteInterviewErrorMessage(value: string | string[] | undefined
  * One interview in a history list: number, status, date/time, report or transcript link, and a
  * delete button. `returnTo` is the page to come back to after deleting.
  */
-export function InterviewHistoryRow({ interview, returnTo }: { interview: InterviewHistoryEntry; returnTo: string }) {
+export function InterviewHistoryRow({
+  interview,
+  returnTo,
+  cost,
+}: {
+  interview: InterviewHistoryEntry;
+  returnTo: string;
+  /** Estimated AI spend; omitted where costs are not loaded. */
+  cost?: InterviewCost;
+}) {
   const reportHref = `/interviews/${interview.id}/report`;
   const ended = ENDED.has(interview.status);
   const integrityTerminated = interview.status === "terminated" && interview.termination_reason === "integrity_violation";
@@ -63,6 +74,12 @@ export function InterviewHistoryRow({ interview, returnTo }: { interview: Interv
           <p className="mt-1 font-mono text-[11px] text-muted-foreground tabular-nums">
             <time dateTime={interview.created_at}>{dateTimeFormat.format(new Date(interview.created_at))} UTC</time>
             {interview.pause === "expired" ? <span className="text-warning"> · Pause expired</span> : null}
+            {hasInterviewCost(cost) ? (
+              <>
+                {" · "}
+                <InterviewCostLabel cost={cost} />
+              </>
+            ) : null}
           </p>
         </div>
       </div>
