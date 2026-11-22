@@ -70,8 +70,8 @@ Deno.test("returns only report fields: no transcript and no identifiers", async 
   assertEquals(Object.keys(body).sort(), [
     "generated_at",
     "interview_number",
-    "repository",
     "report",
+    "repository",
   ]);
 });
 
