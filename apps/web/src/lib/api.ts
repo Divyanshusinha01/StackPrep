@@ -5,11 +5,14 @@ import {
   type ConnectGithubRequest,
   connectGithubResponseSchema,
   createInterviewResponseSchema,
+  createReportShareResponseSchema,
   type CreateWorkspaceRequest,
   createWorkspaceResponseSchema,
   deleteInterviewResponseSchema,
+  deriveWorkspaceProgress,
   gitCommitShaSchema,
   healthResponseSchema,
+  interviewCostsResponseSchema,
   interviewHistoryItemSchema,
   type InterviewPlanning,
   interviewReportResponseSchema,
@@ -18,8 +21,13 @@ import {
   PAUSE_RESUME_WINDOW_SECONDS,
   planningErrorCodeSchema,
   planningStateSchema,
+  type ProgressInput,
+  reportShareStatusSchema,
   repositoryListResponseSchema,
   retryAnalysisResponseSchema,
+  sharedReportResponseSchema,
+  storedInterviewReportSchema,
+  type WorkspaceProgress,
   workspaceDetailResponseSchema,
   workspaceIdParamSchema,
   workspaceListResponseSchema,
@@ -210,6 +218,81 @@ export function upgradeInterviewReport(id: string) {
   return functionRequest(`interviews/${encodeURIComponent(id)}/report/upgrade`, interviewReportResponseSchema, {
     method: "POST",
   });
+}
+
+/** Estimated AI spend per interview of a workspace; an estimate, never the OpenAI bill. */
+export function getWorkspaceInterviewCosts(workspaceId: string) {
+  return functionRequest(`workspaces/${encodeURIComponent(workspaceId)}/costs`, interviewCostsResponseSchema, {
+    method: "GET",
+  });
+}
+
+/** Whether the report has an active read-only link. The link itself is never retrievable. */
+export function getReportShare(interviewId: string) {
+  return functionRequest(`report-shares/${encodeURIComponent(interviewId)}`, reportShareStatusSchema, { method: "GET" });
+}
+
+/** Creates a link (replacing any active one). The response is the only time the token is visible. */
+export function createReportShare(interviewId: string) {
+  return functionRequest(`report-shares/${encodeURIComponent(interviewId)}`, createReportShareResponseSchema, {
+    method: "POST",
+  });
+}
+
+export function revokeReportShare(interviewId: string) {
+  return functionRequest(`report-shares/${encodeURIComponent(interviewId)}`, reportShareStatusSchema, {
+    method: "DELETE",
+  });
+}
+
+/** Public read behind a share link; works without a session. */
+export function getSharedReport(token: string) {
+  return functionRequest(`shared-reports/${encodeURIComponent(token)}`, sharedReportResponseSchema, { method: "GET" });
+}
+
+const progressRowSchema = z.object({
+  interview_id: z.uuid(),
+  generated_at: z.string(),
+  content: z.unknown(),
+  interview: z.union([
+    z.object({ interview_number: z.int().min(1) }),
+    z.array(z.object({ interview_number: z.int().min(1) })).transform((rows) => rows[0] ?? null),
+  ]).nullable(),
+});
+
+/**
+ * Progress across the workspace's saved reports (PRD 23-24), read with the user's own session so
+ * RLS limits it to their non-deleted interviews. Only report content is read, never the plan or
+ * coverage state, and reports that no longer parse are skipped.
+ */
+export async function getWorkspaceProgress(workspaceId: string): Promise<WorkspaceProgress> {
+  if (!workspaceIdParamSchema.safeParse(workspaceId).success) {
+    return { interviews: [], trends: [] };
+  }
+  const supabase = await createSupabaseServerClient();
+  const { data, error } = await supabase
+    .from("reports")
+    .select(
+      "interview_id, generated_at, content, " +
+        "interview:interviews!reports_interview_id_workspace_id_user_id_fkey(interview_number)",
+    )
+    .eq("workspace_id", workspaceId);
+  if (error) {
+    throw new Error(`Failed to load workspace progress: ${error.message}`);
+  }
+  const inputs: ProgressInput[] = [];
+  for (const row of z.array(progressRowSchema).parse(data ?? [])) {
+    const report = storedInterviewReportSchema.safeParse(row.content);
+    if (report.success && row.interview) {
+      inputs.push({
+        interview_id: row.interview_id,
+        interview_number: row.interview.interview_number,
+        generated_at: row.generated_at,
+        report: report.data,
+      });
+    }
+  }
+  return deriveWorkspaceProgress(inputs);
 }
 
 export function deleteInterview(id: string) {

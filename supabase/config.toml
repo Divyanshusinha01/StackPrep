@@ -57,6 +57,17 @@ verify_jwt = true
 entrypoint = "./functions/admin/index.ts"
 
 # Called by GitHub, not browsers: requests are authenticated with the GitHub App webhook secret.
+[functions.report-shares]
+enabled = true
+verify_jwt = true
+entrypoint = "./functions/report-shares/index.ts"
+
+[functions.shared-reports]
+enabled = true
+# Public by design: the unguessable share token is the credential (architecture "Report sharing").
+verify_jwt = false
+entrypoint = "./functions/shared-reports/index.ts"
+
 [functions.github-webhooks]
 enabled = true
 verify_jwt = false

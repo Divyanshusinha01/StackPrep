@@ -12,10 +12,11 @@ import { OpenAIKeyNotice } from "@/components/app/openai-key-notice";
 import { PageHeader } from "@/components/app/page-header";
 import { SubmitButton } from "@/components/app/submit-button";
 import { SurfaceList } from "@/components/app/surface";
+import { WorkspaceProgressSection } from "@/components/app/workspace-progress";
 import { WorkspaceStatusBadge } from "@/components/app/workspace-status";
 import { CTA_GLOW } from "@/components/landing/constants";
 import { Button } from "@/components/ui/button";
-import { getInterviewHistory, getOpenAIKeyStatus, getWorkspace } from "@/lib/api";
+import { getInterviewHistory, getOpenAIKeyStatus, getWorkspace, getWorkspaceInterviewCosts, getWorkspaceProgress } from "@/lib/api";
 import { requireUser } from "@/lib/auth";
 import {
   isOpenAIKeySetupCode,
@@ -118,7 +119,14 @@ export default async function WorkspacePage({ params, searchParams }: PageProps<
   }
 
   const { workspace, repository } = result.data;
-  const [history, keyStatus] = await Promise.all([getInterviewHistory(workspace.id), getOpenAIKeyStatus()]);
+  const [history, keyStatus, progress, costs] = await Promise.all([
+    getInterviewHistory(workspace.id),
+    getOpenAIKeyStatus(),
+    getWorkspaceProgress(workspace.id),
+    getWorkspaceInterviewCosts(workspace.id),
+  ]);
+  // Costs are an extra: if they cannot be loaded the history still renders, just without them.
+  const costByInterview = new Map((costs.ok ? costs.data.interviews : []).map((cost) => [cost.interview_id, cost]));
   const interviews = history[0]?.interviews ?? [];
   const keyCode = keySetupCode(query, keyStatus);
   const keyAlert = keyStatus.ok && keyStatusSetupCode(keyStatus.data) !== null;
@@ -233,6 +241,8 @@ export default async function WorkspacePage({ params, searchParams }: PageProps<
         />
       </section>
 
+      <WorkspaceProgressSection progress={progress} />
+
       <section className="mt-10" aria-labelledby="interview-history">
         <div className="flex items-baseline justify-between gap-3">
           <h2 id="interview-history" className="font-display text-lg font-semibold tracking-tight">
@@ -256,7 +266,12 @@ export default async function WorkspacePage({ params, searchParams }: PageProps<
         ) : (
           <SurfaceList className="mt-4" data-testid="interview-history">
             {interviews.map((interview) => (
-              <InterviewHistoryRow key={interview.id} interview={interview} returnTo={`/workspaces/${workspace.id}`} />
+              <InterviewHistoryRow
+                key={interview.id}
+                interview={interview}
+                returnTo={`/workspaces/${workspace.id}`}
+                cost={costByInterview.get(interview.id)}
+              />
             ))}
           </SurfaceList>
         )}

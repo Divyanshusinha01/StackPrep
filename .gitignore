@@ -37,9 +37,19 @@ evals/results/
 # load test: custom k6 build and per-run scratch (fixtures with tokens, smoke runs)
 loadtest/bin/
 loadtest/.tmp/
-# load test: raw per-run event streams (metrics.json and summary.md are committed)
-loadtest/results/**/k6-events.ndjson
-loadtest/results/**/edge-runtime-events.log
+# load test: raw per-run output (k6 dumps, samples, DB rows, event streams) stays local
+# or goes to a release artifact. Committed: summary.md, summary.json, environment.json,
+# and the single diagnostic run's metrics.json that the README cites.
+loadtest/results/**/runs/**
+!loadtest/results/sse-baseline-uncapped/runs/
+!loadtest/results/sse-baseline-uncapped/runs/n010-r1/
+!loadtest/results/sse-baseline-uncapped/runs/n010-r1/metrics.json
+
+# playwright (also covered by apps/web/.gitignore; kept here as a safety net)
+apps/web/e2e/.auth/
+playwright-report/
+test-results/
+blob-report/
 
 # typescript
 *.tsbuildinfo

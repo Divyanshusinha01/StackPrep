@@ -17,7 +17,7 @@ import { ReportText } from "./report-view/report-text";
 import { ReviewDisclosure } from "./report-view/review-disclosure";
 import { RevisitQuestion } from "./report-view/revisit-question";
 
-const RATING_LABELS: Record<ReportRating, string> = {
+export const RATING_LABELS: Record<ReportRating, string> = {
   strong: "Strong",
   proficient: "Proficient",
   developing: "Developing",
@@ -25,7 +25,7 @@ const RATING_LABELS: Record<ReportRating, string> = {
   insufficient_evidence: "Not enough evidence",
 };
 
-const RATING_TONES: Record<ReportRating, ChipTone> = {
+export const RATING_TONES: Record<ReportRating, ChipTone> = {
   strong: "success",
   proficient: "info",
   developing: "warning",

@@ -4,6 +4,7 @@ import { notFound } from "next/navigation";
 import { ArrowRight } from "lucide-react";
 import { type InterviewReportResponse, isLearningReport, type ReportErrorCode } from "@stackprep/shared";
 import { AppShell } from "@/components/app/app-shell";
+import { hasInterviewCost, InterviewCostLabel } from "@/components/app/interview-cost";
 import { InterviewStatusBadge } from "@/components/app/interview-status";
 import { InterviewTranscript } from "@/components/app/interview-transcript";
 import { Notice } from "@/components/app/notice";
@@ -14,12 +15,20 @@ import { ReportPending } from "@/components/app/report-pending";
 import { ReportToc } from "@/components/app/report-toc";
 import { ReportUpgradePending } from "@/components/app/report-upgrade-pending";
 import { ReportView, reportSections } from "@/components/app/report-view";
+import { ShareReportControl } from "@/components/app/share-report-control";
 import { SubmitButton } from "@/components/app/submit-button";
 import { TrackReportViewed } from "@/components/app/track-report-viewed";
 import { TranscriptDisclosure } from "@/components/app/transcript-disclosure";
 import { UpgradeReportButton } from "@/components/app/upgrade-report-button";
 import { Button } from "@/components/ui/button";
-import { type ApiResult, getInterview, getInterviewReport, getInterviewTranscript } from "@/lib/api";
+import {
+  type ApiResult,
+  getInterview,
+  getInterviewReport,
+  getInterviewTranscript,
+  getReportShare,
+  getWorkspaceInterviewCosts,
+} from "@/lib/api";
 import { requireUser } from "@/lib/auth";
 import { currentKeySetupCode } from "@/lib/openai-key-gate";
 import { isOpenAIKeySetupCode } from "@/lib/openai-key-setup";
@@ -163,12 +172,15 @@ export default async function InterviewReportPage({ params, searchParams }: Page
     notFound();
   }
   const completed = interview.status === "completed";
-  const [transcript, report, keyCode] = await Promise.all([
+  const [transcript, report, keyCode, costs] = await Promise.all([
     getInterviewTranscript(interview.id),
     completed ? getInterviewReport(interview.id) : Promise.resolve(null),
     currentKeySetupCode(),
+    getWorkspaceInterviewCosts(interview.workspace_id),
   ]);
   const ready = report?.ok && report.data.status === "ready" ? report.data : null;
+  const share = ready ? await getReportShare(interview.id) : null;
+  const cost = costs.ok ? costs.data.interviews.find((c) => c.interview_id === interview.id) : undefined;
 
   const transcriptSection = (
     <section
@@ -194,11 +206,19 @@ export default async function InterviewReportPage({ params, searchParams }: Page
         }}
         title={`Interview ${interview.interview_number} report`}
         badge={<InterviewStatusBadge status={interview.status} terminationReason={interview.termination_reason} />}
-        description={ready ? `Generated ${dateTimeFormat.format(new Date(ready.generated_at))} UTC` : undefined}
+        description={
+          ready || hasInterviewCost(cost) ? (
+            <>
+              {ready ? `Generated ${dateTimeFormat.format(new Date(ready.generated_at))} UTC` : null}
+              {ready && hasInterviewCost(cost) ? " · " : null}
+              {hasInterviewCost(cost) ? <InterviewCostLabel cost={cost} /> : null}
+            </>
+          ) : undefined
+        }
         actions={
           ready ? (
             <>
-              <PrintButton label="Print report" />
+              <PrintButton label="Save as PDF" />
               <Button asChild size="sm" className="print:hidden">
                 <Link href={`/workspaces/${interview.workspace_id}`}>
                   Start next interview
@@ -245,6 +265,13 @@ export default async function InterviewReportPage({ params, searchParams }: Page
               ready={ready}
               requestError={typeof query.upgrade_error === "string" ? query.upgrade_error : null}
             />
+            {share?.ok ? (
+              <ShareReportControl
+                interviewId={interview.id}
+                active={share.data.active}
+                activeSince={share.data.created_at}
+              />
+            ) : null}
             <ReportView report={ready.report} />
             {transcriptSection}
           </div>

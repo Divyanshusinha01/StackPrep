@@ -14,6 +14,31 @@ A voice-first technical interview about **your own GitHub repository**: connect 
 | --- | --- |
 | ![Voice interview grounded in repository files](docs/assets/interview.png) | ![Evidence-linked interview report](docs/assets/report.png) |
 
+## Results
+
+| Area | Result |
+| --- | --- |
+| Retrieval (`search_repository`, hybrid) | **Recall@5 0.76** on the synthetic corpus (n=46) and **0.64** on a snapshot of this repo (n=48). MRR@5 0.52 / 0.49. Recall@5 is the share of a query's relevant files found in the top 5, so it is the closest thing to a hit rate here; precision@5 is 0.17 / 0.15 because most queries have one relevant file |
+| Unsupported-claim judge (reports) | Precision **0.87**, recall **1.00** (synthetic, n=23 / 20). On the repo snapshot, precision 0.67 and recall 1.00 (n=9 / 6, too small to lean on) |
+| Contradiction judge | Precision **1.00**, recall **1.00** (synthetic, n=15) |
+| Database tests | **23** pgTAP files across **33** migrations (RLS, interview state, tool calls, reports, code index, push sync, credentials), plus a concurrency suite against a real database |
+| Load test (SSE interview events, local Docker) | See below |
+
+Eval numbers come from the committed [`baseline.json`](evals/projects/stackprep/baseline.json). CI replays the recorded model outputs and fails on any regression, so they are reproducible without an API key. The synthetic corpus is small and hand-built, so treat the figures as a regression guard, not a benchmark.
+
+**Load test, before and after.** Same host and seed, 10 concurrent interviews on `GET /interviews/:id/events`. "Before" is the default Edge runtime worker CPU limit (1 s soft, 2 s hard), median of 3 runs. "After" lifts that limit as a diagnostic, one run, so it shows the cause rather than a shipped fix.
+
+| 10 concurrent interviews | Before (default limit) | After (limit lifted) |
+| --- | --- | --- |
+| Error rate | 1.37% (0.28-1.91) | **0%** |
+| Edge function errors | 20 | **0** |
+| Edge worker limit events | 7 | **0** |
+| Dropped frames | 167 | **0** |
+| Write latency p95 | 3474 ms | **184 ms** |
+| Connected frame delay p95 | 1088 ms | 1445 ms |
+
+The default configuration first breaches the 1% error threshold at 10 interviews and reaches 36% errors at 100. Lifting the limit is not a production change, and scaling past this point is still [planned](#implemented-and-planned). Full table: [`summary.md`](loadtest/results/sse-baseline/summary.md); run metadata: `environment.json` beside it. Raw per-run output is not committed.
+
 ## Overview
 
 Many developers ship code they cannot fully explain, especially when it was written with AI help, and a résumé link to a repository proves nothing about understanding it. StackPrep interviews a candidate about one repository they choose. The interview checks:
@@ -263,7 +288,7 @@ All commands run from the repository root.
 | Unit (Vitest) | `pnpm test` | `apps/web`, `packages/shared`, `packages/code-parser` |
 | Edge Functions (Deno) | `pnpm test:functions` | Handlers, Inngest jobs, analysis, auth, AI provider |
 | Evals (Deno) | `pnpm test:evals` | Tests for the eval harness itself |
-| Database (pgTAP) | `pnpm test:db` | 22 test files: RLS, interview state, tool calls, reports, AI usage, code index, push sync, OpenAI credentials |
+| Database (pgTAP) | `pnpm test:db` | 23 test files: RLS, interview state, tool calls, reports, AI usage, code index, push sync, OpenAI credentials |
 | Concurrency | `pnpm test:db:concurrency` | Concurrent interview operations against a real database; set `SUPABASE_DB_URL=postgresql://postgres:postgres@127.0.0.1:54322/postgres` |
 | E2E (Playwright) | `pnpm e2e:install`, `pnpm e2e:stack:up`, then `pnpm test:e2e` | Chromium against the local Supabase stack |
 
@@ -313,6 +338,21 @@ Contributions are welcome; see [`CONTRIBUTING.md`](CONTRIBUTING.md) for setup, c
 
 ## Status and license
 
-StackPrep is under active development, and some designs in `PRD.md` and the architecture doc may be ahead of the code.
+StackPrep is under active development.
+
+### Implemented and planned
+
+| Area | Implemented | Planned |
+| --- | --- | --- |
+| Repository access | GitHub App (public and private repos) at a pinned commit, OAuth sign-in, push-webhook re-indexing | None |
+| Analysis | Background analysis, Tree-sitter code index and call graph (TS/JS, Python, Go, Java, C/C++), embeddings, interview planning | Better retrieval quality (Recall@5 is 0.64-0.76 today) |
+| Interview | WebRTC voice, server-side tool calls, live transcript, pause/resume/reconnect, 30/35 minute limits, webcam integrity checks | A server-side Realtime sideband instead of browser relay (needs a long-lived connection, which Edge Functions do not provide) |
+| Reports | Evidence-linked learning report with question review, resources and learning plan | None |
+| Accounts and keys | Bring-your-own OpenAI key, AES-256-GCM at rest, admin dashboard, AI usage and cost tracking | Self-service "Delete my account" (today: request via GitHub issue, deleted manually; not yet designed) |
+| Security | RLS on every table, `Content-Security-Policy-Report-Only`, Sentry | Enforce the CSP after a clean full-interview run |
+| Scale | Load-test harness and a documented bottleneck (10 concurrent interviews locally) | Fix the SSE and Edge worker limits, then re-run the load test |
+| Testing | Vitest, Deno, pgTAP, evals in CI, Playwright E2E (Chromium) | Firefox and WebKit E2E |
+
+The product definition in [`PRD.md`](PRD.md) and [`architecture.md`](architecture.md) is the target design. Where the table says planned, the docs describe more than the code does.
 
 Released under the [MIT License](LICENSE).

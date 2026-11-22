@@ -6,6 +6,9 @@ import {
   createInterviewResponseSchema,
   createWorkspaceRequestSchema,
   createWorkspaceResponseSchema,
+  type InterviewCost,
+  interviewCostRowSchema,
+  interviewCostsResponseSchema,
   type InterviewHistoryItem,
   type InterviewPlanning,
   type InterviewStatus,
@@ -129,6 +132,11 @@ export interface WorkspaceWriters {
   failPlanningJob(userId: string, jobId: string, code: PlanningErrorCode, message: string): Promise<void>;
   /** Status of the user's stored OpenAI key; null when none is stored. */
   getOpenAIKeyStatus(userId: string): Promise<OpenAIKeyStatus | null>;
+  /**
+   * Estimated AI spend per interview of the user's workspace, newest first. `ai_usage` is
+   * service-role only, so the caller must have verified ownership of `workspaceId` first.
+   */
+  listInterviewCosts(userId: string, workspaceId: string): Promise<InterviewCost[]>;
 }
 
 export interface WorkspacesHandlerOptions {
@@ -346,6 +354,16 @@ export function createWorkspaceWriters(serviceClient: SupabaseClient): Workspace
     async getOpenAIKeyStatus(userId) {
       return (await keyStatuses.getStatus(userId))?.status ?? null;
     },
+    async listInterviewCosts(userId, workspaceId) {
+      const { data, error } = await serviceClient.rpc("workspace_interview_costs", {
+        p_workspace_id: workspaceId,
+        p_user_id: userId,
+      });
+      if (error) {
+        throw new Error(`Failed to load interview costs: ${error.message}`);
+      }
+      return interviewCostRowSchema.array().parse(data ?? []);
+    },
     async setJobEventId(userId, jobId, eventId) {
       const { error } = await serviceClient
         .from("jobs")
@@ -389,7 +407,7 @@ function toWorkspace(row: WorkspaceRow): Workspace {
   };
 }
 
-const ROUTE = /\/workspaces(?:\/([^/]+)(\/analysis\/retry|\/interviews)?)?\/?$/;
+const ROUTE = /\/workspaces(?:\/([^/]+)(\/analysis\/retry|\/interviews|\/costs)?)?\/?$/;
 
 export function createWorkspacesHandler({
   webOrigin,
@@ -596,6 +614,23 @@ export function createWorkspacesHandler({
     return json(body, { headers: cors.headers });
   }
 
+  /** Estimated AI spend per interview. Ownership is checked through the caller's RLS client first. */
+  async function getInterviewCosts(req: Request, id: string): Promise<Response> {
+    const ctx = await authenticate(req);
+    if (!ctx) {
+      return apiError("unauthorized", cors);
+    }
+    if (!workspaceIdParamSchema.safeParse(id).success) {
+      return apiError("workspace_not_found", cors);
+    }
+    const row = await reader(ctx.supabase).getWorkspace(id);
+    if (!row) {
+      return apiError("workspace_not_found", cors);
+    }
+    const interviews = await writers.listInterviewCosts(ctx.user.id, row.id);
+    return json(interviewCostsResponseSchema.parse({ interviews }), { headers: cors.headers });
+  }
+
   /**
    * Best effort and never throws. If the event cannot be sent, the planning job is marked failed
    * (`enqueue_failed`) instead of leaving the interview waiting on a run that never starts.
@@ -745,7 +780,7 @@ export function createWorkspacesHandler({
     }
     const id = match[1];
     const action = match[2];
-    const allowed = id === undefined ? "GET, POST" : action !== undefined ? "POST" : "GET";
+    const allowed = id === undefined ? "GET, POST" : action !== undefined && action !== "/costs" ? "POST" : "GET";
     if (!allowed.split(", ").includes(req.method)) {
       return apiError("method_not_allowed", cors, { Allow: `${allowed}, OPTIONS` });
     }
@@ -756,6 +791,9 @@ export function createWorkspacesHandler({
       }
       if (action === "/interviews") {
         return await createInterview(req, id);
+      }
+      if (action === "/costs") {
+        return await getInterviewCosts(req, id);
       }
       if (id !== undefined) {
         return await getWorkspace(req, id);
